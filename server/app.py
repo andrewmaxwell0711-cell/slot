@@ -171,6 +171,24 @@ def _config_payload() -> dict:
             "max_free_spins": game.MAX_FREE_SPINS,
             "gamble_max_rounds": game.GAMBLE_MAX_ROUNDS,
         },
+        "modes": list(game.MODES),
+        "megaways": {
+            "bet_aud": game.MW_BET_AUD,
+            "reels": game.MW_REELS,
+            "top_reels": list(game.MW_TOP_REELS),
+            "min_rows": game.MW_MIN_ROWS,
+            "max_rows": game.MW_MAX_ROWS,
+            "max_ways": game.MW_MAX_ROWS ** game.MW_REELS,
+            "pays": {sid: {str(k): round(v * game.MW_PAY_SCALE, 4) for k, v in p.items()} for sid, p in game.MW_PAYS.items()},
+            "scatter_pays": {str(k): {"pay": v[0], "free_spins": v[1]} for k, v in game.MW_SCATTER_PAYS.items()},
+            "retrigger": {str(k): v for k, v in game.MW_RETRIGGER.items()},
+        },
+        "minigames": {
+            "pick_tiles": game.PICK_TILES,
+            "pick_prizes": [p for p, _ in game.PICK_PRIZES],
+            "wheel_wedges": game.WHEEL_WEDGES,
+            "wheel_min_scatters": game.WHEEL_MIN_SCATTERS,
+        },
     }
 
 
@@ -455,53 +473,87 @@ def api_withdraw():
     return jsonify(snap)
 
 
+def _spin_payload(step: dict, settled: dict) -> dict:
+    """Allow-listed player-facing fields only: never pool size, cap or max-win."""
+    out = {
+        "kind": step.get("kind", "spin"),
+        "raw_win_aud": settled["raw_win_aud"],
+        "win_aud": settled["paid_aud"],
+        "jackpot_aud": settled["jackpot_aud"],
+        "limited": settled["capped"],
+    }
+    kind = out["kind"]
+    if kind == "pick":
+        out.update(picks=step["picks"], decoys=step["decoys"], tiles=step["tiles"])
+    elif kind == "wheel":
+        idx = settled.get("wheel_index", step["index"])
+        jackpot = bool(settled.get("wheel_jackpot"))
+        out.update(
+            wedges=step["wedges"], index=idx, jackpot=jackpot,
+            near_miss=bool(step.get("jackpot_pending")) and not jackpot,
+            prize_mult=0 if jackpot else game.WHEEL_WEDGES[idx].get("value", 0) if game.WHEEL_WEDGES[idx]["type"] == "mult" else 0,
+            free_spins=step.get("free_spins", 0),
+        )
+    elif step.get("mode") == "megaways":
+        out.update(
+            mode="megaways", stages=step["stages"], ways=step["ways"], cascades=step["cascades"],
+            scatters=step["scatters"], scatter_pos=step["scatter_pos"], scatter_win_aud=step["scatter_win_aud"],
+            free_spins_awarded=step["free_spins_awarded"], multiplier=step["multiplier"],
+            multiplier_end=step["multiplier_end"],
+        )
+    else:
+        out.update(
+            mode="classic", grid=step["grid"], line_wins=step["line_wins"], scatters=step["scatters"],
+            scatter_pos=step["scatter_pos"], scatter_win_aud=step["scatter_win_aud"],
+            free_spins_awarded=step["free_spins_awarded"], multiplier=step["multiplier"],
+        )
+    return out
+
+
 @app.post("/api/spin")
 def api_spin():
     data = request.get_json(silent=True) or {}
     display_currency = str(data.get("display_currency") or "AUD").upper()
     if display_currency not in game.FIAT:
         display_currency = "AUD"
+    mode = str(data.get("mode") or "classic").lower()
+    if mode not in game.MODES:
+        return _json_error("Invalid mode")
     try:
-        lines = int(data.get("lines", 25))
-        bpl_index = int(data.get("bet_per_line_index", 0))
+        if mode == "megaways":
+            bet_index = int(data.get("bet_index", 0))
+            if not 0 <= bet_index < len(game.MW_BET_AUD):
+                return _json_error("Invalid bet")
+            total_bet = round(float(game.MW_BET_AUD[bet_index]), 2)
+            lines, bpl = None, None
+        else:
+            lines = int(data.get("lines", 25))
+            bpl_index = int(data.get("bet_per_line_index", 0))
+            if lines not in game.LINE_OPTIONS or not 0 <= bpl_index < len(game.BET_PER_LINE_AUD):
+                return _json_error("Invalid bet")
+            bpl = float(game.BET_PER_LINE_AUD[bpl_index])
+            total_bet = round(bpl * lines, 2)
     except (TypeError, ValueError):
         return _json_error("Invalid bet")
-    if lines not in game.LINE_OPTIONS or not 0 <= bpl_index < len(game.BET_PER_LINE_AUD):
-        return _json_error("Invalid bet")
-    bpl = float(game.BET_PER_LINE_AUD[bpl_index])
-    total_bet = round(bpl * lines, 2)
 
-    rnd = game.play_round(bpl, lines)
+    rnd = game.play_megaways(total_bet) if mode == "megaways" else game.play_classic(bpl, lines)
     try:
         snap = ledger.settle_round(g.player_id, total_bet, rnd, display_currency)
     except ValueError as exc:
         return _json_error(str(exc))
 
-    # Player-facing payload: no pool size, cap or max-win amounts.
-    def step_payload(step: dict, settled: dict) -> dict:
-        return {
-            "grid": step["grid"],
-            "line_wins": step["line_wins"],
-            "scatters": step["scatters"],
-            "scatter_pos": step["scatter_pos"],
-            "scatter_win_aud": step["scatter_win_aud"],
-            "free_spins_awarded": step["free_spins_awarded"],
-            "multiplier": step["multiplier"],
-            "raw_win_aud": settled["raw_win_aud"],
-            "win_aud": settled["paid_aud"],
-            "jackpot_aud": settled["jackpot_aud"],
-            "limited": settled["capped"],
-        }
-
-    steps = [rnd["base"]] + rnd["free_spins"]
-    payload = [step_payload(st, se) for st, se in zip(steps, snap["steps"])]
+    steps = game.round_steps(rnd)
+    payload = [_spin_payload(st, se) for st, se in zip(steps, snap["steps"])]
+    n_games = len(rnd.get("minigames") or [])
     return jsonify(
         {
+            "mode": mode,
             "lines": lines,
             "bet_per_line_aud": bpl,
             "bet_aud": total_bet,
             "base": payload[0],
-            "free_spins": payload[1:],
+            "minigames": payload[1:1 + n_games],
+            "free_spins": payload[1 + n_games:],
             "jackpot_hit": snap["jackpot_hit"],
             "jackpot_paid_aud": snap["jackpot_paid_aud"],
             "win_aud": snap["total_paid_aud"],

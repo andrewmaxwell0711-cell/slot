@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from game import jackpot_roll as game_jackpot_roll
+from game import settle_steps as game_settle_steps
 from game import (
     ALL_ASSETS,
     CRYPTO,
@@ -456,6 +457,7 @@ def settle_round(
     rnd: dict[str, Any],
     display_currency: str,
     jackpot_roll: Callable[[float, float], bool] | None = None,
+    wheel_roll: Callable[[float, float], bool] | None = None,
 ) -> dict[str, Any]:
     """Atomically: take the stake, add it to the pool, roll the Green Tea
     Jackpot against the live pool, then pay each spin of the round clamped to
@@ -474,26 +476,12 @@ def settle_round(
         pool = h["pool_aud"] + total_bet_aud
         jackpot_hit = bool(roll(total_bet_aud, pool))
 
-        steps = [rnd["base"]] + list(rnd.get("free_spins") or [])
-        results: list[dict[str, Any]] = []
-        total_paid = 0.0
-        jackpot_paid = 0.0
-        any_capped = False
-        for i, step in enumerate(steps):
-            cap = cap_for_pool(pool)
-            raw = round(step["raw_win_aud"], 2)
-            paid = round(min(raw, cap), 2)
-            capped = paid < raw - 1e-9
-            jp = 0.0
-            if i == 0 and jackpot_hit:
-                jp = round(max(0.0, cap - paid), 2)  # base spin pays exactly the cap
-                jackpot_paid = jp
-            step_total = round(paid + jp, 2)
-            pool = max(0.0, pool - step_total)
-            total_paid += step_total
-            any_capped = any_capped or capped
-            results.append({"raw_win_aud": raw, "paid_aud": paid, "capped": capped, "jackpot_aud": jp, "cap_aud": cap})
-
+        settled = game_settle_steps(rnd, total_bet_aud, pool, jackpot_hit, wheel_roll)
+        results = settled["steps"]
+        total_paid = settled["total_paid_aud"]
+        jackpot_paid = settled["jackpot_paid_aud"]
+        any_capped = settled["any_capped"]
+        pool = settled["pool_after"]
         total_paid = round(total_paid, 2)
         _pay(conn, player_id, total_paid, display_currency, "spin_win",
              f"win {total_paid} AUD" + (" (jackpot)" if jackpot_paid else "") + (" (capped)" if any_capped else ""))

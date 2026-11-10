@@ -34,7 +34,7 @@ SYMBOLS = [
     # Prism SCATTER: 3+ anywhere pays and triggers free spins.
     {"id": "scatter", "name": "Prism Scatter", "emoji": "🌈", "weight": 3, "pays": {}, "scatter": True},
     # Non-paying ice shard (like a classic blank) that keeps the total RTP at ~20%.
-    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 19, "pays": {}, "blank": True},
+    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 25, "pays": {}, "blank": True},
 ]
 
 WILD_ID = "wild"
@@ -222,28 +222,6 @@ def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, 
     }
 
 
-def play_round(bet_per_line: float, lines: int) -> dict[str, Any]:
-    """Paid spin plus any free-spin bonus it triggers (same lines and bet).
-
-    The jackpot roll needs the live pool, so the ledger does it inside the
-    settlement transaction via jackpot_roll().
-    """
-    base = play_one(bet_per_line, lines, 1)
-    free: list[dict[str, Any]] = []
-    remaining = base["free_spins_awarded"]
-    total_awarded = remaining
-    while remaining > 0:
-        remaining -= 1
-        fs = play_one(bet_per_line, lines, FREE_SPIN_MULT)
-        if fs["free_spins_awarded"]:
-            extra = max(0, min(fs["free_spins_awarded"], MAX_FREE_SPINS - total_awarded))
-            fs["free_spins_awarded"] = extra
-            remaining += extra
-            total_awarded += extra
-        free.append(fs)
-    return {"base": base, "free_spins": free}
-
-
 def jackpot_probability(total_bet: float, pool_aud: float) -> float:
     if pool_aud <= 0 or total_bet <= 0:
         return 0.0
@@ -264,3 +242,369 @@ def cap_for_pool(pool_aud: float) -> float:
     if pool_aud <= 0:
         return 0.0
     return int(pool_aud * POOL_CAP_FRACTION * 100 + 1e-9) / 100.0
+
+
+# ===========================================================================
+# v4: Megaways mode, mini games (Crystal Pick, Tea Wheel) and shared settlement
+# ===========================================================================
+
+MODES = ("megaways", "classic")
+
+# ---- Megaways -------------------------------------------------------------
+# 6 reels. Reels 1 and 6 land 2-7 symbols; reels 2-5 land 2-6 plus one symbol
+# on the horizontal top reel above them, so every reel shows 2-7 symbols and
+# ways = product of reel heights (max 7^6 = 117,649).
+MW_REELS = 6
+MW_TOP_REELS = (1, 2, 3, 4)
+MW_MIN_ROWS = 2
+MW_MAX_ROWS = 7
+MW_BET_AUD = [0.2, 0.4, 0.6, 1, 2, 4, 10, 20, 50, 100]
+MW_MAX_CASCADES = 40
+
+# Symbol weights per landing cell (wild only on reels 2-5, scatter never on the top reel).
+MW_WEIGHTS = {
+    "quartz": 20, "citrine": 20, "topaz": 16, "amethyst": 16, "emerald": 13,
+    "sapphire": 11, "ruby": 8, "greentea": 5, "wild": 2, "scatter": 3.8, "shard": 60,
+}
+# Free spins use a richer reel set (fewer Ice Shard blanks).
+MW_FREE_WEIGHTS = {**MW_WEIGHTS, "shard": 42, "scatter": 3.0}
+# Pay × total stake PER WAY for 3/4/5/6 of a kind (scaled by MW_PAY_SCALE).
+MW_PAYS = {
+    "quartz": {3: 0.10, 4: 0.20, 5: 0.40, 6: 1.0},
+    "citrine": {3: 0.10, 4: 0.20, 5: 0.40, 6: 1.0},
+    "topaz": {3: 0.15, 4: 0.30, 5: 0.60, 6: 1.5},
+    "amethyst": {3: 0.15, 4: 0.30, 5: 0.75, 6: 2.0},
+    "emerald": {3: 0.20, 4: 0.50, 5: 1.0, 6: 3.0},
+    "sapphire": {3: 0.30, 4: 0.75, 5: 1.5, 6: 5.0},
+    "ruby": {3: 0.50, 4: 1.0, 5: 2.5, 6: 10.0},
+    "greentea": {3: 1.0, 4: 2.5, 5: 10.0, 6: 50.0},
+}
+MW_PAY_SCALE = 0.22
+# Scatters on the final board -> (pay × stake, free spins)
+MW_SCATTER_PAYS = {4: (1, 10), 5: (5, 15), 6: (25, 20)}
+MW_RETRIGGER = {3: 5, 4: 5, 5: 10, 6: 15}  # during free spins
+MW_FREE_SPIN_START_MULT = 1  # multiplier +1 after every winning cascade, never resets in the bonus
+
+
+def _mw_table(reel: int, top: bool, free: bool = False) -> tuple[list[tuple[str, float]], float]:
+    items = []
+    for sid, w in (MW_FREE_WEIGHTS if free else MW_WEIGHTS).items():
+        if sid == WILD_ID and reel not in MW_TOP_REELS:
+            continue
+        if sid == SCATTER_ID and top:
+            continue
+        items.append((sid, float(w)))
+    return items, sum(w for _, w in items)
+
+
+def rebuild_mw_tables() -> None:
+    _MW_TABLES.clear()
+    _MW_TABLES.update({(r, t, f): _mw_table(r, t, f) for r in range(MW_REELS) for t in (False, True) for f in (False, True)})
+
+
+_MW_TABLES: dict = {}
+
+
+def mw_pick(reel: int, top: bool = False, free: bool = False) -> str:
+    items, total = _MW_TABLES[(reel, top, free)]
+    x = _rng.random() * total
+    for sid, w in items:
+        x -= w
+        if x <= 0:
+            return sid
+    return items[0][0]
+
+
+rebuild_mw_tables()
+
+
+def mw_board(free: bool = False) -> list[list[str]]:
+    """Combined columns. Columns 1-4 start with their top-reel cell."""
+    cols = []
+    for c in range(MW_REELS):
+        if c in MW_TOP_REELS:
+            h = _rng.randint(MW_MIN_ROWS, MW_MAX_ROWS - 1)
+            col = [mw_pick(c, True, free)] + [mw_pick(c, False, free) for _ in range(h)]
+        else:
+            h = _rng.randint(MW_MIN_ROWS, MW_MAX_ROWS)
+            col = [mw_pick(c, False, free) for _ in range(h)]
+        cols.append(col)
+    return cols
+
+
+def mw_ways(cols: list[list[str]]) -> int:
+    ways = 1
+    for col in cols:
+        ways *= len(col)
+    return ways
+
+
+def mw_evaluate(cols: list[list[str]], stake: float, mult: int = 1) -> list[dict[str, Any]]:
+    """Ways wins: symbol (or wild) on adjacent reels from reel 1; ways = product of matches."""
+    wins = []
+    for sid, pays in MW_PAYS.items():
+        counts = []
+        for col in cols:
+            n = sum(1 for x in col if x == sid or x == WILD_ID)
+            if n == 0:
+                break
+            counts.append(n)
+        # reel 1 has no wilds, so a run must start with the real symbol there
+        if len(counts) < 3 or not any(x == sid for x in cols[0]):
+            continue
+        length = len(counts)
+        ways = 1
+        for n in counts:
+            ways *= n
+        pay = pays[length] * MW_PAY_SCALE
+        cells = [[c, r] for c in range(length) for r, x in enumerate(cols[c]) if x == sid or x == WILD_ID]
+        wins.append({
+            "symbol": sid, "count": length, "ways": ways, "pay": pay, "multiplier": mult,
+            "win_aud": round(stake * pay * ways * mult, 8), "cells": cells,
+        })
+    return wins
+
+
+def mw_cascade(cols: list[list[str]], cells: set[tuple[int, int]], free: bool = False) -> tuple[list[list[str]], list[int], list[bool]]:
+    """Shatter `cells`, drop survivors down, refill from above. Returns (cols, new_per_col, top_refilled)."""
+    out, new_counts, top_new = [], [], []
+    for c, col in enumerate(cols):
+        has_top = c in MW_TOP_REELS
+        start = 1 if has_top else 0
+        top_cell = col[0] if has_top else None
+        refilled = False
+        if has_top and (c, 0) in cells:
+            top_cell = mw_pick(c, True, free)
+            refilled = True
+        main = col[start:]
+        kept = [x for r, x in enumerate(main) if (c, r + start) not in cells]
+        fresh = [mw_pick(c, False, free) for _ in range(len(main) - len(kept))]
+        new_col = ([top_cell] if has_top else []) + fresh + kept
+        out.append(new_col)
+        new_counts.append(len(fresh))
+        top_new.append(refilled)
+    return out, new_counts, top_new
+
+
+def mw_play_one(stake: float, free: bool = False, mult: int = 1) -> dict[str, Any]:
+    """One Megaways spin with tumbling cascades. In free spins the multiplier
+    applies to every win and grows +1 after each winning cascade."""
+    cols = mw_board(free)
+    stages = []
+    raw = 0.0
+    new_counts = [len(c) for c in cols]
+    top_new = [c in MW_TOP_REELS for c in range(MW_REELS)]
+    for k in range(MW_MAX_CASCADES + 1):
+        # safety stop: after MW_MAX_CASCADES tumbles the last board is shown but not paid again
+        wins = mw_evaluate(cols, stake, mult if free else 1) if k < MW_MAX_CASCADES else []
+        stage_win = round(sum(w["win_aud"] for w in wins), 8)
+        stages.append({"cols": [list(c) for c in cols], "ways": mw_ways(cols), "wins": wins,
+                       "multiplier": mult if free else 1, "win_aud": stage_win,
+                       "new": new_counts, "top_new": top_new})
+        if not wins:
+            break
+        raw += stage_win
+        hit = {tuple(cell) for w in wins for cell in w["cells"]}
+        cols, new_counts, top_new = mw_cascade(cols, hit, free)
+        if free:
+            mult += 1
+    final = stages[-1]["cols"]
+    scat_pos = [[c, r] for c, col in enumerate(final) for r, x in enumerate(col) if x == SCATTER_ID]
+    n_scat = len(scat_pos)
+    if free:
+        scatter_mult, fs = 0, MW_RETRIGGER.get(min(n_scat, 6), 0) if n_scat >= 3 else 0
+    else:
+        scatter_mult, fs = MW_SCATTER_PAYS.get(min(n_scat, 6), (0, 0)) if n_scat >= 4 else (0, 0)
+    scatter_win = round(stake * scatter_mult, 8)
+    raw += scatter_win
+    return {
+        "kind": "spin", "mode": "megaways", "stages": stages, "ways": stages[0]["ways"],
+        "cascades": len(stages) - 1, "scatters": n_scat, "scatter_pos": scat_pos,
+        "scatter_win_aud": scatter_win, "free_spins_awarded": fs,
+        "multiplier": stages[0]["multiplier"], "multiplier_end": mult if free else 1,
+        "has_wild": any(x == WILD_ID for col in final for x in col),
+        "raw_win_aud": round(raw, 8),
+    }
+
+
+# ---- Mini games -----------------------------------------------------------
+# Crystal Pick: random "mystery" trigger on any paid spin. Pick crystals; each
+# reveals a prize (× total bet) until a COLLECT crystal ends the game. The
+# reveal order is drawn on the server when the game triggers.
+PICK_TRIGGER_P = 1 / 280
+PICK_TILES = 12
+PICK_COLLECT_P = 0.40  # chance each pick after the first is COLLECT
+PICK_PRIZES = [(0.2, 25), (0.5, 28), (1, 22), (2, 13), (3, 7), (5, 3.5), (10, 1.2), (25, 0.3)]  # (× bet, weight)
+
+# Tea Wheel: bonus combo — 2+ BONUS scatters together with a WILD on the final
+# board (without triggering free spins). 12 equal wedges.
+WHEEL_WEDGES = [
+    {"type": "mult", "value": 2}, {"type": "mult", "value": 5}, {"type": "mult", "value": 3},
+    {"type": "mult", "value": 10}, {"type": "mult", "value": 2}, {"type": "free_spins", "value": 8},
+    {"type": "mult", "value": 4}, {"type": "mult", "value": 25}, {"type": "mult", "value": 3},
+    {"type": "mult", "value": 6}, {"type": "mult", "value": 2}, {"type": "jackpot", "value": 0},
+]
+WHEEL_JACKPOT_INDEX = 11
+# Landing on the jackpot wedge wins the Green Tea Jackpot with chance
+# min(1, WHEEL_JP_K * bet / pool); otherwise the wheel ticks on to a neighbouring 2×.
+WHEEL_JP_K = 30.0
+WHEEL_PRIZE_SCALE = 1.0
+WHEEL_MIN_SCATTERS = {"classic": 2, "megaways": 3}  # + a WILD, below the free-spins trigger
+
+
+def _weighted(items: list[tuple[float, float]]) -> float:
+    total = sum(w for _, w in items)
+    x = _rng.random() * total
+    for v, w in items:
+        x -= w
+        if x <= 0:
+            return v
+    return items[-1][0]
+
+
+def play_pick(stake: float) -> dict[str, Any]:
+    picks = []
+    while True:
+        if picks and (_rng.random() < PICK_COLLECT_P or len(picks) >= PICK_TILES - 1):
+            picks.append({"collect": True})
+            break
+        m = _weighted(PICK_PRIZES)
+        picks.append({"prize_mult": m, "win_aud": round(stake * m, 8)})
+    left = PICK_TILES - len(picks)  # unpicked crystals, revealed afterwards for show (one more COLLECT among them)
+    decoys = ([{"collect": True}] if left > 0 else []) + [{"prize_mult": _weighted(PICK_PRIZES)} for _ in range(max(0, left - 1))]
+    _rng.shuffle(decoys)
+    raw = sum(p.get("win_aud", 0.0) for p in picks)
+    return {"kind": "pick", "picks": picks, "decoys": decoys, "tiles": PICK_TILES, "raw_win_aud": round(raw, 8)}
+
+
+def wheel_jackpot_probability(stake: float, pool_aud: float) -> float:
+    if pool_aud <= 0 or stake <= 0:
+        return 0.0
+    return min(1.0, WHEEL_JP_K * stake / pool_aud)
+
+
+def play_wheel(stake: float) -> dict[str, Any]:
+    idx = _rng.randrange(len(WHEEL_WEDGES))
+    wedge = WHEEL_WEDGES[idx]
+    out: dict[str, Any] = {"kind": "wheel", "wedges": WHEEL_WEDGES, "index": idx, "free_spins": 0,
+                           "jackpot_pending": False, "raw_win_aud": 0.0, "prize_mult": 0}
+    if wedge["type"] == "jackpot":
+        # Resolved against the live pool at settlement; fallback = neighbouring 2× wedge.
+        fb = _rng.choice((WHEEL_JACKPOT_INDEX - 1, (WHEEL_JACKPOT_INDEX + 1) % len(WHEEL_WEDGES)))
+        out.update(jackpot_pending=True, fallback_index=fb, prize_mult=WHEEL_WEDGES[fb]["value"],
+                   raw_win_aud=round(stake * WHEEL_WEDGES[fb]["value"] * WHEEL_PRIZE_SCALE, 8))
+    elif wedge["type"] == "mult":
+        out.update(prize_mult=wedge["value"], raw_win_aud=round(stake * wedge["value"] * WHEEL_PRIZE_SCALE, 8))
+    else:
+        out["free_spins"] = wedge["value"]
+    return out
+
+
+def _minigames(stake: float, base: dict[str, Any]) -> list[dict[str, Any]]:
+    games = []
+    need = WHEEL_MIN_SCATTERS[base.get("mode", "classic")]
+    if base["free_spins_awarded"] == 0 and base["scatters"] >= need and base.get("has_wild"):
+        games.append(play_wheel(stake))
+    if _rng.random() < PICK_TRIGGER_P:
+        games.append(play_pick(stake))
+    return games
+
+
+def _classic_has_wild(grid: list[list[str]]) -> bool:
+    return any(x == WILD_ID for col in grid for x in col)
+
+
+def play_classic(bet_per_line: float, lines: int) -> dict[str, Any]:
+    """Classic 25-line round incl. mini games and free spins (wheel can add free spins)."""
+    stake = round(bet_per_line * lines, 8)
+    base = play_one(bet_per_line, lines, 1)
+    base["kind"] = "spin"
+    base["mode"] = "classic"
+    base["has_wild"] = _classic_has_wild(base["grid"])
+    games = _minigames(stake, base)
+    remaining = base["free_spins_awarded"] + sum(g.get("free_spins", 0) for g in games)
+    total_awarded = remaining
+    free: list[dict[str, Any]] = []
+    while remaining > 0:
+        remaining -= 1
+        fs = play_one(bet_per_line, lines, FREE_SPIN_MULT)
+        fs["kind"] = "spin"
+        fs["mode"] = "classic"
+        if fs["free_spins_awarded"]:
+            extra = max(0, min(fs["free_spins_awarded"], MAX_FREE_SPINS - total_awarded))
+            fs["free_spins_awarded"] = extra
+            remaining += extra
+            total_awarded += extra
+        free.append(fs)
+    return {"mode": "classic", "stake": stake, "base": base, "minigames": games, "free_spins": free}
+
+
+def play_megaways(stake: float) -> dict[str, Any]:
+    base = mw_play_one(stake)
+    games = _minigames(stake, base)
+    remaining = base["free_spins_awarded"] + sum(g.get("free_spins", 0) for g in games)
+    total_awarded = remaining
+    free: list[dict[str, Any]] = []
+    mult = MW_FREE_SPIN_START_MULT
+    while remaining > 0:
+        remaining -= 1
+        fs = mw_play_one(stake, free=True, mult=mult)
+        mult = fs["multiplier_end"]
+        if fs["free_spins_awarded"]:
+            extra = max(0, min(fs["free_spins_awarded"], MAX_FREE_SPINS - total_awarded))
+            fs["free_spins_awarded"] = extra
+            remaining += extra
+            total_awarded += extra
+        free.append(fs)
+    return {"mode": "megaways", "stake": stake, "base": base, "minigames": games, "free_spins": free}
+
+
+def round_steps(rnd: dict[str, Any]) -> list[dict[str, Any]]:
+    """Payout order: paid spin, mini games, then free spins."""
+    return [rnd["base"]] + list(rnd.get("minigames") or []) + list(rnd.get("free_spins") or [])
+
+
+def settle_steps(
+    rnd: dict[str, Any], stake: float, pool: float, jackpot_hit: bool,
+    wheel_roll: Any = None,
+) -> dict[str, Any]:
+    """Pure settlement shared by the ledger and the simulator.
+
+    `pool` already includes this round's stake. Every step (the paid spin with
+    all its cascades, each mini game, each free spin) is clamped to 20% of the
+    pool at that moment and the pool is reduced before the next step, so the
+    pool can never go negative. A Green Tea Jackpot tops its step up to exactly
+    the cap.
+    """
+    roll = wheel_roll or (lambda s, p: _rng.random() < wheel_jackpot_probability(s, p))
+    results = []
+    total_paid = jackpot_paid = 0.0
+    any_capped = False
+    for i, step in enumerate(round_steps(rnd)):
+        cap = cap_for_pool(pool)
+        raw = round(step["raw_win_aud"], 2)
+        jp_step = i == 0 and jackpot_hit
+        wheel_index = None
+        if step.get("kind") == "wheel":
+            wheel_index = step["index"]
+            if step.get("jackpot_pending"):
+                if roll(stake, pool):
+                    jp_step, raw = True, 0.0
+                else:
+                    wheel_index = step["fallback_index"]
+        paid = round(min(raw, cap), 2)
+        capped = paid < raw - 1e-9
+        jp = round(max(0.0, cap - paid), 2) if jp_step else 0.0
+        step_total = round(paid + jp, 2)
+        pool = max(0.0, pool - step_total)
+        total_paid += step_total
+        jackpot_paid += jp
+        any_capped = any_capped or capped
+        res = {"kind": step.get("kind", "spin"), "raw_win_aud": raw, "paid_aud": paid, "capped": capped,
+               "jackpot_aud": jp, "cap_aud": cap}
+        if wheel_index is not None:
+            res["wheel_index"] = wheel_index
+            res["wheel_jackpot"] = jp_step
+        results.append(res)
+    return {"steps": results, "total_paid_aud": round(total_paid, 2), "jackpot_paid_aud": round(jackpot_paid, 2),
+            "any_capped": any_capped, "pool_after": pool}

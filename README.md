@@ -190,3 +190,33 @@ Free web services also spin down after inactivity, so the first request after a 
   `python server/simulate_rtp.py [spins] [lines] [start_pool]` (expected total RTP ~19.9%).
 - On Render's free plan SQLite resets on each deploy: the pool restarts at 0, so early wins and jackpots
   are small until players have bet.
+
+## Crystal Casino v4 (Nov 2026): Megaways, mini games, sound
+
+- **Mode toggle** above the reels: **MEGAWAYS** (default) or **25 LINES** (the v3 classic game). Both share
+  the wallet, Green Tea Jackpot, gamble, autoplay, turbo and history.
+- **Megaways**: 6 reels; reels 1 and 6 land 2–7 symbols, reels 2–5 land 2–6 plus one symbol on a horizontal
+  **top reel**, so every spin has 324 – **117,649 ways** (shown by the animated ways counter). Wins pay left to
+  right on adjacent reels from reel 1: pay per way × ways (matches multiplied reel by reel), stake A$0.20–A$100.
+  **Tumbling reels**: winning symbols shatter and new ones drop in, repeating until no new win.
+  Crystal Wild on reels 2–5 (incl. top reel). 4/5/6+ BONUS on the final board pay 1/5/25× and award
+  10/15/20 free spins; in free spins the **win multiplier starts at ×1 and rises +1 after every winning tumble,
+  with no upper limit**, never resetting during the bonus (3+ BONUS retrigger, max 50 spins).
+- **Mini games** (both modes; outcomes drawn on the server when they trigger, the UI only reveals them):
+  - *Crystal Pick*: mystery trigger (~1 in 280 paid spins). Pick from 12 crystals; each reveals 0.2×–25×
+    total bet until a COLLECT crystal.
+  - *Tea Wheel*: 2+ BONUS (classic) / 3 BONUS (Megaways) together with a WILD, without triggering free spins.
+    12 wedges: 2×–25× total bet, 8 FREE SPINS, and a GREEN TEA JACKPOT wedge. Landing on the jackpot wedge wins
+    the jackpot (exactly 20% of the pool) with chance min(1, 30 × bet / pool); otherwise the wheel ticks on to
+    a neighbouring 2× (near miss). Expected value is bounded however large the pool gets.
+  - Red/Black gamble as before.
+- **Cap**: every step (the paid spin incl. all its tumbles, each mini game, each free spin) is clamped to 20%
+  of the pool at that moment, and the pool is reduced before the next step (`game.settle_steps`, shared by the
+  ledger and the simulator). The pool never goes negative and its size is never sent to players.
+- **Sound** (all synthesised with Web Audio, no recorded assets): reel-spin loop, per-reel stop thuds,
+  crystal shatter on tumbles, rising anticipation tones as BONUS symbols land, win jingles scaled by win
+  size, roll-up ticks, ways-counter ticks, wheel ticks, bonus/wheel music loop, button clicks. Master volume
+  slider and mute in the header, saved in localStorage.
+- Engagement: ambient sparkles, near-miss messages and anticipation reels, multiplier bumps, celebrations.
+- RTP (expected value, jackpots at their exact EV; `python server/simulate_rtp.py 1000000 both 1000000`):
+  Megaways ~19.5–19.8%, Classic ~20.0–20.3%. Tests: `python server/test_cap.py` (29 tests).

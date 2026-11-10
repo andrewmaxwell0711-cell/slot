@@ -140,7 +140,7 @@ def test_pool_never_negative_random() -> None:
         bpl = game._rng.choice(game.BET_PER_LINE_AUD)
         total = round(lines * bpl, 2)
         before = ledger.pool_status()["pool_aud"] + total
-        snap = ledger.settle_round(pid, total, game.play_round(bpl, lines), "AUD",
+        snap = ledger.settle_round(pid, total, game.play_classic(bpl, lines), "AUD",
                                    JP if game._rng.random() < 0.05 else NO_JP)
         for s in snap["steps"]:
             assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
@@ -280,8 +280,220 @@ def test_public_api_hides_pool() -> None:
             assert k not in b, (k, b[:200])
     assert client.get("/api/pool").status_code == 404
     assert client.post("/api/spin", json={"lines": 7, "bet_per_line_index": 0}).status_code == 400
+    assert client.post("/api/spin", json={"mode": "nope"}).status_code == 400
+    assert client.post("/api/spin", json={"mode": "megaways", "bet_index": 99}).status_code == 400
+    mw = []
+    for _ in range(40):
+        r = client.post("/api/spin", json={"mode": "megaways", "bet_index": 3})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        mw.append(r.get_data(as_text=True))
+    for b in mw:
+        for k in bad + ("fallback_index", "jackpot_pending", "wheel_roll"):
+            assert k not in b, (k, b[:200])
+    m = json.loads(mw[0])
+    assert m["mode"] == "megaways" and m["bet_aud"] == 1 and m["base"]["stages"] and m["base"]["ways"] >= 324
     j = json.loads(bodies[1])
     assert j["bet_aud"] == 2.5 and j["lines"] == 25
+
+
+# ---- v4: Megaways ----------------------------------------------------------
+
+def mw_cols(*cols: str) -> list[list[str]]:
+    """Columns as space-separated symbol ids (top-reel cell first for reels 2-5)."""
+    return [c.split() for c in cols]
+
+
+def test_mw_ways_range() -> None:
+    seen_min, seen_max = 10**9, 0
+    for _ in range(3000):
+        cols = game.mw_board()
+        assert len(cols) == 6
+        for c, col in enumerate(cols):
+            assert 2 <= len(col) <= 7
+            if c in game.MW_TOP_REELS:
+                assert len(col) >= 3  # 2-6 main + 1 top
+            assert game.SCATTER_ID not in (col[:1] if c in game.MW_TOP_REELS else [])
+            if c not in game.MW_TOP_REELS:
+                assert game.WILD_ID not in col
+        w = game.mw_ways(cols)
+        assert w == __import__("math").prod(len(c) for c in cols)
+        seen_min, seen_max = min(seen_min, w), max(seen_max, w)
+    assert seen_min >= 2 * 3 ** 4 * 2 and seen_max <= 117_649
+    assert game.mw_ways([["x"] * 7] * 6) == 117_649
+
+
+def test_mw_ways_multiplication() -> None:
+    cols = mw_cols("ruby ruby shard", "ruby wild ruby topaz", "shard ruby quartz", "ruby topaz shard", "quartz quartz", "ruby ruby")
+    wins = game.mw_evaluate(cols, 1.0)
+    assert len(wins) == 1
+    w = wins[0]
+    # reel1: 2 ruby, reel2: ruby+wild+ruby = 3, reel3: 1, reel4: 1, reel5: none -> 4 of a kind, 2*3*1*1 = 6 ways
+    assert w["symbol"] == "ruby" and w["count"] == 4 and w["ways"] == 6
+    assert abs(w["win_aud"] - 6 * game.MW_PAYS["ruby"][4] * game.MW_PAY_SCALE) < 1e-9
+    assert len(w["cells"]) == 2 + 3 + 1 + 1
+    # need the real symbol on reel 1 and 3+ adjacent reels
+    assert game.mw_evaluate(mw_cols("topaz quartz", "wild ruby ruby", "ruby ruby", "ruby x", "x x", "x x"), 1.0) == []
+    assert game.mw_evaluate(mw_cols("ruby x", "shard ruby x", "shard x", "ruby x x", "ruby x x", "ruby x"), 1.0) == []
+    six = game.mw_evaluate(mw_cols(*["greentea greentea"] * 6), 2.0, 3)
+    assert six[0]["count"] == 6 and six[0]["ways"] == 64
+    assert abs(six[0]["win_aud"] - 2.0 * 64 * game.MW_PAYS["greentea"][6] * game.MW_PAY_SCALE * 3) < 1e-9
+
+
+def test_mw_cascade_drop() -> None:
+    orig = game.mw_pick
+    game.mw_pick = lambda reel, top=False, free=False: "NEW"
+    try:
+        cols = mw_cols("a b c", "T x y z", "T3 p q", "T2 r s", "T4 u v", "w x")
+        out, new, top_new = game.mw_cascade(cols, {(0, 1), (1, 0), (1, 2), (2, 1), (2, 2)})
+    finally:
+        game.mw_pick = orig
+    assert out[0] == ["NEW", "a", "c"]          # survivors fall, new on top
+    assert out[1] == ["NEW", "NEW", "x", "z"]   # top-reel cell refilled in place, main cell refilled
+    assert out[2] == ["T3", "NEW", "NEW"]
+    assert out[3] == cols[3] and out[4] == cols[4]
+    assert new == [1, 1, 2, 0, 0, 0] and top_new == [False, True, False, False, False, False]
+    assert [len(c) for c in out] == [len(c) for c in cols]  # heights fixed during a spin
+
+
+def _fixed_mw(board: list[list[str]]):
+    """Patch the RNG so the first board is `board` and every refill is a blank."""
+    o_board, o_pick = game.mw_board, game.mw_pick
+    game.mw_board = lambda free=False: [list(c) for c in board]
+    game.mw_pick = lambda reel, top=False, free=False: "shard"
+    return lambda: (setattr(game, "mw_board", o_board), setattr(game, "mw_pick", o_pick))
+
+
+def test_mw_cascades_and_free_multiplier() -> None:
+    board = mw_cols("ruby ruby", "shard ruby shard", "shard ruby", "shard shard topaz", "x x", "x x")
+    undo = _fixed_mw(board)
+    try:
+        base = game.mw_play_one(1.0)
+        free = game.mw_play_one(1.0, free=True, mult=3)
+    finally:
+        undo()
+    one = 2 * 1 * 1 * game.MW_PAYS["ruby"][3] * game.MW_PAY_SCALE
+    assert base["cascades"] == 1 and len(base["stages"]) == 2
+    assert abs(base["raw_win_aud"] - one) < 1e-9 and base["multiplier_end"] == 1
+    assert base["stages"][1]["wins"] == [] and base["stages"][1]["new"] == [2, 1, 1, 0, 0, 0]
+    # free spins: win x3, then multiplier grows +1 per winning cascade (unlimited)
+    assert abs(free["raw_win_aud"] - one * 3) < 1e-9 and free["multiplier_end"] == 4
+
+
+def test_mw_multi_cascade_multiplier_grows() -> None:
+    # every refill is ruby -> keeps cascading until MW_MAX_CASCADES; multiplier +1 each time
+    o_board, o_pick = game.mw_board, game.mw_pick
+    game.mw_board = lambda free=False: [["ruby"] * 2] + [["shard"] + ["ruby"] * 2 for _ in range(4)] + [["ruby"] * 2]
+    game.mw_pick = lambda reel, top=False, free=False: "ruby" if not top else "shard"
+    try:
+        f = game.mw_play_one(0.1, free=True, mult=1)
+    finally:
+        game.mw_board, game.mw_pick = o_board, o_pick
+    assert f["cascades"] == game.MW_MAX_CASCADES and f["multiplier_end"] == 1 + game.MW_MAX_CASCADES
+    mults = [s["multiplier"] for s in f["stages"]]
+    assert mults == list(range(1, len(mults) + 1))
+
+
+def mw_rnd(base_raw: float, games: list[dict] = (), free: list[float] = ()) -> dict:
+    def st(raw: float) -> dict:
+        return {"kind": "spin", "mode": "megaways", "stages": [], "ways": 324, "cascades": 3, "scatters": 0,
+                "scatter_pos": [], "scatter_win_aud": 0.0, "free_spins_awarded": 0, "multiplier": 1,
+                "multiplier_end": 1, "raw_win_aud": raw}
+    return {"mode": "megaways", "base": st(base_raw), "minigames": list(games), "free_spins": [st(r) for r in free]}
+
+
+def pick_game(raw: float) -> dict:
+    return {"kind": "pick", "picks": [{"prize_mult": raw, "win_aud": raw}, {"collect": True}], "decoys": [], "tiles": 12, "raw_win_aud": raw}
+
+
+def wheel_game(index: int, raw: float, pending: bool = False, fallback: int = 10) -> dict:
+    g = {"kind": "wheel", "wedges": game.WHEEL_WEDGES, "index": index, "free_spins": 0, "jackpot_pending": pending,
+         "raw_win_aud": raw, "prize_mult": raw}
+    if pending:
+        g["fallback_index"] = fallback
+    return g
+
+
+def test_cap_across_cascades_and_minigames() -> None:
+    fresh_db()
+    pid = new_player(100)
+    set_pool(999)  # + stake 1 -> 1000
+    snap = ledger.settle_round(pid, 1, mw_rnd(50_000, [pick_game(50_000), wheel_game(7, 50_000)], [50_000, 50_000]),
+                               "AUD", NO_JP, lambda s, p: False)
+    caps = [s["cap_aud"] for s in snap["steps"]]
+    paid = [s["paid_aud"] for s in snap["steps"]]
+    assert caps[0] == 200.0 and paid[0] == 200.0              # base spin incl. all cascades
+    assert caps[1] == 160.0 and paid[1] == 160.0              # Crystal Pick capped on the reduced pool
+    assert caps[2] == 128.0 and paid[2] == 128.0              # Tea Wheel
+    assert all(p <= c + 1e-9 for p, c in zip(paid, caps)) and all(s["capped"] for s in snap["steps"])
+    assert ledger.pool_status()["pool_aud"] >= 0
+    assert abs(snap["total_paid_aud"] - sum(paid)) < 1e-6
+
+
+def test_jackpot_equals_cap_megaways() -> None:
+    fresh_db()
+    pid = new_player(100)
+    set_pool(49_999)
+    snap = ledger.settle_round(pid, 1, mw_rnd(12.34), "AUD", JP)
+    s0 = snap["steps"][0]
+    assert s0["cap_aud"] == 10_000.0 and s0["paid_aud"] + s0["jackpot_aud"] == 10_000.0
+    assert snap["jackpot_paid_aud"] == round(10_000.0 - 12.34, 2)
+
+
+def test_wheel_jackpot_wedge_pays_cap() -> None:
+    fresh_db()
+    pid = new_player(100)
+    set_pool(19_999)
+    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True)]), "AUD", NO_JP, lambda s, p: True)
+    w = snap["steps"][1]
+    assert w["kind"] == "wheel" and w["wheel_jackpot"] and w["wheel_index"] == 11
+    assert w["paid_aud"] == 0 and w["jackpot_aud"] == w["cap_aud"] == 4000.0
+    # miss: ticks on to the neighbouring 2x wedge
+    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True, fallback=0)]), "AUD", NO_JP, lambda s, p: False)
+    w = snap["steps"][1]
+    assert not w["wheel_jackpot"] and w["wheel_index"] == 0 and w["paid_aud"] == 2.0 and w["jackpot_aud"] == 0
+
+
+def test_wheel_jackpot_probability_bounded_ev() -> None:
+    assert game.wheel_jackpot_probability(1, 0) == 0.0
+    assert game.wheel_jackpot_probability(1, 10) == 1.0
+    for pool in (10_000, 1_000_000):
+        ev = game.wheel_jackpot_probability(1, pool) * game.cap_for_pool(pool)
+        assert abs(ev - game.WHEEL_JP_K * game.POOL_CAP_FRACTION) < 1e-2
+
+
+def test_minigame_shapes() -> None:
+    for _ in range(500):
+        p = game.play_pick(1.0)
+        assert p["picks"][-1] == {"collect": True} and "collect" not in p["picks"][0]
+        assert len(p["picks"]) + len(p["decoys"]) == p["tiles"]
+        assert abs(p["raw_win_aud"] - sum(x.get("win_aud", 0) for x in p["picks"])) < 1e-9
+        w = game.play_wheel(2.0)
+        wedge = game.WHEEL_WEDGES[w["index"]]
+        if wedge["type"] == "mult":
+            assert w["raw_win_aud"] == 2.0 * wedge["value"]
+        elif wedge["type"] == "free_spins":
+            assert w["free_spins"] == wedge["value"] and w["raw_win_aud"] == 0
+        else:
+            assert w["jackpot_pending"] and game.WHEEL_WEDGES[w["fallback_index"]]["type"] == "mult"
+
+
+def test_pool_never_negative_random_megaways() -> None:
+    fresh_db()
+    pid = new_player(10_000_000)
+    for i in range(1500):
+        stake = game._rng.choice(game.MW_BET_AUD)
+        before = ledger.pool_status()["pool_aud"] + stake
+        rnd = game.play_megaways(stake)
+        if i % 50 == 0:
+            rnd["minigames"].append(game.play_pick(stake))
+            rnd["minigames"].append(game.play_wheel(stake))
+        snap = ledger.settle_round(pid, stake, rnd, "AUD", JP if game._rng.random() < 0.05 else NO_JP,
+                                   (lambda s, p: True) if game._rng.random() < 0.5 else (lambda s, p: False))
+        assert len(snap["steps"]) == len(game.round_steps(rnd))
+        for s in snap["steps"]:
+            assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
+            assert s["cap_aud"] <= 0.2 * before + 1e-6
+        assert ledger.pool_status()["pool_aud"] >= 0
 
 
 if __name__ == "__main__":

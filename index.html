@@ -25,7 +25,10 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="btn-mute" class="icon-btn" type="button" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+      <div class="vol-wrap">
+        <button id="btn-mute" class="icon-btn" type="button" title="Mute / unmute" aria-label="Mute or unmute">🔊</button>
+        <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume" title="Master volume" />
+      </div>
       <button id="btn-wallet" class="btn btn-gold" type="button">Wallet</button>
     </div>
   </header>
@@ -50,7 +53,23 @@
         </div>
 
         <div class="bezel">
-          <div class="reel-window">
+          <div class="bezel-top">
+            <div class="mode-toggle" id="mode-toggle" role="group" aria-label="Game mode">
+              <button type="button" data-mode="megaways">MEGAWAYS</button>
+              <button type="button" data-mode="classic">25 LINES</button>
+            </div>
+            <div class="ways-counter mw-only" id="ways-counter"><strong id="ways-val">117,649</strong><span>WAYS</span></div>
+            <div class="ways-counter classic-only"><strong id="lines-active">25</strong><span>LINES</span></div>
+          </div>
+          <div class="mw-window mw-only" id="mw-window">
+            <div class="mw-frame" id="mw-frame">
+              <div class="mw-top" id="mw-top"></div>
+              <div class="mw-reels" id="mw-reels"></div>
+              <div class="mw-mult" id="mw-mult" hidden>×1</div>
+              <div class="glass" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div class="reel-window classic-only">
             <div class="line-badges left" id="badges-left"></div>
             <div class="reels-frame" id="reels-frame">
               <div class="reels" id="reels"></div>
@@ -60,7 +79,7 @@
             <div class="line-badges right" id="badges-right"></div>
           </div>
           <div class="fs-banner" id="fs-banner" hidden>
-            <span>FREE SPINS</span><strong id="fs-count">0 / 0</strong><span class="fs-mult">ALL WINS ×2</span>
+            <span>FREE SPINS</span><strong id="fs-count">0 / 0</strong><span class="fs-mult" id="fs-mult">ALL WINS ×2</span>
             <span class="fs-total">BONUS <b id="fs-total">A$0.00</b></span>
           </div>
           <div class="win-strip"><span class="msg" id="msg">PLACE YOUR BET</span></div>
@@ -69,15 +88,20 @@
         <div class="console">
           <div class="console-row meters">
             <div class="meter"><small>BALANCE</small><strong id="credit">A$0.00</strong></div>
-            <div class="meter stepper">
+            <div class="meter stepper mw-only">
+              <small>BET</small>
+              <div><button id="mwbet-down" class="step-btn" type="button" aria-label="Lower bet">−</button><strong id="mwbet-val">A$0.40</strong><button id="mwbet-up" class="step-btn" type="button" aria-label="Raise bet">+</button></div>
+            </div>
+            <div class="meter mw-only"><small>WAYS</small><strong id="ways-meter">117,649</strong></div>
+            <div class="meter stepper classic-only">
               <small>LINES</small>
               <div><button id="lines-down" class="step-btn" type="button" aria-label="Fewer lines">−</button><strong id="lines-val">25</strong><button id="lines-up" class="step-btn" type="button" aria-label="More lines">+</button></div>
             </div>
-            <div class="meter stepper">
+            <div class="meter stepper classic-only">
               <small>BET / LINE</small>
               <div><button id="bpl-down" class="step-btn" type="button" aria-label="Lower bet per line">−</button><strong id="bpl-val">A$0.02</strong><button id="bpl-up" class="step-btn" type="button" aria-label="Raise bet per line">+</button></div>
             </div>
-            <div class="meter"><small>TOTAL BET</small><strong id="total-bet">A$0.50</strong></div>
+            <div class="meter classic-only"><small>TOTAL BET</small><strong id="total-bet">A$0.50</strong></div>
             <div class="meter win"><small>WIN</small><strong id="win-meter">A$0.00</strong></div>
           </div>
           <div class="console-row buttons">
@@ -137,12 +161,14 @@
       </header>
       <div class="tabs" id="info-tabs">
         <button type="button" class="active" data-tab="pays">Paytable</button>
-        <button type="button" data-tab="lines">Paylines</button>
+        <button type="button" data-tab="lines" id="tab-lines-btn">Paylines</button>
+        <button type="button" data-tab="minis">Mini games</button>
         <button type="button" data-tab="features">Features</button>
       </div>
       <div class="modal-body scroll">
         <div class="tab" data-tab="pays"><p class="hint" id="pays-hint"></p><div class="pay-grid" id="pay-grid"></div></div>
-        <div class="tab" data-tab="lines" hidden><p class="hint">Wins pay left to right on active lines, starting from reel 1. Only the highest win per line is paid.</p><div class="lines-grid" id="lines-grid"></div></div>
+        <div class="tab" data-tab="lines" hidden><p class="hint" id="lines-hint">Wins pay left to right on active lines, starting from reel 1. Only the highest win per line is paid.</p><div class="lines-grid" id="lines-grid"></div></div>
+        <div class="tab" data-tab="minis" hidden><div id="minis-info"></div></div>
         <div class="tab" data-tab="features" hidden><div id="features"></div></div>
       </div>
     </div>
@@ -170,6 +196,19 @@
     </div>
   </div>
 
+  <!-- Mini games: Crystal Pick / Tea Wheel -->
+  <div class="modal mini" id="modal-mini" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="mini-card" id="mini-card" role="dialog" aria-labelledby="mini-title">
+      <div class="mini-badge" id="mini-badge">MYSTERY BONUS</div>
+      <div class="mini-title" id="mini-title">CRYSTAL PICK</div>
+      <div class="mini-sub" id="mini-sub"></div>
+      <div class="mini-stage" id="mini-stage"></div>
+      <div class="mini-total"><small>BONUS WIN</small><b id="mini-total">A$0.00</b></div>
+      <button class="btn btn-gold btn-block" id="mini-btn" type="button">START</button>
+    </div>
+  </div>
+
   <!-- Auto spin -->
   <div class="modal" id="modal-auto" hidden>
     <div class="modal-backdrop" data-close="auto"></div>
@@ -182,7 +221,7 @@
           <button type="button" data-count="50">50</button><button type="button" data-count="100">100</button>
           <button type="button" data-count="Infinity">∞</button>
         </div>
-        <label class="check"><input type="checkbox" id="auto-stop-bonus" checked /> Stop when free spins trigger</label>
+        <label class="check"><input type="checkbox" id="auto-stop-bonus" checked /> Stop when free spins or a mini game trigger</label>
         <label class="check"><input type="checkbox" id="auto-stop-bigwin" checked /> Stop on a big win (15× total bet or more)</label>
         <label class="check"><input type="checkbox" id="auto-stop-balance-on" /> Stop if balance drops below</label>
         <input id="auto-stop-balance" type="number" min="0" step="any" placeholder="e.g. 20" />
