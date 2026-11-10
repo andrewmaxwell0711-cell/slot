@@ -34,7 +34,7 @@ import game  # noqa: E402
 import ledger  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "app.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js"}
 MIN_FIAT_CENTS = 50
 MAX_FIAT_CENTS = 100_000  # $1,000.00 test cap
 PORT = int(os.environ.get("PORT", "8765"))
@@ -148,7 +148,9 @@ def _config_payload() -> dict:
         "fiat": list(game.FIAT),
         "crypto": list(game.CRYPTO),
         "rates_to_aud": game.RATES_TO_AUD,
-        "bet_steps_aud": game.BET_STEPS_AUD,
+        "line_options": game.LINE_OPTIONS,
+        "bet_per_line_aud": game.BET_PER_LINE_AUD,
+        "paylines": [list(p) for p in game.PAYLINES],
         "symbols": [
             {
                 "id": s["id"],
@@ -167,9 +169,7 @@ def _config_payload() -> dict:
             "scatter_pays": {str(k): {"pay": v[0], "free_spins": v[1]} for k, v in game.SCATTER_PAYS.items()},
             "free_spin_mult": game.FREE_SPIN_MULT,
             "max_free_spins": game.MAX_FREE_SPINS,
-            "jackpot_contrib": game.JACKPOT_CONTRIB,
-            "jackpot_hit_per_aud": game.JACKPOT_HIT_PER_AUD,
-            "pool_cap_fraction": game.POOL_CAP_FRACTION,
+            "gamble_max_rounds": game.GAMBLE_MAX_ROUNDS,
         },
     }
 
@@ -182,6 +182,11 @@ def index():
 @app.get("/styles.css")
 def styles():
     return send_from_directory(ROOT, "styles.css")
+
+
+@app.get("/gems.js")
+def gems_js():
+    return send_from_directory(ROOT, "gems.js")
 
 
 @app.get("/app.js")
@@ -208,14 +213,7 @@ def api_config():
 def api_balance():
     snap = ledger.snapshot(g.player_id)
     snap["config"] = _config_payload()
-    snap["pool"] = ledger.pool_status()
     return jsonify(snap)
-
-
-@app.get("/api/pool")
-def api_pool():
-    """House pool, current max single win (20% of pool) and jackpot meter, in AUD."""
-    return jsonify(ledger.pool_status())
 
 
 @app.post("/api/prefs")
@@ -460,40 +458,30 @@ def api_withdraw():
 @app.post("/api/spin")
 def api_spin():
     data = request.get_json(silent=True) or {}
-    bet_index = data.get("bet_index")
-    bet_aud = data.get("bet_aud")
     display_currency = str(data.get("display_currency") or "AUD").upper()
     if display_currency not in game.FIAT:
         display_currency = "AUD"
-
     try:
-        if bet_index is not None:
-            idx = int(bet_index)
-            if idx < 0 or idx >= len(game.BET_STEPS_AUD):
-                return _json_error("Invalid bet")
-            bet = float(game.BET_STEPS_AUD[idx])
-        else:
-            bet = float(bet_aud)
-            if bet not in game.BET_STEPS_AUD:
-                return _json_error("Invalid bet")
+        lines = int(data.get("lines", 25))
+        bpl_index = int(data.get("bet_per_line_index", 0))
     except (TypeError, ValueError):
         return _json_error("Invalid bet")
+    if lines not in game.LINE_OPTIONS or not 0 <= bpl_index < len(game.BET_PER_LINE_AUD):
+        return _json_error("Invalid bet")
+    bpl = float(game.BET_PER_LINE_AUD[bpl_index])
+    total_bet = round(bpl * lines, 2)
 
-    rnd = game.play_round(bet)
+    rnd = game.play_round(bpl, lines)
     try:
-        snap = ledger.settle_round(g.player_id, bet, rnd, display_currency)
+        snap = ledger.settle_round(g.player_id, total_bet, rnd, display_currency)
     except ValueError as exc:
         return _json_error(str(exc))
 
+    # Player-facing payload: no pool size, cap or max-win amounts.
     def step_payload(step: dict, settled: dict) -> dict:
-        line = step["line"]
         return {
             "grid": step["grid"],
-            "line_win_aud": line["win_aud"] * step["multiplier"],
-            "count": line["count"],
-            "symbol": line["symbol"],
-            "line_mult": line["mult"],
-            "wild": line["wild"],
+            "line_wins": step["line_wins"],
             "scatters": step["scatters"],
             "scatter_pos": step["scatter_pos"],
             "scatter_win_aud": step["scatter_win_aud"],
@@ -502,28 +490,23 @@ def api_spin():
             "raw_win_aud": settled["raw_win_aud"],
             "win_aud": settled["paid_aud"],
             "jackpot_aud": settled["jackpot_aud"],
-            "capped": settled["capped"],
-            "cap_aud": settled["cap_aud"],
+            "limited": settled["capped"],
         }
 
     steps = [rnd["base"]] + rnd["free_spins"]
     payload = [step_payload(st, se) for st, se in zip(steps, snap["steps"])]
-    base = payload[0]
     return jsonify(
         {
-            # Base spin (kept flat for older clients)
-            "grid": base["grid"],
-            "count": base["count"],
-            "symbol": base["symbol"],
-            "mult": base["line_mult"],
-            "base": base,
+            "lines": lines,
+            "bet_per_line_aud": bpl,
+            "bet_aud": total_bet,
+            "base": payload[0],
             "free_spins": payload[1:],
-            "jackpot_hit": rnd["jackpot_hit"],
+            "jackpot_hit": snap["jackpot_hit"],
             "jackpot_paid_aud": snap["jackpot_paid_aud"],
-            "bet_aud": bet,
             "win_aud": snap["total_paid_aud"],
-            "any_capped": snap["any_capped"],
-            "pool": snap["pool"],
+            "limited": snap["any_capped"],
+            "gamble_aud": snap["gamble_aud"],
             "balances": snap["balances"],
             "total_aud": snap["total_aud"],
             "stats": snap["stats"],
@@ -531,6 +514,27 @@ def api_spin():
             "display_currency": snap["display_currency"],
         }
     )
+
+
+@app.post("/api/gamble")
+def api_gamble():
+    data = request.get_json(silent=True) or {}
+    choice = str(data.get("choice") or "").lower()
+    try:
+        snap = ledger.gamble(g.player_id, choice, game.draw_card)
+    except ledger.GambleUnavailable as exc:
+        out = ledger.snapshot(g.player_id)
+        out["error"] = str(exc)
+        out["gamble_closed"] = True
+        return jsonify(out), 409
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(snap)
+
+
+@app.post("/api/gamble/collect")
+def api_gamble_collect():
+    return jsonify(ledger.gamble_collect(g.player_id))
 
 
 def main() -> None:

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Monte Carlo check of Fortune Reels return-to-player.
+"""Monte Carlo check of Crystal Reels return-to-player.
 
-Runs the same play_round() path as the live server (line wins, wilds,
-scatters, free spins with retriggers, progressive jackpot) and applies the
-same 20%-of-pool cap logic as the ledger.
+Runs the live play_round() path (25 paylines, wilds, scatters, free spins
+with retriggers) and the same settlement rules as the ledger: each spin
+capped at 20% of the pool, and the Green Tea Jackpot paying exactly the cap
+with hit chance JACKPOT_C * bet / pool (rolled against the live pool).
 
-Two scenarios:
-  * uncapped  – a huge house pool, so the cap never binds (pure game RTP)
-  * from-zero – the pool starts at 0 like a fresh deploy, cap enforced
+    python server/simulate_rtp.py [spins] [lines] [start_pool]
 
-Target RTP is 20% (10,000 paid back per 50,000 wagered), ±1 pp.
+Target total RTP is 20% (10,000 back per 50,000 wagered), ±1 pp.
 """
 
 from __future__ import annotations
@@ -22,83 +21,77 @@ sys.path.insert(0, str(SERVER_DIR))
 
 import game  # noqa: E402
 
-DEFAULT_SPINS = 1_000_000
 TARGET_RTP = 0.20
 TOLERANCE = 0.01
-BET_AUD = 1.0
 
 
-def simulate(spins: int, bet_aud: float = BET_AUD, start_pool: float | None = None) -> dict:
-    pool = 1e18 if start_pool is None else start_pool
-    meter = 0.0
-    bet_total = won = line_won = scatter_won = free_won = jackpot_won = 0.0
+def simulate(spins: int, lines: int = 25, bet_per_line: float = 0.04, start_pool: float = 0.0) -> dict:
+    pool = start_pool
+    total_bet = bet_per_line * lines
+    staked = won = line_won = scatter_won = free_won = jackpot_won = 0.0
     capped = bonuses = jackpots = 0
+    biggest_jp = 0.0
+    jp_expected = 0.0
     for _ in range(spins):
-        rnd = game.play_round(bet_aud)
-        bet_total += bet_aud
-        pool += bet_aud
-        meter += bet_aud * game.JACKPOT_CONTRIB
+        rnd = game.play_round(bet_per_line, lines)
+        staked += total_bet
+        pool += total_bet
+        p_hit = game.jackpot_probability(total_bet, pool)
+        hit = game._rng.random() < p_hit
         steps = [rnd["base"]] + rnd["free_spins"]
         if rnd["free_spins"]:
             bonuses += 1
         for i, step in enumerate(steps):
             cap = game.cap_for_pool(pool)
-            paid = min(step["raw_win_aud"], cap)
-            if paid < step["raw_win_aud"] - 1e-9:
+            raw = round(step["raw_win_aud"], 2)
+            paid = min(raw, cap)
+            if paid < raw - 1e-9:
                 capped += 1
-            if i == 0 and rnd["jackpot_hit"]:
-                jp = max(0.0, min(meter, cap - paid))
-                meter -= jp
-                jackpot_won += jp
-                jackpots += 1
-                paid_total = paid + jp
-            else:
-                paid_total = paid
-            pool -= paid_total
-            won += paid_total
+            jp = 0.0
             if i == 0:
-                line_won += min(step["line"]["win_aud"], paid)
-                scatter_won += max(0.0, paid - step["line"]["win_aud"])
+                jp_expected += p_hit * max(0.0, cap - paid)
+            if i == 0 and hit:
+                jp = max(0.0, cap - paid)
+                jackpots += 1
+                jackpot_won += jp
+                biggest_jp = max(biggest_jp, jp)
+            pool -= paid + jp
+            assert pool >= -1e-9
+            won += paid + jp
+            if i == 0:
+                lw = sum(w["win_aud"] for w in step["line_wins"])
+                line_won += min(lw, paid)
+                scatter_won += max(0.0, paid - lw)
             else:
                 free_won += paid
     return {
-        "spins": spins,
-        "bet": bet_total,
-        "won": won,
-        "rtp": won / bet_total,
-        "line": line_won / bet_total,
-        "scatter": scatter_won / bet_total,
-        "free": free_won / bet_total,
-        "jackpot": jackpot_won / bet_total,
-        "bonuses": bonuses,
-        "jackpots": jackpots,
-        "capped": capped,
-        "end_pool": pool if start_pool is not None else None,
-        "end_meter": meter,
+        "spins": spins, "lines": lines, "staked": staked, "won": won, "rtp": won / staked,
+        "line": line_won / staked, "scatter": scatter_won / staked, "free": free_won / staked,
+        "jackpot": jackpot_won / staked,
+        "jackpot_ev": jp_expected / staked,
+        "rtp_ev": (won - jackpot_won + jp_expected) / staked, "bonuses": bonuses, "jackpots": jackpots,
+        "biggest_jp": biggest_jp, "capped": capped, "end_pool": pool,
     }
 
 
 def report(title: str, s: dict) -> None:
     print(f"== {title} ==")
-    print(f"Spins:           {s['spins']:,}   bet {s['bet']:,.2f}   won {s['won']:,.2f}")
-    print(f"Total RTP:       {s['rtp'] * 100:.3f}%")
-    print(
-        f"  base line+scatter {(s['line'] + s['scatter']) * 100:.3f}%  free spins {s['free'] * 100:.3f}%"
-        f"  jackpot {s['jackpot'] * 100:.3f}%"
-    )
-    print(f"Bonus rounds:    {s['bonuses']:,} (1 in {s['spins'] / max(1, s['bonuses']):,.0f})")
-    print(f"Jackpot hits:    {s['jackpots']:,}   capped payouts: {s['capped']:,}")
-    if s["end_pool"] is not None:
-        print(f"End pool:        {s['end_pool']:,.2f}  (max win now {game.cap_for_pool(s['end_pool']):,.2f})")
-    print()
+    print(f"Spins {s['spins']:,} x {s['lines']} lines   staked {s['staked']:,.2f}   won {s['won']:,.2f}")
+    print(f"Total RTP:  {s['rtp'] * 100:.3f}%")
+    print(f"  lines {s['line'] * 100:.3f}%  scatter {s['scatter'] * 100:.3f}%  free spins {s['free'] * 100:.3f}%  jackpot {s['jackpot'] * 100:.3f}%")
+    print(f"Expected-value RTP (jackpot at its exact EV): {s['rtp_ev'] * 100:.3f}%  (jackpot EV {s['jackpot_ev'] * 100:.3f}%)")
+    print(f"  bonus rounds 1 in {s['spins'] / max(1, s['bonuses']):,.0f}   jackpots {s['jackpots']} (biggest {s['biggest_jp']:,.2f})   capped spins {s['capped']}")
+    print(f"  end pool {s['end_pool']:,.2f}\n")
 
 
 def main() -> int:
-    spins = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SPINS
-    big = simulate(spins)
-    report("Uncapped (large pool)", big)
-    report("Fresh deploy (pool starts at 0, cap enforced)", simulate(min(spins, 200_000), start_pool=0.0))
-    ok = abs(big["rtp"] - TARGET_RTP) <= TOLERANCE
+    spins = int(sys.argv[1]) if len(sys.argv) > 1 else 400_000
+    lines = int(sys.argv[2]) if len(sys.argv) > 2 else 25
+    start_pool = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
+    print(f"Expected jackpot RTP once the pool is large: {game.JACKPOT_C * game.POOL_CAP_FRACTION * 100:.2f}%\n")
+    s = simulate(spins, lines, 1.0 / lines, start_pool)
+    report(f"{lines} lines, A$1 total bet, pool starts at {start_pool:,.0f}", s)
+    ok = abs(s["rtp_ev"] - TARGET_RTP) <= TOLERANCE
     print("Result:", "PASS — within ±1 pp of 20%." if ok else "FAIL — outside ±1 pp of 20%.")
     return 0 if ok else 1
 

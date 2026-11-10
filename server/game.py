@@ -34,7 +34,7 @@ SYMBOLS = [
     # Prism SCATTER: 3+ anywhere pays and triggers free spins.
     {"id": "scatter", "name": "Prism Scatter", "emoji": "🌈", "weight": 3, "pays": {}, "scatter": True},
     # Non-paying ice shard (like a classic blank) that keeps the total RTP at ~20%.
-    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 13, "pays": {}, "blank": True},
+    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 19, "pays": {}, "blank": True},
 ]
 
 WILD_ID = "wild"
@@ -46,10 +46,29 @@ SCATTER_PAYS = {3: (2, 8), 4: (5, 12), 5: (20, 20)}
 FREE_SPIN_MULT = 2  # every win during free spins is doubled
 MAX_FREE_SPINS = 50  # retrigger ceiling per bonus round
 
-# Progressive jackpot: this slice of every stake feeds the meter (it stays
-# part of the house pool). Chance to hit scales with the bet size.
-JACKPOT_CONTRIB = 0.01
-JACKPOT_HIT_PER_AUD = 1 / 50_000  # A$1 bet -> 1 in 50,000; A$100 -> 1 in 500
+# Green Tea Jackpot: when it hits, the spin pays the full cap (20% of the
+# house pool at that moment). To keep long-run RTP fixed however big the
+# pool grows, hit chance = JACKPOT_C * total_bet / pool, so the expected
+# jackpot return per A$1 staked is JACKPOT_C * 0.20 (~4%). The chance is
+# capped at JACKPOT_MAX_P so a tiny pool can't make it near-certain.
+JACKPOT_C = 0.20
+JACKPOT_MAX_P = 1 / 1_000
+
+# 25 standard casino paylines over the 5x3 grid (row per reel: 0 top, 1 mid, 2 bottom).
+PAYLINES = [
+    (1, 1, 1, 1, 1), (0, 0, 0, 0, 0), (2, 2, 2, 2, 2), (0, 1, 2, 1, 0), (2, 1, 0, 1, 2),
+    (0, 0, 1, 2, 2), (2, 2, 1, 0, 0), (1, 0, 0, 0, 1), (1, 2, 2, 2, 1), (0, 1, 1, 1, 0),
+    (2, 1, 1, 1, 2), (1, 0, 1, 2, 1), (1, 2, 1, 0, 1), (0, 1, 0, 1, 0), (2, 1, 2, 1, 2),
+    (1, 1, 0, 1, 1), (1, 1, 2, 1, 1), (0, 0, 2, 0, 0), (2, 2, 0, 2, 2), (0, 2, 0, 2, 0),
+    (2, 0, 2, 0, 2), (1, 0, 2, 0, 1), (1, 2, 0, 2, 1), (0, 2, 2, 2, 0), (2, 0, 0, 0, 2),
+]
+LINE_OPTIONS = [1, 5, 10, 20, 25]
+BET_PER_LINE_AUD = [0.02, 0.05, 0.1, 0.2, 0.4, 1, 2, 4]  # max bet 25 x 4 = A$100
+
+# Gamble / double-up (50/50 card colour), at most this many doubles in a row.
+GAMBLE_MAX_ROUNDS = 5
+SUITS = (("hearts", "red"), ("diamonds", "red"), ("clubs", "black"), ("spades", "black"))
+RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 
 # No single spin may pay more than this fraction of the house pool.
 POOL_CAP_FRACTION = 0.20
@@ -68,7 +87,6 @@ RATES_TO_AUD = {
 FIAT = ("AUD", "USD", "EUR")
 CRYPTO = ("BTC", "ETH", "USDT", "SOL")
 ALL_ASSETS = FIAT + CRYPTO
-BET_STEPS_AUD = [0.5, 1, 2, 5, 10, 20, 50, 100]
 
 _rng = secrets.SystemRandom()
 BLANK_ID = "shard"
@@ -124,13 +142,12 @@ def spin_grid() -> list[list[str]]:
     return [[weighted_pick(c)["id"] for _ in range(VISIBLE_ROWS)] for c in range(REEL_COUNT)]
 
 
-def evaluate_line(grid: list[list[str]], bet_aud: float) -> dict[str, Any]:
-    """Left-to-right run on the centre payline; wilds substitute, scatters break."""
-    line = [col[1] for col in grid]
+def evaluate_payline(symbols: list[str]) -> tuple[int, str | None, bool]:
+    """Left-to-right run on one line. Returns (count, paying symbol id, used_wild)."""
     target = None
     count = 0
     used_wild = False
-    for sid in line:
+    for sid in symbols:
         if sid in (SCATTER_ID, BLANK_ID):
             break
         if sid == WILD_ID:
@@ -145,23 +162,33 @@ def evaluate_line(grid: list[list[str]], bet_aud: float) -> dict[str, Any]:
         else:
             break
     if count < 3:
-        return {"win_aud": 0.0, "count": 0, "symbol": None, "mult": 0, "wild": False, "line": line}
-    pure_wild = target is None
-    symbol = symbol_by_id(WILD_ID if pure_wild else target)
-    mult = symbol["pays"].get(count, 0)
-    wild_mult = WILD_MULT if (used_wild and not pure_wild) else 1
-    return {
-        "win_aud": round(bet_aud * mult * wild_mult, 8),
-        "count": count,
-        "symbol": {"id": symbol["id"], "emoji": symbol["emoji"], "name": symbol["name"]},
-        "mult": mult * wild_mult,
-        "wild": used_wild,
-        "line": line,
-    }
+        return 0, None, False
+    return count, (WILD_ID if target is None else target), used_wild and target is not None
 
 
-# Backwards-compatible name used by older scripts.
-evaluate_win = evaluate_line
+def evaluate_lines(grid: list[list[str]], bet_per_line: float, lines: int) -> list[dict[str, Any]]:
+    """All winning paylines among the first `lines` active lines."""
+    wins = []
+    for idx in range(lines):
+        rows = PAYLINES[idx]
+        symbols = [grid[c][rows[c]] for c in range(REEL_COUNT)]
+        count, sid, wild = evaluate_payline(symbols)
+        if not count:
+            continue
+        sym = symbol_by_id(sid)
+        mult = sym["pays"].get(count, 0) * (WILD_MULT if wild else 1)
+        if mult <= 0:
+            continue
+        wins.append({
+            "line": idx + 1,
+            "count": count,
+            "symbol": sid,
+            "mult": mult,
+            "wild": wild,
+            "win_aud": round(bet_per_line * mult, 8),
+            "cells": [[c, rows[c]] for c in range(count)],
+        })
+    return wins
 
 
 def count_scatters(grid: list[list[str]]) -> int:
@@ -172,47 +199,64 @@ def scatter_positions(grid: list[list[str]]) -> list[list[int]]:
     return [[c, r] for c, col in enumerate(grid) for r, sid in enumerate(col) if sid == SCATTER_ID]
 
 
-def play_one(bet_aud: float, multiplier: int = 1) -> dict[str, Any]:
+def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, Any]:
     """One spin's grid and RAW (uncapped) win, before the pool cap is applied."""
     grid = spin_grid()
-    line = evaluate_line(grid, bet_aud)
+    total_bet = bet_per_line * lines
+    line_wins = evaluate_lines(grid, bet_per_line, lines)
     scatters = count_scatters(grid)
     scatter_mult, free_spins = SCATTER_PAYS.get(min(scatters, 5), (0, 0))
-    scatter_win = round(bet_aud * scatter_mult, 8)
-    raw = (line["win_aud"] + scatter_win) * multiplier
+    scatter_win = total_bet * scatter_mult  # scatter pays on the total bet
+    for w in line_wins:
+        w["win_aud"] = round(w["win_aud"] * multiplier, 8)
+    raw = sum(w["win_aud"] for w in line_wins) + scatter_win * multiplier
     return {
         "grid": grid,
-        "line": line,
+        "line_wins": line_wins,
         "scatters": scatters,
         "scatter_pos": scatter_positions(grid),
-        "scatter_win_aud": scatter_win * multiplier,
+        "scatter_win_aud": round(scatter_win * multiplier, 8),
         "free_spins_awarded": free_spins,
         "multiplier": multiplier,
         "raw_win_aud": round(raw, 8),
     }
 
 
-def play_round(bet_aud: float) -> dict[str, Any]:
-    """Paid spin plus any free-spin bonus it triggers, and the jackpot roll.
+def play_round(bet_per_line: float, lines: int) -> dict[str, Any]:
+    """Paid spin plus any free-spin bonus it triggers (same lines and bet).
 
-    Everything is decided up front so the ledger can apply stake, caps and
-    credits in one atomic transaction.
+    The jackpot roll needs the live pool, so the ledger does it inside the
+    settlement transaction via jackpot_roll().
     """
-    base = play_one(bet_aud, 1)
+    base = play_one(bet_per_line, lines, 1)
     free: list[dict[str, Any]] = []
     remaining = base["free_spins_awarded"]
     total_awarded = remaining
     while remaining > 0:
         remaining -= 1
-        fs = play_one(bet_aud, FREE_SPIN_MULT)
+        fs = play_one(bet_per_line, lines, FREE_SPIN_MULT)
         if fs["free_spins_awarded"]:
-            extra = min(fs["free_spins_awarded"], MAX_FREE_SPINS - total_awarded)
-            fs["free_spins_awarded"] = max(0, extra)
-            remaining += fs["free_spins_awarded"]
-            total_awarded += fs["free_spins_awarded"]
+            extra = max(0, min(fs["free_spins_awarded"], MAX_FREE_SPINS - total_awarded))
+            fs["free_spins_awarded"] = extra
+            remaining += extra
+            total_awarded += extra
         free.append(fs)
-    jackpot_hit = _rng.random() < min(1.0, bet_aud * JACKPOT_HIT_PER_AUD)
-    return {"base": base, "free_spins": free, "jackpot_hit": jackpot_hit}
+    return {"base": base, "free_spins": free}
+
+
+def jackpot_probability(total_bet: float, pool_aud: float) -> float:
+    if pool_aud <= 0 or total_bet <= 0:
+        return 0.0
+    return min(JACKPOT_MAX_P, JACKPOT_C * total_bet / pool_aud)
+
+
+def jackpot_roll(total_bet: float, pool_aud: float) -> bool:
+    return _rng.random() < jackpot_probability(total_bet, pool_aud)
+
+
+def draw_card() -> dict[str, str]:
+    suit, colour = _rng.choice(SUITS)
+    return {"rank": _rng.choice(RANKS), "suit": suit, "colour": colour}
 
 
 def cap_for_pool(pool_aud: float) -> float:

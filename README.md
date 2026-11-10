@@ -1,4 +1,4 @@
-# Crystal Reels — Demo Slot Machine (TEST MODE)
+# Crystal Casino · Crystal Reels — Demo Slot Machine (TEST MODE)
 
 A 5-reel demo slot with a **server-side ledger**, **server-side RNG**, and optional **Stripe Checkout in test mode** for fiat deposits (AUD, USD, EUR).
 
@@ -167,20 +167,26 @@ Free web services also spin down after inactivity, so the first request after a 
 | `README.md` | This file |
 
 
-## Crystal Reels features (Nov 2026)
+## Crystal Casino v3 (Nov 2026)
 
-- **Crystal theme**: gem symbols (Rose Quartz, Citrine, Topaz, Amethyst, Emerald, Sapphire, Ruby) with
-  **Green Tea** (1kg packet art, `assets/green-tea-*.webp`) as the top symbol: 50/150/500× for 3/4/5.
-- **Crystal Wild** (reels 2–4): substitutes on the centre line and doubles the win; 5 wilds pay 1000×.
-- **Prism Scatter**: 3/4/5 anywhere pay 2/5/20× and award 8/12/20 free spins; all free-spin wins ×2; retriggers up to 50.
-- **Green Tea Jackpot**: 1% of each bet feeds the meter; hit chance per spin = bet(AUD) / 50,000.
-- **House pool and payout cap**: `house` table in SQLite. Pool = all stakes − all payouts (AUD).
-  No single spin (line + scatter + jackpot, and each free spin) can pay more than **20% of the pool**
-  at that moment (stake of the current spin included). Wins above that are clamped server-side, so the
-  pool can never go negative. `GET /api/pool` returns pool, max win and jackpot; `/api/balance` and
-  `/api/spin` include it too.
-- Auto spin (10/25/50/100/∞, stop on bonus / big win / balance below X), turbo, spin history,
-  big-win celebrations, sparkles and Web Audio crystal chimes (mutable).
-- `python server/simulate_rtp.py` checks the total RTP (~20%); `python server/test_cap.py` tests the cap.
-- Note: on Render's free plan the SQLite file resets on every deploy, so the pool starts at 0 and
-  the first wins are tiny until players have bet.
+- 5×3 reels, **25 paylines** (standard patterns incl. V, ^ and zigzags). Choose 1/5/10/20/25 lines and
+  bet per line A$0.02–A$4; total bet = lines × bet per line (max A$100). Wins pay left to right on active
+  lines; winning lines are drawn over the reels with numbered line badges on both edges.
+- Symbols (pays × bet per line for 3/4/5): Green Tea 50/150/500 (top symbol, packet art in `assets/`),
+  Ruby 25/80/200, Sapphire 15/50/100, Emerald 10/30/80, Amethyst 6/16/50, Topaz 6/16/40,
+  Citrine 4/10/20, Rose Quartz 4/10/20. Crystal Wild (reels 2–4) substitutes and doubles line wins;
+  Prism Scatter 3/4/5 anywhere pays 2/5/20× total bet + 8/12/20 free spins at ×2. Ice Shard is non-paying.
+  Gem art is procedural faceted SVG (`gems.js`).
+- **Green Tea Jackpot** pays the table maximum: the spin's total win becomes exactly 20% of the house pool.
+  Hit chance = 0.20 × total bet / pool (max 1/1000), so expected jackpot return is a fixed 4% of stakes.
+- **Gamble / double-up**: after a win, pick red/black (server-drawn card, 50/50), up to 5 times. A double
+  is refused (auto-collect) if 2× the stake would exceed 20% of the pool.
+- **House pool and cap** (server only): pool = all stakes − all payouts (SQLite `house` table). Every
+  spin's total (lines + scatter + jackpot, and each free spin) is clamped to 20% of the pool; pool never
+  negative. Pool, cap and max-win are **not** exposed to players (no `/api/pool`; not in any response).
+- Auto spin (10/25/50/100/∞ with stop on bonus / big win / balance below X), turbo, MAX BET, info screen
+  (paytable, paylines, features), spin history, win roll-up, anticipation, celebrations, Web Audio.
+- `python server/test_cap.py` (cap, jackpot = cap, multi-line evaluation, gamble, API hides pool) and
+  `python server/simulate_rtp.py [spins] [lines] [start_pool]` (expected total RTP ~19.9%).
+- On Render's free plan SQLite resets on each deploy: the pool restarts at 0, so early wins and jackpots
+  are small until players have bet.

@@ -7,14 +7,14 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
+from game import jackpot_roll as game_jackpot_roll
 from game import (
     ALL_ASSETS,
     CRYPTO,
     FIAT,
-    JACKPOT_CONTRIB,
-    POOL_CAP_FRACTION,
+    GAMBLE_MAX_ROUNDS,
     cap_for_pool,
     clean_amount,
     from_aud,
@@ -91,7 +91,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         );
 
         -- Single-row house pool: every stake goes in, every payout comes out.
-        -- jackpot_aud is the progressive meter, a ring-fenced slice of the pool.
+        -- jackpot_aud is legacy (unused): the jackpot now pays the 20% cap.
         CREATE TABLE IF NOT EXISTS house (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             pool_aud REAL NOT NULL DEFAULT 0 CHECK (pool_aud >= 0),
@@ -113,6 +113,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         );
         """
     )
+    _migrate(c)
 
 
 @contextmanager
@@ -162,7 +163,7 @@ def _balances_map(conn: sqlite3.Connection, player_id: str) -> dict[str, float]:
 def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
     row = conn.execute(
         """
-        SELECT display_currency, spins, total_won_aud, total_bet_aud, last_win_aud
+        SELECT display_currency, spins, total_won_aud, total_bet_aud, last_win_aud, gamble_aud
         FROM players WHERE id = ?
         """,
         (player_id,),
@@ -174,6 +175,7 @@ def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
             "total_won_aud": 0.0,
             "total_bet_aud": 0.0,
             "last_win_aud": 0.0,
+            "gamble_aud": 0.0,
         }
     return {
         "display_currency": row["display_currency"],
@@ -181,6 +183,7 @@ def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
         "total_won_aud": float(row["total_won_aud"]),
         "total_bet_aud": float(row["total_bet_aud"]),
         "last_win_aud": float(row["last_win_aud"]),
+        "gamble_aud": float(row["gamble_aud"] or 0),
     }
 
 
@@ -198,6 +201,7 @@ def snapshot(player_id: str) -> dict[str, Any]:
             "total_bet_aud": stats["total_bet_aud"],
         },
         "last_win_aud": stats["last_win_aud"],
+        "gamble_aud": round(stats["gamble_aud"], 2),
         "display_currency": stats["display_currency"],
     }
 
@@ -371,90 +375,104 @@ def withdraw(player_id: str, asset: str, amount: float) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# House pool and payout cap
+# House pool and payout cap (internal only — never sent to players)
 # ---------------------------------------------------------------------------
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+    if "gamble_aud" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN gamble_aud REAL NOT NULL DEFAULT 0")
+    if "gamble_rounds" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN gamble_rounds INTEGER NOT NULL DEFAULT 0")
 
 
 def _house_row(conn: sqlite3.Connection) -> dict[str, float]:
     row = conn.execute(
-        "SELECT pool_aud, jackpot_aud, total_staked_aud, total_paid_aud, biggest_win_aud FROM house WHERE id = 1"
+        "SELECT pool_aud, total_staked_aud, total_paid_aud, biggest_win_aud FROM house WHERE id = 1"
     ).fetchone()
     if not row:
         conn.execute("INSERT OR IGNORE INTO house (id) VALUES (1)")
-        return {"pool_aud": 0.0, "jackpot_aud": 0.0, "total_staked_aud": 0.0,
-                "total_paid_aud": 0.0, "biggest_win_aud": 0.0}
+        return {"pool_aud": 0.0, "total_staked_aud": 0.0, "total_paid_aud": 0.0, "biggest_win_aud": 0.0}
     return {k: float(row[k]) for k in row.keys()}
 
 
-def _pool_view(h: dict[str, float]) -> dict[str, Any]:
+def pool_status() -> dict[str, Any]:
+    """Internal/admin view for tests and scripts. Not exposed by the public API."""
+    h = _house_row(get_conn())
     pool = max(0.0, h["pool_aud"])
-    max_win = cap_for_pool(pool)
     return {
         "pool_aud": round(pool, 2),
-        "max_win_aud": max_win,
-        "cap_fraction": POOL_CAP_FRACTION,
-        # The meter can never pay more than the cap, so show what it would pay.
-        "jackpot_aud": round(min(h["jackpot_aud"], max_win), 2),
-        "jackpot_meter_aud": round(h["jackpot_aud"], 2),
+        "max_win_aud": cap_for_pool(pool),
         "total_staked_aud": round(h["total_staked_aud"], 2),
         "total_paid_aud": round(h["total_paid_aud"], 2),
         "biggest_win_aud": round(h["biggest_win_aud"], 2),
     }
 
 
-def pool_status() -> dict[str, Any]:
-    return _pool_view(_house_row(get_conn()))
+def _take_stake(conn: sqlite3.Connection, player_id: str, amount_aud: float, kind: str, note: str) -> None:
+    """Debit amount_aud from the player's balances (fiat first, then play crypto)."""
+    balances = _balances_map(conn, player_id)
+    if total_aud(balances) + 1e-9 < amount_aud:
+        raise ValueError("Insufficient balance — deposit first")
+    remaining = amount_aud
+    now = _utc_now()
+    for asset in list(FIAT) + list(CRYPTO):
+        if remaining <= 1e-9:
+            break
+        bal_aud = to_aud(asset, balances.get(asset, 0.0) or 0.0)
+        if bal_aud <= 0:
+            continue
+        take_aud = min(bal_aud, remaining)
+        take_asset = from_aud(asset, take_aud)
+        if clean_amount(asset, take_asset) <= 0:
+            continue
+        _debit(conn, player_id, asset, take_asset)
+        conn.execute(
+            "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (player_id, kind, asset, clean_amount(asset, take_asset), note, now),
+        )
+        remaining -= take_aud
+    if remaining > 0.0001:
+        raise ValueError("Insufficient balance — deposit first")
+
+
+def _pay(conn: sqlite3.Connection, player_id: str, amount_aud: float, currency: str, kind: str, note: str) -> None:
+    if amount_aud <= 0:
+        return
+    amt = from_aud(currency, amount_aud)
+    if clean_amount(currency, amt) <= 0:
+        return
+    _credit(conn, player_id, currency, amt)
+    conn.execute(
+        "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (player_id, kind, currency, clean_amount(currency, amt), note, _utc_now()),
+    )
 
 
 def settle_round(
     player_id: str,
-    bet_aud: float,
+    total_bet_aud: float,
     rnd: dict[str, Any],
     display_currency: str,
+    jackpot_roll: Callable[[float, float], bool] | None = None,
 ) -> dict[str, Any]:
-    """Atomically: take the stake, add it to the pool, feed the jackpot,
-    then pay each spin of the round clamped to 20% of the pool at that moment.
-
-    The pool can never go negative: each payout is at most 20% of what is in it.
-    Returns per-step paid amounts plus the new snapshot and pool status.
+    """Atomically: take the stake, add it to the pool, roll the Green Tea
+    Jackpot against the live pool, then pay each spin of the round clamped to
+    20% of the pool at that moment. A jackpot tops the base spin up to exactly
+    the cap. The pool can never go negative.
     """
-    if bet_aud <= 0:
+    if total_bet_aud <= 0:
         raise ValueError("Invalid bet")
     if display_currency not in FIAT:
         display_currency = "AUD"
+    roll = jackpot_roll or game_jackpot_roll
     ensure_player(player_id)
     with transaction() as conn:
-        balances = _balances_map(conn, player_id)
-        if total_aud(balances) + 1e-9 < bet_aud:
-            raise ValueError("Insufficient balance — deposit first")
-
-        remaining = bet_aud
-        now = _utc_now()
-        for asset in list(FIAT) + list(CRYPTO):
-            if remaining <= 1e-9:
-                break
-            bal_aud = to_aud(asset, balances.get(asset, 0.0) or 0.0)
-            if bal_aud <= 0:
-                continue
-            take_aud = min(bal_aud, remaining)
-            take_asset = from_aud(asset, take_aud)
-            if clean_amount(asset, take_asset) <= 0:
-                continue
-            _debit(conn, player_id, asset, take_asset)
-            conn.execute(
-                """
-                INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at)
-                VALUES (?, 'spin_bet', ?, ?, ?, ?)
-                """,
-                (player_id, asset, clean_amount(asset, take_asset), f"bet {bet_aud} AUD", now),
-            )
-            remaining -= take_aud
-        if remaining > 0.0001:
-            raise ValueError("Insufficient balance — deposit first")
-
+        _take_stake(conn, player_id, total_bet_aud, "spin_bet", f"bet {total_bet_aud} AUD")
         h = _house_row(conn)
-        pool = h["pool_aud"] + bet_aud
-        meter = h["jackpot_aud"] + bet_aud * JACKPOT_CONTRIB
+        pool = h["pool_aud"] + total_bet_aud
+        jackpot_hit = bool(roll(total_bet_aud, pool))
 
         steps = [rnd["base"]] + list(rnd.get("free_spins") or [])
         results: list[dict[str, Any]] = []
@@ -464,61 +482,108 @@ def settle_round(
         for i, step in enumerate(steps):
             cap = cap_for_pool(pool)
             raw = round(step["raw_win_aud"], 2)
-            paid = min(raw, cap)
+            paid = round(min(raw, cap), 2)
             capped = paid < raw - 1e-9
             jp = 0.0
-            if i == 0 and rnd.get("jackpot_hit"):
-                jp = round(max(0.0, min(meter, cap - paid)), 2)
-                meter -= jp
+            if i == 0 and jackpot_hit:
+                jp = round(max(0.0, cap - paid), 2)  # base spin pays exactly the cap
                 jackpot_paid = jp
             step_total = round(paid + jp, 2)
             pool = max(0.0, pool - step_total)
-            if meter > pool:
-                meter = pool
             total_paid += step_total
             any_capped = any_capped or capped
-            results.append({"raw_win_aud": raw, "paid_aud": round(paid, 2), "capped": capped,
-                            "cap_aud": cap, "jackpot_aud": jp})
+            results.append({"raw_win_aud": raw, "paid_aud": paid, "capped": capped, "jackpot_aud": jp, "cap_aud": cap})
 
         total_paid = round(total_paid, 2)
-        if total_paid > 0:
-            win_amt = from_aud(display_currency, total_paid)
-            if clean_amount(display_currency, win_amt) > 0:
-                _credit(conn, player_id, display_currency, win_amt)
-                conn.execute(
-                    """
-                    INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at)
-                    VALUES (?, 'spin_win', ?, ?, ?, ?)
-                    """,
-                    (player_id, display_currency, clean_amount(display_currency, win_amt),
-                     f"win {total_paid} AUD" + (" (capped)" if any_capped else ""), now),
-                )
-
+        _pay(conn, player_id, total_paid, display_currency, "spin_win",
+             f"win {total_paid} AUD" + (" (jackpot)" if jackpot_paid else "") + (" (capped)" if any_capped else ""))
+        now = _utc_now()
         conn.execute(
             """
-            UPDATE house SET pool_aud = ?, jackpot_aud = ?,
-                total_staked_aud = total_staked_aud + ?,
-                total_paid_aud = total_paid_aud + ?,
-                biggest_win_aud = MAX(biggest_win_aud, ?),
-                updated_at = ?
+            UPDATE house SET pool_aud = ?, total_staked_aud = total_staked_aud + ?,
+                total_paid_aud = total_paid_aud + ?, biggest_win_aud = MAX(biggest_win_aud, ?), updated_at = ?
             WHERE id = 1
             """,
-            (round(pool, 6), round(max(0.0, meter), 6), bet_aud, total_paid, total_paid, now),
+            (round(pool, 6), total_bet_aud, total_paid, total_paid, now),
         )
         conn.execute(
             """
             UPDATE players
-            SET spins = spins + 1, total_bet_aud = total_bet_aud + ?,
-                total_won_aud = total_won_aud + ?, last_win_aud = ?, display_currency = ?
+            SET spins = spins + 1, total_bet_aud = total_bet_aud + ?, total_won_aud = total_won_aud + ?,
+                last_win_aud = ?, display_currency = ?, gamble_aud = ?, gamble_rounds = 0
             WHERE id = ?
             """,
-            (bet_aud, total_paid, total_paid, display_currency, player_id),
+            (total_bet_aud, total_paid, total_paid, display_currency, total_paid if total_paid > 0 else 0.0, player_id),
         )
-        house_after = _pool_view(_house_row(conn))
     snap = snapshot(player_id)
     snap["steps"] = results
     snap["total_paid_aud"] = total_paid
+    snap["jackpot_hit"] = jackpot_paid > 0
     snap["jackpot_paid_aud"] = jackpot_paid
     snap["any_capped"] = any_capped
-    snap["pool"] = house_after
     return snap
+
+
+def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> dict[str, Any]:
+    """Double-up: stake the last win on red/black. 50/50, decided server-side.
+
+    The gamble is a fresh bet of S = current gamble amount. A win pays 2S,
+    which must fit under 20% of the pool (S included); otherwise it's refused.
+    """
+    if choice not in ("red", "black"):
+        raise ValueError("Pick red or black")
+    ensure_player(player_id)
+    with transaction() as conn:
+        row = conn.execute("SELECT gamble_aud, gamble_rounds, display_currency FROM players WHERE id = ?", (player_id,)).fetchone()
+        stake = round(float(row["gamble_aud"]), 2)
+        rounds = int(row["gamble_rounds"])
+        currency = row["display_currency"] if row["display_currency"] in FIAT else "AUD"
+        if stake <= 0:
+            raise ValueError("Nothing to gamble — win a spin first")
+        if rounds >= GAMBLE_MAX_ROUNDS:
+            raise ValueError("Gamble limit reached — win collected")
+        h = _house_row(conn)
+        pool_with_stake = h["pool_aud"] + stake
+        limited = 2 * stake > cap_for_pool(pool_with_stake) + 1e-9
+        if limited:
+            # Double would break the 20% cap: auto-collect (commit), then report.
+            conn.execute("UPDATE players SET gamble_aud = 0, gamble_rounds = 0 WHERE id = ?", (player_id,))
+        else:
+            _take_stake(conn, player_id, stake, "gamble_bet", f"gamble {stake} AUD on {choice}")
+            card = draw()
+            won = card["colour"] == choice
+            payout = round(2 * stake, 2) if won else 0.0
+            _pay(conn, player_id, payout, currency, "gamble_win", f"gamble win {payout} AUD")
+            pool = max(0.0, pool_with_stake - payout)
+            new_stake = payout if won and rounds + 1 < GAMBLE_MAX_ROUNDS else 0.0
+            conn.execute(
+                """
+                UPDATE house SET pool_aud = ?, total_staked_aud = total_staked_aud + ?,
+                    total_paid_aud = total_paid_aud + ?, updated_at = ? WHERE id = 1
+                """,
+                (round(pool, 6), stake, payout, _utc_now()),
+            )
+            conn.execute(
+                "UPDATE players SET gamble_aud = ?, gamble_rounds = ?, last_win_aud = ? WHERE id = ?",
+                (new_stake, rounds + 1 if new_stake else 0, payout, player_id),
+            )
+    if limited:
+        raise GambleUnavailable("Gamble limit reached — win collected")
+    snap = snapshot(player_id)
+    snap["card"] = card
+    snap["won"] = won
+    snap["gamble_stake_aud"] = stake
+    snap["gamble_payout_aud"] = payout
+    snap["rounds_left"] = (GAMBLE_MAX_ROUNDS - rounds - 1) if new_stake else 0
+    return snap
+
+
+def gamble_collect(player_id: str) -> dict[str, Any]:
+    ensure_player(player_id)
+    with transaction() as conn:
+        conn.execute("UPDATE players SET gamble_aud = 0, gamble_rounds = 0 WHERE id = ?", (player_id,))
+    return snapshot(player_id)
+
+
+class GambleUnavailable(ValueError):
+    pass

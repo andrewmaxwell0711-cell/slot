@@ -2,115 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crystal Reels — Demo Slot (TEST MODE)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Crystal Casino — Crystal Reels (TEST MODE)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/webp" href="/assets/green-tea-256.webp" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Gem sprite: every reel symbol is drawn from these -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs>
-      <linearGradient id="g-quartz" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe0ef"/><stop offset=".5" stop-color="#ff8fc4"/><stop offset="1" stop-color="#c2407f"/></linearGradient>
-      <linearGradient id="g-citrine" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff7c2"/><stop offset=".5" stop-color="#ffd23f"/><stop offset="1" stop-color="#c78a00"/></linearGradient>
-      <linearGradient id="g-topaz" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe2c4"/><stop offset=".5" stop-color="#ff9a3c"/><stop offset="1" stop-color="#b84f00"/></linearGradient>
-      <linearGradient id="g-amethyst" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1dcff"/><stop offset=".5" stop-color="#a95cff"/><stop offset="1" stop-color="#5a1fa8"/></linearGradient>
-      <linearGradient id="g-emerald" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d4ffe9"/><stop offset=".5" stop-color="#2fd88c"/><stop offset="1" stop-color="#0a7a48"/></linearGradient>
-      <linearGradient id="g-sapphire" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dbe9ff"/><stop offset=".5" stop-color="#3f7bff"/><stop offset="1" stop-color="#1636a8"/></linearGradient>
-      <linearGradient id="g-ruby" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd6dc"/><stop offset=".5" stop-color="#ff2e55"/><stop offset="1" stop-color="#8f0022"/></linearGradient>
-      <linearGradient id="g-diamond" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#cfefff"/><stop offset=".7" stop-color="#9fd8ff"/><stop offset="1" stop-color="#6fb4e8"/></linearGradient>
-      <linearGradient id="g-greentea" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ffe0"/><stop offset=".45" stop-color="#9be564"/><stop offset="1" stop-color="#2f8a3a"/></linearGradient>
-      <radialGradient id="g-tea-glow"><stop offset="0" stop-color="#d9ff9e" stop-opacity=".9"/><stop offset="1" stop-color="#7cff6b" stop-opacity="0"/></radialGradient>
-      <linearGradient id="g-wild" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e9fdff"/><stop offset=".35" stop-color="#8ff3ff"/><stop offset=".7" stop-color="#b89cff"/><stop offset="1" stop-color="#ff8fe0"/></linearGradient>
-      <linearGradient id="g-prism" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff5a7a"/><stop offset=".2" stop-color="#ffb648"/><stop offset=".4" stop-color="#fff35c"/><stop offset=".6" stop-color="#4dffa6"/><stop offset=".8" stop-color="#4fb6ff"/><stop offset="1" stop-color="#b76bff"/></linearGradient>
-      <linearGradient id="g-shard" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6f6ff" stop-opacity=".55"/><stop offset="1" stop-color="#7fa6c4" stop-opacity=".25"/></linearGradient>
-      <linearGradient id="g-shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-
-      <!-- Brilliant cut -->
-      <symbol id="cut-brilliant" viewBox="0 0 100 100">
-        <polygon points="22,30 38,16 62,16 78,30 50,88"/>
-        <polygon points="22,30 78,30 50,88" fill="#000" opacity=".18"/>
-        <polygon points="22,30 38,16 50,30" fill="#fff" opacity=".45"/>
-        <polygon points="50,30 62,16 78,30" fill="#fff" opacity=".2"/>
-        <polygon points="38,16 62,16 50,30" fill="#fff" opacity=".6"/>
-        <polygon points="22,30 50,30 50,88" fill="#fff" opacity=".15"/>
-        <polyline points="22,30 78,30" stroke="#fff" stroke-opacity=".7" stroke-width="1.5" fill="none"/>
-      </symbol>
-      <symbol id="cut-octagon" viewBox="0 0 100 100">
-        <polygon points="32,14 68,14 86,32 86,68 68,86 32,86 14,68 14,32"/>
-        <polygon points="40,28 60,28 72,40 72,60 60,72 40,72 28,60 28,40" fill="#fff" opacity=".22"/>
-        <polygon points="32,14 68,14 60,28 40,28" fill="#fff" opacity=".55"/>
-        <polygon points="14,32 28,40 28,60 14,68" fill="#fff" opacity=".3"/>
-        <polygon points="68,86 32,86 40,72 60,72" fill="#000" opacity=".2"/>
-        <polygon points="86,32 86,68 72,60 72,40" fill="#000" opacity=".12"/>
-      </symbol>
-      <symbol id="cut-heart" viewBox="0 0 100 100">
-        <path d="M50 86 C20 64 10 48 14 34 C18 20 36 14 50 30 C64 14 82 20 86 34 C90 48 80 64 50 86Z"/>
-        <path d="M50 30 C40 20 26 22 22 34 C30 30 42 32 50 44Z" fill="#fff" opacity=".55"/>
-        <path d="M50 44 L50 86 C34 74 26 62 24 50Z" fill="#fff" opacity=".15"/>
-        <path d="M50 44 L50 86 C66 74 74 62 76 50Z" fill="#000" opacity=".14"/>
-      </symbol>
-      <symbol id="cut-hex" viewBox="0 0 100 100">
-        <polygon points="50,6 74,22 74,72 50,94 26,72 26,22"/>
-        <polygon points="50,6 50,94 26,72 26,22" fill="#fff" opacity=".28"/>
-        <polygon points="50,6 74,22 50,32 26,22" fill="#fff" opacity=".5"/>
-        <polygon points="50,32 74,22 74,72 50,94" fill="#000" opacity=".12"/>
-      </symbol>
-      <symbol id="cut-oval" viewBox="0 0 100 100">
-        <ellipse cx="50" cy="50" rx="32" ry="40"/>
-        <polygon points="50,10 70,30 70,70 50,90 30,70 30,30" fill="#fff" opacity=".16"/>
-        <polygon points="50,10 70,30 50,40 30,30" fill="#fff" opacity=".5"/>
-        <polygon points="30,70 50,60 70,70 50,90" fill="#000" opacity=".18"/>
-        <ellipse cx="40" cy="30" rx="8" ry="5" fill="#fff" opacity=".7"/>
-      </symbol>
-      <symbol id="cut-trillion" viewBox="0 0 100 100">
-        <polygon points="50,10 90,82 10,82"/>
-        <polygon points="50,10 50,58 10,82" fill="#fff" opacity=".35"/>
-        <polygon points="50,10 90,82 50,58" fill="#000" opacity=".1"/>
-        <polygon points="10,82 90,82 50,58" fill="#000" opacity=".2"/>
-      </symbol>
-      <!-- Green Tea: glowing jade crystal cup, the top symbol -->
-      <symbol id="cut-tea" viewBox="0 0 100 100">
-        <circle cx="50" cy="56" r="46" fill="url(#g-tea-glow)"/>
-        <path d="M40 10 C34 18 46 22 40 30 M52 8 C46 16 58 20 52 28 M64 12 C58 20 70 24 64 32" stroke="#e9ffd6" stroke-width="3" stroke-linecap="round" fill="none" opacity=".8"/>
-        <path d="M18 40 H82 L74 76 C72 84 64 88 50 88 C36 88 28 84 26 76Z" fill="url(#g-greentea)"/>
-        <path d="M82 46 C96 46 96 66 80 66" stroke="#7ad35a" stroke-width="6" fill="none"/>
-        <ellipse cx="50" cy="40" rx="32" ry="6" fill="#c9f59a"/>
-        <ellipse cx="50" cy="40" rx="26" ry="4" fill="#4fae3a"/>
-        <polygon points="26,46 40,46 36,80 30,74" fill="#fff" opacity=".35"/>
-        <polygon points="58,46 74,46 70,66 60,72" fill="#000" opacity=".12"/>
-        <path d="M44 56 C48 50 56 50 58 56 C54 62 48 62 44 56Z" fill="#eaffd0" opacity=".85"/>
-      </symbol>
-      <symbol id="cut-wild" viewBox="0 0 100 100">
-        <polygon points="50,4 61,36 96,38 68,58 78,92 50,72 22,92 32,58 4,38 39,36" fill="url(#g-wild)"/>
-        <polygon points="50,4 61,36 50,50 39,36" fill="#fff" opacity=".6"/>
-        <polygon points="50,50 68,58 78,92 50,72" fill="#000" opacity=".12"/>
-        <text x="50" y="59" text-anchor="middle" font-family="Cinzel, serif" font-weight="900" font-size="17" fill="#2a1460" stroke="#fff" stroke-width=".6">WILD</text>
-      </symbol>
-      <symbol id="cut-prism" viewBox="0 0 100 100">
-        <polygon points="50,8 88,78 12,78" fill="url(#g-prism)"/>
-        <polygon points="50,8 88,78 12,78" fill="#fff" opacity=".25"/>
-        <polygon points="50,8 50,78 12,78" fill="#fff" opacity=".25"/>
-        <text x="50" y="96" text-anchor="middle" font-family="Cinzel, serif" font-weight="900" font-size="15" fill="#fff" stroke="#5a1fa8" stroke-width=".8">BONUS</text>
-      </symbol>
-      <symbol id="cut-shard" viewBox="0 0 100 100">
-        <polygon points="44,14 58,36 54,86 40,60" fill="url(#g-shard)"/>
-        <polygon points="62,40 72,56 64,80 58,62" fill="url(#g-shard)"/>
-      </symbol>
-    </defs>
-  </svg>
-
   <canvas id="sparkle-canvas" aria-hidden="true"></canvas>
   <div class="bg-aurora"></div>
+  <div class="side-crystals left" aria-hidden="true"></div>
+  <div class="side-crystals right" aria-hidden="true"></div>
 
   <header class="top-bar">
     <div class="brand">
-      <span class="brand-icon"><svg viewBox="0 0 100 100"><use href="#cut-brilliant" fill="url(#g-diamond)"/></svg></span>
+      <img class="brand-gem" id="brand-gem" alt="" />
       <div>
-        <h1>Crystal Reels</h1>
+        <h1>Crystal Casino</h1>
         <span class="demo-badge">DEMO · TEST MODE</span>
       </div>
     </div>
@@ -121,33 +31,68 @@
   </header>
 
   <div class="mode-banners">
-    <div class="mode-banner">
-      <strong>DEMO · TEST MODE.</strong>
-      Stripe Checkout uses test keys only. Withdrawals are simulated — no real payouts.
-      Crypto deposits stay play money only.
-    </div>
+    <div class="mode-banner"><strong>DEMO · TEST MODE.</strong> Stripe Checkout uses test keys only. Withdrawals are simulated — no real payouts. Crypto stays play money.</div>
     <div class="mode-banner key-banner" id="stripe-key-banner" hidden>Add a Stripe test key to enable checkout</div>
   </div>
 
-  <section class="pool-bar" aria-label="Jackpot and pool">
-    <div class="pool-card jackpot-card">
-      <span class="label">🍵 Green Tea Jackpot</span>
-      <strong id="jackpot-amount">A$0.00</strong>
-      <span class="sub">1% of every bet · bigger bets, better odds</span>
-    </div>
-    <div class="pool-card">
-      <span class="label">Max win right now</span>
-      <strong id="maxwin-amount">A$0.00</strong>
-      <span class="sub">20% of the house pool</span>
-    </div>
-    <div class="pool-card">
-      <span class="label">House pool</span>
-      <strong id="pool-amount">A$0.00</strong>
-      <span class="sub">All bets in, minus all wins paid</span>
-    </div>
-  </section>
-
   <main class="layout">
+    <section class="cabinet-wrap">
+      <div class="cabinet" id="cabinet">
+        <div class="marquee">
+          <div class="bulbs" aria-hidden="true"></div>
+          <div class="marquee-crystals" id="marquee-crystals" aria-hidden="true"></div>
+          <h2 class="marquee-title">Crystal Casino</h2>
+          <div class="jackpot-sign" id="jackpot-sign">
+            <img src="/assets/green-tea-256.webp" alt="" />
+            <span>GREEN TEA JACKPOT</span>
+            <img src="/assets/green-tea-256.webp" alt="" />
+          </div>
+        </div>
+
+        <div class="bezel">
+          <div class="reel-window">
+            <div class="line-badges left" id="badges-left"></div>
+            <div class="reels-frame" id="reels-frame">
+              <div class="reels" id="reels"></div>
+              <svg class="lines-overlay" id="lines-overlay" aria-hidden="true"></svg>
+              <div class="glass" aria-hidden="true"></div>
+            </div>
+            <div class="line-badges right" id="badges-right"></div>
+          </div>
+          <div class="fs-banner" id="fs-banner" hidden>
+            <span>FREE SPINS</span><strong id="fs-count">0 / 0</strong><span class="fs-mult">ALL WINS ×2</span>
+            <span class="fs-total">BONUS <b id="fs-total">A$0.00</b></span>
+          </div>
+          <div class="win-strip"><span class="msg" id="msg">PLACE YOUR BET</span></div>
+        </div>
+
+        <div class="console">
+          <div class="console-row meters">
+            <div class="meter"><small>BALANCE</small><strong id="credit">A$0.00</strong></div>
+            <div class="meter stepper">
+              <small>LINES</small>
+              <div><button id="lines-down" class="step-btn" type="button" aria-label="Fewer lines">−</button><strong id="lines-val">25</strong><button id="lines-up" class="step-btn" type="button" aria-label="More lines">+</button></div>
+            </div>
+            <div class="meter stepper">
+              <small>BET / LINE</small>
+              <div><button id="bpl-down" class="step-btn" type="button" aria-label="Lower bet per line">−</button><strong id="bpl-val">A$0.02</strong><button id="bpl-up" class="step-btn" type="button" aria-label="Raise bet per line">+</button></div>
+            </div>
+            <div class="meter"><small>TOTAL BET</small><strong id="total-bet">A$0.50</strong></div>
+            <div class="meter win"><small>WIN</small><strong id="win-meter">A$0.00</strong></div>
+          </div>
+          <div class="console-row buttons">
+            <button id="btn-info" class="cbtn" type="button">INFO</button>
+            <button id="btn-max" class="cbtn" type="button">MAX BET</button>
+            <button id="btn-auto" class="cbtn" type="button">AUTO</button>
+            <button id="btn-turbo" class="cbtn toggle" type="button" aria-pressed="false">TURBO</button>
+            <button id="btn-gamble" class="cbtn gamble" type="button" disabled>GAMBLE</button>
+            <button id="btn-spin" class="btn-spin" type="button"><span>SPIN</span></button>
+          </div>
+          <div class="auto-status" id="auto-status" hidden></div>
+        </div>
+      </div>
+    </section>
+
     <aside class="panel wallet-panel">
       <h2>Wallet</h2>
       <p class="hint">Server-side test ledger · Stripe test deposits for fiat, play money for crypto</p>
@@ -163,11 +108,7 @@
       </div>
       <div class="display-currency">
         <label for="display-currency">Display as</label>
-        <select id="display-currency">
-          <option value="AUD">AUD</option>
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
-        </select>
+        <select id="display-currency"><option value="AUD">AUD</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
       </div>
       <div class="stats">
         <div><span>Spins</span><strong id="stat-spins">0</strong></div>
@@ -176,66 +117,9 @@
       </div>
     </aside>
 
-    <section class="game-area">
-      <div class="machine" id="machine">
-        <div class="machine-top">
-          <h2 class="machine-title">CRYSTAL REELS</h2>
-          <div class="fs-banner" id="fs-banner" hidden>
-            <span>FREE SPINS</span>
-            <strong id="fs-count">0 / 0</strong>
-            <span class="fs-mult">×2 WINS</span>
-            <span class="fs-total">Bonus win <b id="fs-total">A$0.00</b></span>
-          </div>
-        </div>
-
-        <div class="reels-frame">
-          <div class="payline" aria-hidden="true"></div>
-          <div class="reels" id="reels" aria-live="polite"></div>
-        </div>
-
-        <div class="result-banner" id="result-banner" hidden><span id="result-text"></span></div>
-
-        <div class="controls">
-          <div class="bet-controls">
-            <button id="bet-down" class="icon-btn" type="button" aria-label="Decrease bet">−</button>
-            <div class="bet-display">
-              <span class="label">Bet</span>
-              <strong id="bet-amount">A$1.00</strong>
-            </div>
-            <button id="bet-up" class="icon-btn" type="button" aria-label="Increase bet">+</button>
-          </div>
-          <button id="btn-spin" class="btn btn-spin" type="button">SPIN</button>
-          <div class="side-buttons">
-            <button id="btn-auto" class="btn btn-small" type="button">AUTO</button>
-            <button id="btn-turbo" class="btn btn-small toggle" type="button" aria-pressed="false">⚡ TURBO</button>
-          </div>
-          <div class="last-win">
-            <span class="label">Last win</span>
-            <strong id="last-win">A$0.00</strong>
-          </div>
-        </div>
-        <div class="auto-status" id="auto-status" hidden></div>
-
-        <div class="paytable" id="paytable">
-          <h3>Paytable <span>(× bet, centre line, left to right)</span></h3>
-          <div class="pay-grid" id="pay-grid"></div>
-          <div class="feature-grid" id="feature-grid"></div>
-        </div>
-      </div>
-    </section>
-
     <aside class="panel info-panel">
       <h2>Spin history</h2>
       <ul class="history" id="history"><li class="empty">No spins yet</li></ul>
-      <h2 class="mt">How to play</h2>
-      <ol>
-        <li>Deposit fiat via Stripe test Checkout, or add play-money crypto.</li>
-        <li>Pick a bet and hit <strong>SPIN</strong> (or Space). Use <strong>AUTO</strong> for auto spins.</li>
-        <li>Match 3+ gems on the centre line from the left. <strong>Crystal Wilds</strong> (reels 2–4) substitute and double the win.</li>
-        <li>3+ <strong>Prism</strong> scatters anywhere pay and award 8–20 free spins at ×2.</li>
-        <li>Every bet grows the <strong>Crystal Jackpot</strong>. It can drop on any spin.</li>
-        <li>No single spin can pay more than <strong>20% of the house pool</strong>.</li>
-      </ol>
       <div class="disclaimer">
         <strong>Entertainment only · TEST MODE.</strong>
         Withdrawals are simulated and never sent through Stripe. Real-money play needs a gambling licence plus Stripe approval. Crypto is play money only. All outcomes are decided on the server.
@@ -243,25 +127,63 @@
     </aside>
   </main>
 
-  <!-- Auto spin modal -->
+  <!-- Info / paytable -->
+  <div class="modal" id="modal-info" hidden>
+    <div class="modal-backdrop" data-close="info"></div>
+    <div class="modal-card wide" role="dialog" aria-labelledby="info-title">
+      <header>
+        <h2 id="info-title">Game info</h2>
+        <button class="icon-btn" type="button" data-close="info" aria-label="Close">✕</button>
+      </header>
+      <div class="tabs" id="info-tabs">
+        <button type="button" class="active" data-tab="pays">Paytable</button>
+        <button type="button" data-tab="lines">Paylines</button>
+        <button type="button" data-tab="features">Features</button>
+      </div>
+      <div class="modal-body scroll">
+        <div class="tab" data-tab="pays"><p class="hint" id="pays-hint"></p><div class="pay-grid" id="pay-grid"></div></div>
+        <div class="tab" data-tab="lines" hidden><p class="hint">Wins pay left to right on active lines, starting from reel 1. Only the highest win per line is paid.</p><div class="lines-grid" id="lines-grid"></div></div>
+        <div class="tab" data-tab="features" hidden><div id="features"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gamble -->
+  <div class="modal" id="modal-gamble" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card gamble-card" role="dialog" aria-labelledby="gamble-title">
+      <header><h2 id="gamble-title">Gamble · Double up</h2></header>
+      <div class="modal-body">
+        <div class="gamble-meters">
+          <div><small>GAMBLE AMOUNT</small><strong id="g-stake">A$0.00</strong></div>
+          <div><small>WIN TO</small><strong id="g-to">A$0.00</strong></div>
+        </div>
+        <div class="card-stage"><div class="playing-card" id="g-card"><div class="card-back"></div><div class="card-face" id="g-face"></div></div></div>
+        <div class="g-history" id="g-history"></div>
+        <p class="hint center" id="g-msg">Pick a colour. Red or black — 50/50.</p>
+        <div class="gamble-actions">
+          <button id="g-red" class="btn g-red" type="button">RED</button>
+          <button id="g-black" class="btn g-black" type="button">BLACK</button>
+        </div>
+        <button id="g-collect" class="btn btn-gold btn-block" type="button">COLLECT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auto spin -->
   <div class="modal" id="modal-auto" hidden>
     <div class="modal-backdrop" data-close="auto"></div>
     <div class="modal-card" role="dialog" aria-labelledby="auto-title">
-      <header>
-        <h2 id="auto-title">Auto spin</h2>
-        <button class="icon-btn" type="button" data-close="auto" aria-label="Close">✕</button>
-      </header>
+      <header><h2 id="auto-title">Auto spin</h2><button class="icon-btn" type="button" data-close="auto" aria-label="Close">✕</button></header>
       <div class="modal-body">
         <label>Number of spins</label>
         <div class="seg seg-5" id="auto-count">
-          <button type="button" data-count="10">10</button>
-          <button type="button" data-count="25" class="active">25</button>
-          <button type="button" data-count="50">50</button>
-          <button type="button" data-count="100">100</button>
+          <button type="button" data-count="10">10</button><button type="button" data-count="25" class="active">25</button>
+          <button type="button" data-count="50">50</button><button type="button" data-count="100">100</button>
           <button type="button" data-count="Infinity">∞</button>
         </div>
         <label class="check"><input type="checkbox" id="auto-stop-bonus" checked /> Stop when free spins trigger</label>
-        <label class="check"><input type="checkbox" id="auto-stop-bigwin" checked /> Stop on a big win (15× bet or more)</label>
+        <label class="check"><input type="checkbox" id="auto-stop-bigwin" checked /> Stop on a big win (15× total bet or more)</label>
         <label class="check"><input type="checkbox" id="auto-stop-balance-on" /> Stop if balance drops below</label>
         <input id="auto-stop-balance" type="number" min="0" step="any" placeholder="e.g. 20" />
         <label class="check"><input type="checkbox" id="auto-turbo" /> Turbo (fast reels)</label>
@@ -270,20 +192,14 @@
     </div>
   </div>
 
-  <!-- Deposit modal -->
+  <!-- Deposit -->
   <div class="modal" id="modal-deposit" hidden>
     <div class="modal-backdrop" data-close="deposit"></div>
     <div class="modal-card" role="dialog" aria-labelledby="deposit-title">
-      <header>
-        <h2 id="deposit-title">Deposit (TEST MODE)</h2>
-        <button class="icon-btn" type="button" data-close="deposit" aria-label="Close">✕</button>
-      </header>
+      <header><h2 id="deposit-title">Deposit (TEST MODE)</h2><button class="icon-btn" type="button" data-close="deposit" aria-label="Close">✕</button></header>
       <div class="modal-body">
         <label>Asset type</label>
-        <div class="seg" id="deposit-type">
-          <button type="button" class="active" data-type="fiat">Fiat</button>
-          <button type="button" data-type="crypto">Crypto</button>
-        </div>
+        <div class="seg" id="deposit-type"><button type="button" class="active" data-type="fiat">Fiat</button><button type="button" data-type="crypto">Crypto</button></div>
         <label for="deposit-asset">Currency / Crypto</label>
         <select id="deposit-asset"></select>
         <label for="deposit-amount">Amount</label>
@@ -295,20 +211,14 @@
     </div>
   </div>
 
-  <!-- Withdraw modal -->
+  <!-- Withdraw -->
   <div class="modal" id="modal-withdraw" hidden>
     <div class="modal-backdrop" data-close="withdraw"></div>
     <div class="modal-card" role="dialog" aria-labelledby="withdraw-title">
-      <header>
-        <h2 id="withdraw-title">Withdraw (TEST MODE)</h2>
-        <button class="icon-btn" type="button" data-close="withdraw" aria-label="Close">✕</button>
-      </header>
+      <header><h2 id="withdraw-title">Withdraw (TEST MODE)</h2><button class="icon-btn" type="button" data-close="withdraw" aria-label="Close">✕</button></header>
       <div class="modal-body">
         <label>Asset type</label>
-        <div class="seg" id="withdraw-type">
-          <button type="button" class="active" data-type="fiat">Fiat</button>
-          <button type="button" data-type="crypto">Crypto</button>
-        </div>
+        <div class="seg" id="withdraw-type"><button type="button" class="active" data-type="fiat">Fiat</button><button type="button" data-type="crypto">Crypto</button></div>
         <label for="withdraw-asset">Currency / Crypto</label>
         <select id="withdraw-asset"></select>
         <label for="withdraw-amount">Amount</label>
@@ -322,17 +232,18 @@
     </div>
   </div>
 
-  <!-- Celebration overlay (big win / bonus / jackpot) -->
+  <!-- Celebration -->
   <div class="celebrate" id="celebrate" hidden>
     <div class="celebrate-inner">
       <div class="celebrate-title" id="celebrate-title">BIG WIN</div>
-      <div class="celebrate-amount" id="celebrate-amount">A$0.00</div>
+      <div class="celebrate-amount" id="celebrate-amount"></div>
       <div class="celebrate-sub" id="celebrate-sub"></div>
       <div class="celebrate-hint">Tap to continue</div>
     </div>
   </div>
 
   <div id="toast" class="toast" hidden></div>
+  <script src="gems.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
