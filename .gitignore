@@ -7,3 +7,4 @@ server/.flask_secret
 __pycache__/
 *.pyc
 *.pyo
+assets/green-tea-packet.jpg

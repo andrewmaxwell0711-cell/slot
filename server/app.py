@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fortune Reels — test-mode-only Flask backend.
+"""Crystal Reels — test-mode-only Flask backend.
 
 Serves the static demo slot and exposes a server-side ledger, spin RNG,
 Stripe Checkout (sk_test_ keys only), and simulated withdrawals.
@@ -150,9 +150,27 @@ def _config_payload() -> dict:
         "rates_to_aud": game.RATES_TO_AUD,
         "bet_steps_aud": game.BET_STEPS_AUD,
         "symbols": [
-            {"id": s["id"], "emoji": s["emoji"], "pays": {str(k): v for k, v in s["pays"].items()}}
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "emoji": s["emoji"],
+                "pays": {str(k): v for k, v in s["pays"].items()},
+                "wild": bool(s.get("wild")),
+                "scatter": bool(s.get("scatter")),
+                "blank": bool(s.get("blank")),
+            }
             for s in game.SYMBOLS
         ],
+        "features": {
+            "wild_mult": game.WILD_MULT,
+            "wild_reels": [1, 2, 3],
+            "scatter_pays": {str(k): {"pay": v[0], "free_spins": v[1]} for k, v in game.SCATTER_PAYS.items()},
+            "free_spin_mult": game.FREE_SPIN_MULT,
+            "max_free_spins": game.MAX_FREE_SPINS,
+            "jackpot_contrib": game.JACKPOT_CONTRIB,
+            "jackpot_hit_per_aud": game.JACKPOT_HIT_PER_AUD,
+            "pool_cap_fraction": game.POOL_CAP_FRACTION,
+        },
     }
 
 
@@ -171,6 +189,16 @@ def app_js():
     return send_from_directory(ROOT, "app.js")
 
 
+ASSETS_DIR = ROOT / "assets"
+
+
+@app.get("/assets/<path:filename>")
+def assets(filename: str):
+    # send_from_directory rejects path traversal outside ASSETS_DIR.
+    resp = send_from_directory(ASSETS_DIR, filename, max_age=7 * 24 * 3600)
+    return resp
+
+
 @app.get("/api/config")
 def api_config():
     return jsonify(_config_payload())
@@ -180,7 +208,14 @@ def api_config():
 def api_balance():
     snap = ledger.snapshot(g.player_id)
     snap["config"] = _config_payload()
+    snap["pool"] = ledger.pool_status()
     return jsonify(snap)
+
+
+@app.get("/api/pool")
+def api_pool():
+    """House pool, current max single win (20% of pool) and jackpot meter, in AUD."""
+    return jsonify(ledger.pool_status())
 
 
 @app.post("/api/prefs")
@@ -237,7 +272,7 @@ def api_deposit_checkout():
                     "price_data": {
                         "currency": currency.lower(),
                         "product_data": {
-                            "name": f"Fortune Reels test deposit ({currency})",
+                            "name": f"Crystal Reels test deposit ({currency})",
                             "description": (
                                 "TEST MODE only. Demo ledger credit — not real-money gambling."
                             ),
@@ -254,7 +289,7 @@ def api_deposit_checkout():
                 "player_id": g.player_id,
                 "asset": currency,
                 "amount": str(Decimal(cents) / 100),
-                "app": "fortune-reels-test",
+                "app": "crystal-reels-test",
             },
         )
     except Exception as exc:  # stripe.error.StripeError and network errors
@@ -444,27 +479,51 @@ def api_spin():
     except (TypeError, ValueError):
         return _json_error("Invalid bet")
 
-    grid = game.spin_grid()
-    result = game.evaluate_win(grid, bet)
+    rnd = game.play_round(bet)
     try:
-        snap = ledger.debit_bet_and_maybe_credit_win(
-            g.player_id,
-            bet,
-            result["win_aud"],
-            display_currency,
-        )
+        snap = ledger.settle_round(g.player_id, bet, rnd, display_currency)
     except ValueError as exc:
         return _json_error(str(exc))
 
+    def step_payload(step: dict, settled: dict) -> dict:
+        line = step["line"]
+        return {
+            "grid": step["grid"],
+            "line_win_aud": line["win_aud"] * step["multiplier"],
+            "count": line["count"],
+            "symbol": line["symbol"],
+            "line_mult": line["mult"],
+            "wild": line["wild"],
+            "scatters": step["scatters"],
+            "scatter_pos": step["scatter_pos"],
+            "scatter_win_aud": step["scatter_win_aud"],
+            "free_spins_awarded": step["free_spins_awarded"],
+            "multiplier": step["multiplier"],
+            "raw_win_aud": settled["raw_win_aud"],
+            "win_aud": settled["paid_aud"],
+            "jackpot_aud": settled["jackpot_aud"],
+            "capped": settled["capped"],
+            "cap_aud": settled["cap_aud"],
+        }
+
+    steps = [rnd["base"]] + rnd["free_spins"]
+    payload = [step_payload(st, se) for st, se in zip(steps, snap["steps"])]
+    base = payload[0]
     return jsonify(
         {
-            "grid": grid,
+            # Base spin (kept flat for older clients)
+            "grid": base["grid"],
+            "count": base["count"],
+            "symbol": base["symbol"],
+            "mult": base["line_mult"],
+            "base": base,
+            "free_spins": payload[1:],
+            "jackpot_hit": rnd["jackpot_hit"],
+            "jackpot_paid_aud": snap["jackpot_paid_aud"],
             "bet_aud": bet,
-            "win_aud": result["win_aud"],
-            "count": result["count"],
-            "symbol": result["symbol"],
-            "mult": result["mult"],
-            "line": result["line"],
+            "win_aud": snap["total_paid_aud"],
+            "any_capped": snap["any_capped"],
+            "pool": snap["pool"],
             "balances": snap["balances"],
             "total_aud": snap["total_aud"],
             "stats": snap["stats"],
@@ -476,7 +535,7 @@ def api_spin():
 
 def main() -> None:
     mode = "Stripe test checkout enabled" if STRIPE_ENABLED else "no Stripe key — checkout disabled"
-    print(f"Fortune Reels TEST MODE listening on http://0.0.0.0:{PORT}/ ({mode})")
+    print(f"Crystal Reels TEST MODE listening on http://0.0.0.0:{PORT}/ ({mode})")
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
 

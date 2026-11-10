@@ -13,6 +13,9 @@ from game import (
     ALL_ASSETS,
     CRYPTO,
     FIAT,
+    JACKPOT_CONTRIB,
+    POOL_CAP_FRACTION,
+    cap_for_pool,
     clean_amount,
     from_aud,
     to_aud,
@@ -86,6 +89,19 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             note TEXT,
             created_at TEXT NOT NULL
         );
+
+        -- Single-row house pool: every stake goes in, every payout comes out.
+        -- jackpot_aud is the progressive meter, a ring-fenced slice of the pool.
+        CREATE TABLE IF NOT EXISTS house (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            pool_aud REAL NOT NULL DEFAULT 0 CHECK (pool_aud >= 0),
+            jackpot_aud REAL NOT NULL DEFAULT 0 CHECK (jackpot_aud >= 0),
+            total_staked_aud REAL NOT NULL DEFAULT 0,
+            total_paid_aud REAL NOT NULL DEFAULT 0,
+            biggest_win_aud REAL NOT NULL DEFAULT 0,
+            updated_at TEXT
+        );
+        INSERT OR IGNORE INTO house (id, pool_aud, jackpot_aud) VALUES (1, 0, 0);
 
         CREATE TABLE IF NOT EXISTS withdrawals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,13 +370,54 @@ def withdraw(player_id: str, asset: str, amount: float) -> dict[str, Any]:
     return snap
 
 
-def debit_bet_and_maybe_credit_win(
+# ---------------------------------------------------------------------------
+# House pool and payout cap
+# ---------------------------------------------------------------------------
+
+
+def _house_row(conn: sqlite3.Connection) -> dict[str, float]:
+    row = conn.execute(
+        "SELECT pool_aud, jackpot_aud, total_staked_aud, total_paid_aud, biggest_win_aud FROM house WHERE id = 1"
+    ).fetchone()
+    if not row:
+        conn.execute("INSERT OR IGNORE INTO house (id) VALUES (1)")
+        return {"pool_aud": 0.0, "jackpot_aud": 0.0, "total_staked_aud": 0.0,
+                "total_paid_aud": 0.0, "biggest_win_aud": 0.0}
+    return {k: float(row[k]) for k in row.keys()}
+
+
+def _pool_view(h: dict[str, float]) -> dict[str, Any]:
+    pool = max(0.0, h["pool_aud"])
+    max_win = cap_for_pool(pool)
+    return {
+        "pool_aud": round(pool, 2),
+        "max_win_aud": max_win,
+        "cap_fraction": POOL_CAP_FRACTION,
+        # The meter can never pay more than the cap, so show what it would pay.
+        "jackpot_aud": round(min(h["jackpot_aud"], max_win), 2),
+        "jackpot_meter_aud": round(h["jackpot_aud"], 2),
+        "total_staked_aud": round(h["total_staked_aud"], 2),
+        "total_paid_aud": round(h["total_paid_aud"], 2),
+        "biggest_win_aud": round(h["biggest_win_aud"], 2),
+    }
+
+
+def pool_status() -> dict[str, Any]:
+    return _pool_view(_house_row(get_conn()))
+
+
+def settle_round(
     player_id: str,
     bet_aud: float,
-    win_aud: float,
+    rnd: dict[str, Any],
     display_currency: str,
 ) -> dict[str, Any]:
-    """Atomically take the bet (fiat first, then crypto) and credit any win."""
+    """Atomically: take the stake, add it to the pool, feed the jackpot,
+    then pay each spin of the round clamped to 20% of the pool at that moment.
+
+    The pool can never go negative: each payout is at most 20% of what is in it.
+    Returns per-step paid amounts plus the new snapshot and pool status.
+    """
     if bet_aud <= 0:
         raise ValueError("Invalid bet")
     if display_currency not in FIAT:
@@ -374,55 +431,94 @@ def debit_bet_and_maybe_credit_win(
         remaining = bet_aud
         now = _utc_now()
         for asset in list(FIAT) + list(CRYPTO):
-            if remaining <= 0:
+            if remaining <= 1e-9:
                 break
             bal_aud = to_aud(asset, balances.get(asset, 0.0) or 0.0)
             if bal_aud <= 0:
                 continue
             take_aud = min(bal_aud, remaining)
             take_asset = from_aud(asset, take_aud)
+            if clean_amount(asset, take_asset) <= 0:
+                continue
             _debit(conn, player_id, asset, take_asset)
             conn.execute(
                 """
-                INSERT INTO ledger_entries
-                    (player_id, kind, asset, amount, note, created_at)
+                INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at)
                 VALUES (?, 'spin_bet', ?, ?, ?, ?)
                 """,
                 (player_id, asset, clean_amount(asset, take_asset), f"bet {bet_aud} AUD", now),
             )
             remaining -= take_aud
-
         if remaining > 0.0001:
             raise ValueError("Insufficient balance — deposit first")
 
-        if win_aud > 0:
-            win_asset_amount = from_aud(display_currency, win_aud)
-            _credit(conn, player_id, display_currency, win_asset_amount)
-            conn.execute(
-                """
-                INSERT INTO ledger_entries
-                    (player_id, kind, asset, amount, note, created_at)
-                VALUES (?, 'spin_win', ?, ?, ?, ?)
-                """,
-                (
-                    player_id,
-                    display_currency,
-                    clean_amount(display_currency, win_asset_amount),
-                    f"win {win_aud} AUD",
-                    now,
-                ),
-            )
+        h = _house_row(conn)
+        pool = h["pool_aud"] + bet_aud
+        meter = h["jackpot_aud"] + bet_aud * JACKPOT_CONTRIB
+
+        steps = [rnd["base"]] + list(rnd.get("free_spins") or [])
+        results: list[dict[str, Any]] = []
+        total_paid = 0.0
+        jackpot_paid = 0.0
+        any_capped = False
+        for i, step in enumerate(steps):
+            cap = cap_for_pool(pool)
+            raw = round(step["raw_win_aud"], 2)
+            paid = min(raw, cap)
+            capped = paid < raw - 1e-9
+            jp = 0.0
+            if i == 0 and rnd.get("jackpot_hit"):
+                jp = round(max(0.0, min(meter, cap - paid)), 2)
+                meter -= jp
+                jackpot_paid = jp
+            step_total = round(paid + jp, 2)
+            pool = max(0.0, pool - step_total)
+            if meter > pool:
+                meter = pool
+            total_paid += step_total
+            any_capped = any_capped or capped
+            results.append({"raw_win_aud": raw, "paid_aud": round(paid, 2), "capped": capped,
+                            "cap_aud": cap, "jackpot_aud": jp})
+
+        total_paid = round(total_paid, 2)
+        if total_paid > 0:
+            win_amt = from_aud(display_currency, total_paid)
+            if clean_amount(display_currency, win_amt) > 0:
+                _credit(conn, player_id, display_currency, win_amt)
+                conn.execute(
+                    """
+                    INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at)
+                    VALUES (?, 'spin_win', ?, ?, ?, ?)
+                    """,
+                    (player_id, display_currency, clean_amount(display_currency, win_amt),
+                     f"win {total_paid} AUD" + (" (capped)" if any_capped else ""), now),
+                )
 
         conn.execute(
             """
+            UPDATE house SET pool_aud = ?, jackpot_aud = ?,
+                total_staked_aud = total_staked_aud + ?,
+                total_paid_aud = total_paid_aud + ?,
+                biggest_win_aud = MAX(biggest_win_aud, ?),
+                updated_at = ?
+            WHERE id = 1
+            """,
+            (round(pool, 6), round(max(0.0, meter), 6), bet_aud, total_paid, total_paid, now),
+        )
+        conn.execute(
+            """
             UPDATE players
-            SET spins = spins + 1,
-                total_bet_aud = total_bet_aud + ?,
-                total_won_aud = total_won_aud + ?,
-                last_win_aud = ?,
-                display_currency = ?
+            SET spins = spins + 1, total_bet_aud = total_bet_aud + ?,
+                total_won_aud = total_won_aud + ?, last_win_aud = ?, display_currency = ?
             WHERE id = ?
             """,
-            (bet_aud, max(0.0, win_aud), max(0.0, win_aud), display_currency, player_id),
+            (bet_aud, total_paid, total_paid, display_currency, player_id),
         )
-    return snapshot(player_id)
+        house_after = _pool_view(_house_row(conn))
+    snap = snapshot(player_id)
+    snap["steps"] = results
+    snap["total_paid_aud"] = total_paid
+    snap["jackpot_paid_aud"] = jackpot_paid
+    snap["any_capped"] = any_capped
+    snap["pool"] = house_after
+    return snap

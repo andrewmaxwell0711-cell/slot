@@ -1,4 +1,4 @@
-# Fortune Reels — Demo Slot Machine (TEST MODE)
+# Crystal Reels — Demo Slot Machine (TEST MODE)
 
 A 5-reel demo slot with a **server-side ledger**, **server-side RNG**, and optional **Stripe Checkout in test mode** for fiat deposits (AUD, USD, EUR).
 
@@ -165,3 +165,22 @@ Free web services also spin down after inactivity, so the first request after a 
 | `render.yaml` | Render Blueprint for a Python web service |
 | `.env.example` | Env var template |
 | `README.md` | This file |
+
+
+## Crystal Reels features (Nov 2026)
+
+- **Crystal theme**: gem symbols (Rose Quartz, Citrine, Topaz, Amethyst, Emerald, Sapphire, Ruby) with
+  **Green Tea** (1kg packet art, `assets/green-tea-*.webp`) as the top symbol: 50/150/500× for 3/4/5.
+- **Crystal Wild** (reels 2–4): substitutes on the centre line and doubles the win; 5 wilds pay 1000×.
+- **Prism Scatter**: 3/4/5 anywhere pay 2/5/20× and award 8/12/20 free spins; all free-spin wins ×2; retriggers up to 50.
+- **Green Tea Jackpot**: 1% of each bet feeds the meter; hit chance per spin = bet(AUD) / 50,000.
+- **House pool and payout cap**: `house` table in SQLite. Pool = all stakes − all payouts (AUD).
+  No single spin (line + scatter + jackpot, and each free spin) can pay more than **20% of the pool**
+  at that moment (stake of the current spin included). Wins above that are clamped server-side, so the
+  pool can never go negative. `GET /api/pool` returns pool, max win and jackpot; `/api/balance` and
+  `/api/spin` include it too.
+- Auto spin (10/25/50/100/∞, stop on bonus / big win / balance below X), turbo, spin history,
+  big-win celebrations, sparkles and Web Audio crystal chimes (mutable).
+- `python server/simulate_rtp.py` checks the total RTP (~20%); `python server/test_cap.py` tests the cap.
+- Note: on Render's free plan the SQLite file resets on every deploy, so the pool starts at 0 and
+  the first wins are tiny until players have bet.
