@@ -1,0 +1,18 @@
+# Fortune Reels — Render Blueprint (Python web service, Stripe TEST mode only).
+# After the first deploy, set PUBLIC_BASE_URL to the public https://…onrender.com
+# origin (or your custom domain) so Stripe Checkout success/cancel URLs work.
+services:
+  - type: web
+    name: fortune-reels
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server.app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    envVars:
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true

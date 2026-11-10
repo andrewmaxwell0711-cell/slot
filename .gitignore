@@ -1,0 +1,9 @@
+.venv/
+.env
+server/ledger.db
+server/ledger.db-wal
+server/ledger.db-shm
+server/.flask_secret
+__pycache__/
+*.pyc
+*.pyo

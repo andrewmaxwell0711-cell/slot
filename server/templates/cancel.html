@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checkout cancelled — Fortune Reels (TEST MODE)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .result-page { min-height: 70vh; display: grid; place-items: center; padding: 2rem 1rem; position: relative; z-index: 1; }
+    .result-card { width: min(480px, 100%); background: var(--bg-panel); border: 1px solid rgba(232, 197, 71, 0.35); border-radius: 16px; padding: 2rem 1.5rem; text-align: center; box-shadow: var(--shadow); }
+    .result-card h1 { font-family: var(--display); color: var(--gold); margin: 0.5rem 0 0.75rem; font-size: 1.5rem; }
+    .result-card p { color: var(--muted); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <header class="top-bar">
+    <div class="brand">
+      <span class="brand-icon">♠</span>
+      <div>
+        <h1>Fortune Reels</h1>
+        <span class="demo-badge">DEMO · TEST MODE</span>
+      </div>
+    </div>
+  </header>
+  <main class="result-page">
+    <div class="result-card">
+      <h1>Checkout cancelled</h1>
+      <p>No test payment was taken and your ledger was not changed.</p>
+      <p>Stripe Checkout was running in TEST MODE. Real-money play needs a gambling licence plus Stripe approval.</p>
+      <p><a class="btn btn-gold btn-block" href="/">Back to Fortune Reels</a></p>
+    </div>
+  </main>
+</body>
+</html>

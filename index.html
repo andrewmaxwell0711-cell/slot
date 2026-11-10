@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fortune Reels — Demo Slot (TEST MODE)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <header class="top-bar">
+    <div class="brand">
+      <span class="brand-icon">♠</span>
+      <div>
+        <h1>Fortune Reels</h1>
+        <span class="demo-badge">DEMO · TEST MODE</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="btn-mute" class="icon-btn" type="button" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+      <button id="btn-wallet" class="btn btn-gold" type="button">Wallet</button>
+    </div>
+  </header>
+
+  <div class="mode-banners">
+    <div class="mode-banner">
+      <strong>DEMO · TEST MODE.</strong>
+      Stripe Checkout (when enabled) uses test keys only. Withdrawals are simulated — no real payouts.
+      Real-money play needs a gambling licence plus Stripe approval.
+      Crypto deposits stay play money only.
+    </div>
+    <div class="mode-banner key-banner" id="stripe-key-banner" hidden>
+      Add a Stripe test key to enable checkout
+    </div>
+  </div>
+
+  <main class="layout">
+    <aside class="panel wallet-panel">
+      <h2>Wallet</h2>
+      <p class="hint">Server-side test ledger · Stripe test deposits for fiat, play money for crypto</p>
+      <div class="primary-balance">
+        <span class="label">Play balance</span>
+        <strong id="primary-balance">A$0.00</strong>
+        <span class="sub" id="primary-currency-label">Displayed in AUD</span>
+      </div>
+      <div class="balance-list" id="balance-list"></div>
+      <div class="wallet-actions">
+        <button id="btn-deposit" class="btn btn-primary" type="button">Deposit</button>
+        <button id="btn-withdraw" class="btn btn-outline" type="button">Withdraw</button>
+      </div>
+      <div class="display-currency">
+        <label for="display-currency">Display as</label>
+        <select id="display-currency">
+          <option value="AUD">AUD</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
+      </div>
+    </aside>
+
+    <section class="game-area">
+      <div class="machine">
+        <div class="machine-top">
+          <div class="lights">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <h2 class="machine-title">FORTUNE REELS</h2>
+          <div class="lights">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <div class="reels-frame">
+          <div class="win-lines-overlay" id="win-lines"></div>
+          <div class="reels" id="reels" aria-live="polite">
+            <!-- reels injected by JS -->
+          </div>
+        </div>
+
+        <div class="payline-hint">3+ matching symbols on a payline win</div>
+
+        <div class="result-banner" id="result-banner" hidden>
+          <span id="result-text"></span>
+        </div>
+
+        <div class="controls">
+          <div class="bet-controls">
+            <button id="bet-down" class="icon-btn" type="button" aria-label="Decrease bet">−</button>
+            <div class="bet-display">
+              <span class="label">Bet</span>
+              <strong id="bet-amount">A$1.00</strong>
+            </div>
+            <button id="bet-up" class="icon-btn" type="button" aria-label="Increase bet">+</button>
+          </div>
+          <button id="btn-spin" class="btn btn-spin" type="button">SPIN</button>
+          <div class="last-win">
+            <span class="label">Last win</span>
+            <strong id="last-win">A$0.00</strong>
+          </div>
+        </div>
+
+        <div class="paytable" id="paytable">
+          <h3>Paytable <span>(× bet)</span></h3>
+          <div class="pay-grid" id="pay-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel info-panel">
+      <h2>How to play</h2>
+      <ol>
+        <li>Deposit fiat via Stripe test Checkout, or add play-money crypto.</li>
+        <li>Choose a bet size.</li>
+        <li>Hit <strong>SPIN</strong> and watch the reels.</li>
+        <li>Match 3+ symbols on the center payline to win.</li>
+        <li>Withdraw anytime — simulated only (test withdrawal recorded).</li>
+      </ol>
+      <div class="disclaimer">
+        <strong>Entertainment only · TEST MODE.</strong>
+        Fiat deposits use Stripe test Checkout when a test key is configured. Withdrawals are simulated and never sent through Stripe. Real-money play needs a gambling licence plus Stripe approval. Crypto is play money only. The server ledger is authoritative.
+      </div>
+      <div class="stats">
+        <div><span>Spins</span><strong id="stat-spins">0</strong></div>
+        <div><span>Total won</span><strong id="stat-won">A$0.00</strong></div>
+        <div><span>Total bet</span><strong id="stat-bet">A$0.00</strong></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Deposit modal -->
+  <div class="modal" id="modal-deposit" hidden>
+    <div class="modal-backdrop" data-close="deposit"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="deposit-title">
+      <header>
+        <h2 id="deposit-title">Deposit (TEST MODE)</h2>
+        <button class="icon-btn" type="button" data-close="deposit" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <label>Asset type</label>
+        <div class="seg" id="deposit-type">
+          <button type="button" class="active" data-type="fiat">Fiat</button>
+          <button type="button" data-type="crypto">Crypto</button>
+        </div>
+        <label for="deposit-asset">Currency / Crypto</label>
+        <select id="deposit-asset"></select>
+        <label for="deposit-amount">Amount</label>
+        <input id="deposit-amount" type="number" min="0.01" step="any" placeholder="0.00" />
+        <p class="convert-hint" id="deposit-hint"></p>
+        <p class="modal-note" id="deposit-note"></p>
+        <button id="confirm-deposit" class="btn btn-primary btn-block" type="button">Pay with Stripe (test mode)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Withdraw modal -->
+  <div class="modal" id="modal-withdraw" hidden>
+    <div class="modal-backdrop" data-close="withdraw"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="withdraw-title">
+      <header>
+        <h2 id="withdraw-title">Withdraw (TEST MODE)</h2>
+        <button class="icon-btn" type="button" data-close="withdraw" aria-label="Close">✕</button>
+      </header>
+      <div class="modal-body">
+        <label>Asset type</label>
+        <div class="seg" id="withdraw-type">
+          <button type="button" class="active" data-type="fiat">Fiat</button>
+          <button type="button" data-type="crypto">Crypto</button>
+        </div>
+        <label for="withdraw-asset">Currency / Crypto</label>
+        <select id="withdraw-asset"></select>
+        <label for="withdraw-amount">Amount</label>
+        <input id="withdraw-amount" type="number" min="0.01" step="any" placeholder="0.00" />
+        <p class="convert-hint" id="withdraw-hint"></p>
+        <p class="available" id="withdraw-available"></p>
+        <button id="confirm-withdraw" class="btn btn-primary btn-block" type="button">Confirm withdraw</button>
+        <div class="processing" id="withdraw-processing" hidden>
+          <div class="spinner"></div>
+          <p>Recording test withdrawal…</p>
+        </div>
+        <div class="success" id="withdraw-success" hidden>
+          <p>✓ Test withdrawal recorded</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
