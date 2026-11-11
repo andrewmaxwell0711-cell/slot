@@ -50,6 +50,14 @@
   let coins = 0;
   let stats = { spins: 0, totalWonAud: 0, totalBetAud: 0 };
   let bonuses = { daily_available: false, hourly_available: false, hourly_seconds: 0, daily_coins: 8000, hourly_coins: 2000 };
+  let profile = { nickname: "Hopper", level: 1, xp: 0, xp_needed: 80, current_streak: 0, best_streak: 0, theme: "crystal" };
+  let trophies = { unlocked: [], new: [], items: [] };
+  let missions = [];
+  let themes = [];
+  let prizeLegal = "All in-game prizes are for entertainment only. Trophies, themes, badges and bonus coins have no cash or real-world value and cannot be redeemed for money or prizes.";
+  let prizeEvents = { newTrophies: [], levelUp: 0 };
+  let lbPeriod = "daily";
+  let lbBoard = "biggest";
   let stripeEnabled = false;
   let busy = false;
   let ready = false;
@@ -160,6 +168,22 @@
     if (typeof s.gamble === "number") gambleAud = s.gamble;
     else if (typeof s.gamble_aud === "number") gambleAud = s.gamble_aud;
     if (s.bonuses) bonuses = { ...bonuses, ...s.bonuses };
+    if (s.profile) {
+      profile = { ...profile, ...s.profile };
+      engage.level = profile.level;
+      engage.xp = profile.xp;
+      engage.streak = profile.current_streak;
+      engage.bestStreak = profile.best_streak;
+    }
+    if (s.trophies) {
+      trophies = { unlocked: [], new: [], items: [], ...s.trophies };
+      if (Array.isArray(s.trophies.new) && s.trophies.new.length) prizeEvents.newTrophies = s.trophies.new.slice();
+    }
+    if (Array.isArray(s.missions)) missions = s.missions;
+    if (Array.isArray(s.themes)) themes = s.themes;
+    if (s.prize_legal) prizeLegal = s.prize_legal;
+    if (s.level_up) prizeEvents.levelUp = s.level_up;
+    applyTheme(profile.theme);
     if (s.config) applyConfig(s.config);
   }
   function applyConfig(cfg) {
@@ -170,6 +194,8 @@
     if (Array.isArray(cfg.packs)) PACKS = cfg.packs;
     if (cfg.legal) LEGAL = cfg.legal;
     if (cfg.responsible_play) RESPONSIBLE = cfg.responsible_play;
+    if (cfg.prize_legal) prizeLegal = cfg.prize_legal;
+    if (cfg.prizes && cfg.prizes.legal) prizeLegal = cfg.prizes.legal;
     renderShop();
     if (Array.isArray(cfg.paylines)) PAYLINES = cfg.paylines;
     if (cfg.features) FEATURES = { ...FEATURES, ...cfg.features };
@@ -808,6 +834,7 @@
     levelUp() { ensureAudio(); [60, 64, 67, 72, 76, 79, 84, 88].forEach((n, i) => chime(NOTE(n), 0.5, 0.05, i * 0.06)); },
     chest() { ensureAudio(); noise(0.2, 0.06, 600, { type: "bandpass" }); [67, 74, 79, 86].forEach((n, i) => chime(NOTE(n), 0.45, 0.05, 0.08 + i * 0.07)); },
     streak() { ensureAudio(); [72, 76, 79, 84].forEach((n, i) => chime(NOTE(n), 0.35, 0.05, i * 0.06)); },
+    trophy() { ensureAudio(); [67, 71, 74, 79, 86, 91].forEach((n, i) => chime(NOTE(n), 0.7, 0.06, i * 0.08)); tone(NOTE(43), 0.8, { type: "triangle", gain: 0.05 }); },
     coins() { ensureAudio(); for (let i = 0; i < 8; i++) tone(900 + Math.random() * 800, 0.08, { type: "square", gain: 0.02, delay: i * 0.05 }); },
   };
 
@@ -951,15 +978,20 @@
   }
 
   function renderEngage() {
-    const need = xpNeeded(engage.level), have = engage.xp;
+    const level = profile.level || engage.level || 1;
+    const need = profile.xp_needed || xpNeeded(level);
+    const have = profile.xp ?? engage.xp;
+    const streak = profile.current_streak ?? engage.streak;
     const lvl = $("#xp-level"), lab = $("#xp-label"), fill = $("#xp-fill");
     if (!lvl) return;
-    lvl.textContent = `LV ${engage.level}`;
+    lvl.textContent = `LV ${level}`;
     lab.textContent = `${Math.floor(have)} / ${need}`;
     fill.style.width = `${Math.min(100, (have / Math.max(need, 1)) * 100)}%`;
     const st = $("#streak");
-    if (engage.streak >= 2) { st.hidden = false; $("#streak-val").textContent = String(engage.streak); }
+    if (streak >= 2) { st.hidden = false; $("#streak-val").textContent = String(streak); }
     else st.hidden = true;
+    const nickEl = $("#profile-nick"); if (nickEl) nickEl.textContent = profile.nickname || "Hopper";
+    const plvl = $("#profile-level"); if (plvl) plvl.textContent = `LV ${level}`;
     const dailyReady = !!bonuses.daily_available;
     const hourlyReady = !!bonuses.hourly_available;
     const dbtns = [$("#btn-daily"), $("#btn-daily-panel")].filter(Boolean);
@@ -994,22 +1026,22 @@
     if (lastUp) showLevelUp(lastUp);
   }
   function noteRound(totalWin, bet, bonus, big) {
-    if (totalWin > 0) {
-      engage.streak += 1;
-      if (engage.streak > (engage.bestStreak || 0)) engage.bestStreak = engage.streak;
-      if ([3, 5, 8, 10, 15, 20].includes(engage.streak)) {
-        toast(`${engage.streak} WIN STREAK!`);
+    const streak = profile.current_streak || 0;
+    if (streak >= 2) {
+      if ([3, 5, 8, 10, 15, 20].includes(streak)) {
+        toast(`${streak} WIN STREAK!`);
         sfx.streak();
         const st = $("#streak"); if (st) { st.classList.remove("pop"); void st.offsetWidth; st.classList.add("pop"); }
       }
-    } else engage.streak = 0;
-    saveEngage();
+    }
     renderEngage();
-    let xp = 8;
-    if (totalWin > 0) xp += Math.round(Math.min(50, 5 * Math.sqrt(totalWin / Math.max(bet, 0.01))));
-    if (bonus) xp += 25;
-    if (big) xp += 40;
-    addXp(xp);
+    const bar = $("#xp-bar");
+    if (bar) { bar.classList.remove("level-flash"); void bar.offsetWidth; bar.classList.add("level-flash"); }
+    if (prizeEvents.levelUp) showLevelUp(prizeEvents.levelUp);
+    const unlocked = prizeEvents.newTrophies.splice(0);
+    prizeEvents.levelUp = 0;
+    if (unlocked.length) queueTrophyToasts(unlocked);
+    renderPrizes();
   }
   function formatRemain(sec) {
     sec = Math.max(0, Math.round(sec || 0));
@@ -1379,7 +1411,7 @@
 
     history.unshift({ t: Date.now(), bet, mode: isMw ? "MW" : "L", lines: res.lines, win: totalWin, fs: fs.length, jp: !!field(res, "jackpot_paid", "jackpot_paid_aud"), mini: games.map((g) => g.kind) });
     history = history.slice(0, 40); saveHistory(); renderHistory();
-    gambleAud = auto.running ? 0 : res.gamble_aud || 0;
+    gambleAud = auto.running ? 0 : field(res, "gamble", "gamble_aud");
     setBusy(false);
     const bonusHit = fs.length > 0 || games.length > 0;
     const bigHit = x >= BIG_WIN_X || !!field(res, "jackpot_paid", "jackpot_paid_aud");
@@ -1568,6 +1600,130 @@
   function formatAudPrice(n) {
     return `A$${(Number(n) || 0).toFixed(2)}`;
   }
+
+  function applyTheme(id) {
+    const theme = id || "crystal";
+    document.body.dataset.theme = theme === "crystal" ? "" : theme;
+    if (!theme || theme === "crystal") document.body.removeAttribute("data-theme");
+    else document.body.dataset.theme = theme;
+  }
+  let trophyQueue = Promise.resolve();
+  function queueTrophyToasts(list) {
+    list.forEach((t) => {
+      trophyQueue = trophyQueue.then(() => showTrophyToast(t));
+    });
+  }
+  function showTrophyToast(trophy) {
+    return new Promise((resolve) => {
+      const el = $("#trophy-toast");
+      if (!el) { resolve(); return; }
+      $("#trophy-toast-icon").textContent = trophy.icon || "🏆";
+      $("#trophy-toast-title").textContent = trophy.name || "Trophy";
+      $("#trophy-toast-sub").textContent = trophy.desc || "Cosmetic prize — no cash value";
+      el.hidden = false;
+      sfx.trophy();
+      if (!REDUCE) { rain(70, ["#fff3b0", "#f3c441", "#c792ff", "#ffffff"]); burst(innerWidth / 2, innerHeight * 0.42, 36); }
+      toast(`Trophy unlocked: ${trophy.name}`);
+      setTimeout(() => { el.hidden = true; resolve(); }, REDUCE || turbo ? 1100 : 2200);
+    });
+  }
+  function renderPrizes() {
+    const legal = $("#prize-legal");
+    if (legal) legal.textContent = prizeLegal;
+    const nick = $("#nickname");
+    if (nick && document.activeElement !== nick) nick.value = profile.nickname || "";
+    const grid = $("#trophy-grid");
+    if (grid) {
+      const items = trophies.items && trophies.items.length
+        ? trophies.items
+        : [];
+      grid.innerHTML = items.map((t) => `
+        <article class="trophy-card ${t.unlocked ? "owned" : "locked"}">
+          <div class="tico">${t.icon || "🏆"}</div>
+          <h3>${t.name}</h3>
+          <p>${t.desc}</p>
+        </article>`).join("") || '<p class="hint">No trophies in the catalogue.</p>';
+    }
+    const list = $("#mission-list");
+    if (list) {
+      list.innerHTML = (missions || []).map((m) => {
+        const pct = Math.min(100, Math.round((m.progress / Math.max(m.target, 1)) * 100));
+        const reward = `${Number(m.reward_coins || 0).toLocaleString("en-US")} coins${m.reward_trophy ? " + badge" : ""}`;
+        const btn = m.claimable
+          ? `<button type="button" class="btn btn-gold" data-claim="${m.id}">Claim</button>`
+          : m.claimed
+            ? `<button type="button" class="btn" disabled>Claimed</button>`
+            : `<button type="button" class="btn" disabled>In progress</button>`;
+        return `<article class="mission-card">
+          <header><h3>${m.title}</h3><span class="rew">${reward}</span></header>
+          <div class="mission-track"><div class="mission-fill" style="width:${pct}%"></div></div>
+          <div class="mission-meta"><span>${m.progress} / ${m.target}</span>${btn}</div>
+        </article>`;
+      }).join("") || '<p class="hint">Daily missions will appear here.</p>';
+    }
+    const tgrid = $("#theme-grid");
+    if (tgrid) {
+      tgrid.innerHTML = (themes || []).map((th) => {
+        const lock = th.unlocked ? "Unlocked" : `Unlocks at level ${th.unlock_level}`;
+        const sel = th.selected ? "selected" : "";
+        return `<button type="button" class="theme-card ${sel}" data-theme="${th.id}" ${th.unlocked ? "" : "disabled"}>
+          <div class="swatch"></div>
+          <h3>${th.name}</h3>
+          <p>${lock}${th.selected ? " · Selected" : ""}</p>
+        </button>`;
+      }).join("");
+    }
+  }
+  async function loadLeaderboard() {
+    const list = $("#leader-list");
+    const me = $("#lb-me");
+    if (!list) return;
+    try {
+      const data = await api(`/api/leaderboard?period=${encodeURIComponent(lbPeriod)}&board=${encodeURIComponent(lbBoard)}`);
+      const rows = data.entries || [];
+      list.innerHTML = rows.length
+        ? rows.map((e) => `<li class="${e.me ? "me" : ""}"><span class="place">${e.place}</span><span class="name">${e.nickname}</span><span class="score">${money(e.score)}</span></li>`).join("")
+        : '<li class="empty">No scores yet — spin to join the board.</li>';
+      if (me) {
+        const rewards = (data.rewards || []).map((r) => `#${r.place} ${Number(r.coins).toLocaleString("en-US")} coins`).join(" · ");
+        const place = data.me && data.me.place ? `You are #${data.me.place} with ${money(data.me.score)}.` : "You are not on this board yet.";
+        me.textContent = `${place} End-of-period rewards: ${rewards}. Coins only.`;
+      }
+    } catch (e) {
+      list.innerHTML = `<li class="empty">${(e && e.message) || "Could not load leaderboard"}</li>`;
+    }
+  }
+  async function saveNickname(ev) {
+    if (ev) ev.preventDefault();
+    const input = $("#nickname");
+    try {
+      applySnapshot(await api("/api/profile", { method: "POST", body: JSON.stringify({ nickname: (input && input.value) || "" }) }));
+      render(); renderPrizes();
+      toast("Nickname saved");
+    } catch (e) {
+      toast((e && e.message) || "Could not save nickname", true);
+    }
+  }
+  async function chooseTheme(id) {
+    try {
+      applySnapshot(await api("/api/theme", { method: "POST", body: JSON.stringify({ theme: id }) }));
+      render(); renderPrizes();
+      toast(`Theme: ${(themes.find((t) => t.id === id) || {}).name || id}`);
+    } catch (e) {
+      toast((e && e.message) || "Theme is still locked", true);
+    }
+  }
+  async function claimMission(id) {
+    try {
+      applySnapshot(await api("/api/missions/claim", { method: "POST", body: JSON.stringify({ mission_id: id }) }));
+      render(); renderPrizes();
+      toast(`Mission claimed: ${money(missions.find((m) => m.id === id)?.reward_coins || 0)}`);
+      sfx.chest();
+    } catch (e) {
+      toast((e && e.message) || "Could not claim mission", true);
+    }
+  }
+
   function renderShop() {
     const grid = $("#pack-grid");
     if (!grid) return;
@@ -1602,6 +1758,7 @@
     const m = $(`#modal-${name}`); if (!m) return;
     m.hidden = false;
     if (name === "shop") renderShop();
+    if (name === "prizes") { renderPrizes(); loadLeaderboard(); }
     if (name === "auto") { $("#auto-count").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.count === autoCountChoice)); $("#auto-turbo").checked = turbo; }
     if (name === "info") renderInfo();
   }
@@ -1681,8 +1838,47 @@
     volEl.addEventListener("input", () => { volume = Number(volEl.value) || 0; muted = volume === 0; ensureAudio(); applyVolume(); savePrefs(); render(); });
     volEl.addEventListener("change", () => { if (!muted) chime(880, 0.25, 0.05); });
     const openShop = () => openModal("shop");
+    const openPrizes = (tab) => {
+      if (tab) {
+        document.querySelectorAll("#prizes-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.ptab === tab));
+        document.querySelectorAll("#modal-prizes .ptab").forEach((s) => { s.hidden = s.dataset.ptab !== tab; });
+      }
+      openModal("prizes");
+    };
     $("#btn-deposit").addEventListener("click", openShop);
     $("#btn-wallet").addEventListener("click", openShop);
+    const bp = $("#btn-prizes"); if (bp) bp.addEventListener("click", () => openPrizes("trophies"));
+    const bpp = $("#btn-prizes-panel"); if (bpp) bpp.addEventListener("click", () => openPrizes("trophies"));
+    const ptabs = $("#prizes-tabs");
+    if (ptabs) ptabs.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-ptab]"); if (!b) return;
+      ptabs.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      document.querySelectorAll("#modal-prizes .ptab").forEach((s) => { s.hidden = s.dataset.ptab !== b.dataset.ptab; });
+      if (b.dataset.ptab === "leaders") loadLeaderboard();
+    });
+    const nickForm = $("#nick-form"); if (nickForm) nickForm.addEventListener("submit", saveNickname);
+    const mlist = $("#mission-list");
+    if (mlist) mlist.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-claim]"); if (b) claimMission(b.dataset.claim);
+    });
+    const tgrid = $("#theme-grid");
+    if (tgrid) tgrid.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-theme]"); if (b && !b.disabled) chooseTheme(b.dataset.theme);
+    });
+    const lp = $("#lb-period");
+    if (lp) lp.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-period]"); if (!b) return;
+      lbPeriod = b.dataset.period;
+      lp.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      loadLeaderboard();
+    });
+    const lb = $("#lb-board");
+    if (lb) lb.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-board]"); if (!b) return;
+      lbBoard = b.dataset.board;
+      lb.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      loadLeaderboard();
+    });
     const packGrid = $("#pack-grid");
     if (packGrid) packGrid.addEventListener("click", (e) => {
       const card = e.target.closest("button[data-pack]");
@@ -1700,7 +1896,7 @@
         if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(tag) || document.querySelector(".modal:not([hidden])") || !ageAccepted()) return;
         e.preventDefault(); spin();
       }
-      if (e.key === "Escape") { ["shop", "auto", "info"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
+      if (e.key === "Escape") { ["shop", "auto", "info", "prizes"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
     });
     let rt = null;
     window.addEventListener("resize", () => { resizeCanvas(); clearTimeout(rt); rt = setTimeout(() => { layoutBadges(); clearLines(); if (!busy && mwCols) setMwBoard(mwCols); }, 120); });

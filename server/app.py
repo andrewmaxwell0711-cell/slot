@@ -34,6 +34,7 @@ load_dotenv(ROOT / ".env")
 
 import game  # noqa: E402
 import ledger  # noqa: E402
+import prizes  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
 ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js"}
@@ -150,6 +151,8 @@ def _config_payload() -> dict:
         "responsible_play": game.RESPONSIBLE_PLAY,
         "coin_scale": game.COIN_SCALE,
         "starting_coins": game.STARTING_COINS,
+        "prizes": prizes.catalogue(),
+        "prize_legal": prizes.PRIZE_LEGAL,
         "packs": [
             {
                 "id": p["id"],
@@ -246,6 +249,9 @@ def _public_snap(snap: dict, include_config: bool = False) -> dict:
         "gamble": snap["gamble"],
         "bonuses": snap["bonuses"],
     }
+    for key in ("profile", "trophies", "missions", "themes", "prize_legal", "level_up"):
+        if key in snap:
+            out[key] = snap[key]
     if include_config:
         out["config"] = _config_payload()
     if "awarded" in snap:
@@ -435,6 +441,55 @@ def api_bonus_hourly():
         out = _public_snap(ledger.snapshot(g.player_id))
         out["error"] = str(exc)
         out["hourly_seconds"] = getattr(exc, "seconds", 0)
+        return jsonify(out), 429
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(_public_snap(snap))
+
+
+
+@app.post("/api/profile")
+def api_profile():
+    data = request.get_json(silent=True) or {}
+    try:
+        snap = prizes.set_nickname(g.player_id, str(data.get("nickname") or ""))
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(_public_snap(snap))
+
+
+@app.post("/api/theme")
+def api_theme():
+    data = request.get_json(silent=True) or {}
+    try:
+        snap = prizes.set_theme(g.player_id, str(data.get("theme") or ""))
+    except prizes.ThemeLocked as exc:
+        return _json_error(str(exc), 403)
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(_public_snap(snap))
+
+
+@app.get("/api/leaderboard")
+def api_leaderboard():
+    period = str(request.args.get("period") or "daily").lower()
+    board = str(request.args.get("board") or "biggest").lower()
+    try:
+        prizes.settle_due_periods()
+        data = prizes.leaderboard(period, board, viewer_id=g.player_id)
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(data)
+
+
+@app.post("/api/missions/claim")
+def api_missions_claim():
+    data = request.get_json(silent=True) or {}
+    try:
+        snap = prizes.claim_mission(g.player_id, str(data.get("mission_id") or ""))
+    except prizes.MissionUnavailable as exc:
+        out = _public_snap(ledger.snapshot(g.player_id))
+        out["error"] = str(exc)
         return jsonify(out), 429
     except ValueError as exc:
         return _json_error(str(exc))

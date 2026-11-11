@@ -587,6 +587,234 @@ def test_coins_never_convert_out() -> None:
     assert h.get_json()["awarded"] == game.HOURLY_COINS
     assert client.post("/api/bonus/hourly").status_code == 429
 
+# ---- in-game prizes (virtual only) -----------------------------------------
+
+import prizes  # noqa: E402
+
+
+def test_trophy_unlock() -> None:
+    fresh_db()
+    pid = new_player(200)
+    set_pool(100000)
+    # Green Tea Jackpot
+    snap = ledger.settle_round(pid, 1, rnd(0), "COIN", jackpot_roll=JP)
+    ids = set(snap["trophies"]["unlocked"])
+    assert "greentea_jackpot" in ids
+    names = {t["id"] for t in snap["trophies"]["new"]}
+    assert "greentea_jackpot" in names
+    # second jackpot does not re-announce as a new unlock if already owned —
+    # still in unlocked, and new list may be empty
+    snap2 = ledger.settle_round(pid, 1, rnd(0), "COIN", jackpot_roll=JP)
+    assert "greentea_jackpot" in snap2["trophies"]["unlocked"]
+    assert "greentea_jackpot" not in {t["id"] for t in snap2["trophies"]["new"]}
+    # Big / Mega / Epic from win multiple (uncapped; large pool)
+    pid2 = new_player(400)
+    set_pool(100000)
+    big = ledger.settle_round(pid2, 1, rnd(20), "COIN", jackpot_roll=NO_JP)
+    assert "big_win" in big["trophies"]["unlocked"]
+    assert "mega_win" not in big["trophies"]["unlocked"]
+    mega = ledger.settle_round(pid2, 1, rnd(60), "COIN", jackpot_roll=NO_JP)
+    assert "mega_win" in mega["trophies"]["unlocked"]
+    epic = ledger.settle_round(pid2, 1, rnd(160), "COIN", jackpot_roll=NO_JP)
+    assert "epic_win" in epic["trophies"]["unlocked"]
+    # Free-spin trigger
+    pid3 = new_player(100)
+    set_pool(100000)
+    r = rnd(0, free=[0, 0, 0, 0, 0, 0, 0, 0])
+    r["base"]["free_spins_awarded"] = 8
+    fs = ledger.settle_round(pid3, 1, r, "COIN", jackpot_roll=NO_JP)
+    assert "free_spins" in fs["trophies"]["unlocked"]
+    # Mini games
+    r2 = rnd(0)
+    r2["minigames"] = [{"kind": "pick", "picks": [], "decoys": [], "tiles": 12, "raw_win_aud": 5.0}]
+    pk = ledger.settle_round(pid3, 1, r2, "COIN", jackpot_roll=NO_JP)
+    assert "crystal_pick" in pk["trophies"]["unlocked"]
+    r3 = rnd(0)
+    r3["minigames"] = [{"kind": "wheel", "wedges": [], "index": 0, "raw_win_aud": 2.0, "jackpot_pending": False}]
+    wh = ledger.settle_round(pid3, 1, r3, "COIN", jackpot_roll=NO_JP)
+    assert "tea_wheel" in wh["trophies"]["unlocked"]
+    # Level milestone
+    prizes.debug_set_level(pid3, 5)
+    assert "level_5" in prizes.unlocked_ids(pid3)
+    # Streak of 5 wins
+    pid4 = new_player(200)
+    set_pool(100000)
+    for _ in range(5):
+        st = ledger.settle_round(pid4, 1, rnd(1), "COIN", jackpot_roll=NO_JP)
+    assert "streak_5" in st["trophies"]["unlocked"]
+    assert st["profile"]["current_streak"] == 5
+
+
+def test_mission_progress_and_claim_once() -> None:
+    fresh_db()
+    pid = new_player(400)
+    set_pool(100000)
+    day = prizes.perth_date()
+    prizes.ensure_daily_missions(pid, day, ids=["spin_25", "win_10x", "trigger_fs"])
+    start = ledger.snapshot(pid)["coins"]
+    # one spin advances spin_25 only
+    ledger.settle_round(pid, 1, rnd(0), "COIN", jackpot_roll=NO_JP)
+    state = {m["id"]: m for m in prizes.mission_state(pid, day)}
+    assert state["spin_25"]["progress"] == 1
+    assert state["win_10x"]["progress"] == 0
+    assert not state["spin_25"]["claimable"]
+    try:
+        prizes.claim_mission(pid, "spin_25", day)
+        raise AssertionError("incomplete mission should not claim")
+    except prizes.MissionUnavailable:
+        pass
+    after_spin = ledger.snapshot(pid)["coins"]
+    assert after_spin == start - game.to_coins(1)
+    # finish win_10x in one hit
+    ledger.settle_round(pid, 1, rnd(12), "COIN", jackpot_roll=NO_JP)
+    state = {m["id"]: m for m in prizes.mission_state(pid, day)}
+    assert state["win_10x"]["complete"] and state["win_10x"]["claimable"]
+    before_claim = ledger.snapshot(pid)["coins"]
+    snap = prizes.claim_mission(pid, "win_10x", day)
+    assert snap["awarded"] == 5000
+    assert snap["coins"] == before_claim + 5000
+    try:
+        prizes.claim_mission(pid, "win_10x", day)
+        raise AssertionError("mission must be claim-once")
+    except prizes.MissionUnavailable as exc:
+        assert "already" in str(exc).lower()
+    assert ledger.snapshot(pid)["coins"] == before_claim + 5000
+    # trigger free spins mission
+    r = rnd(0, free=[0, 0])
+    r["base"]["free_spins_awarded"] = 2
+    ledger.settle_round(pid, 1, r, "COIN", jackpot_roll=NO_JP)
+    state = {m["id"]: m for m in prizes.mission_state(pid, day)}
+    assert state["trigger_fs"]["complete"]
+    # API claim-once
+    os.environ.pop("STRIPE_SECRET_KEY", None)
+    import app as app_module
+    client = app_module.app.test_client()
+    # bind this temp db player via cookie? easier to claim remaining via ledger.
+    claimed = prizes.claim_mission(pid, "trigger_fs", day)
+    assert claimed["awarded"] == 5000
+    # public snapshot still hides the pool
+    body = ledger.snapshot(pid)
+    assert "pool" not in str(body["missions"])
+    assert "cap" not in str(body["trophies"])
+
+
+def test_leaderboard_ordering_and_nickname_sanitising() -> None:
+    fresh_db()
+    set_pool(100000)
+    a, b, c = new_player(500), new_player(500), new_player(500)
+    prizes.set_nickname(a, "  Alpha Star  ")
+    prizes.set_nickname(b, "Bravo")
+    prizes.set_nickname(c, "Charlie")
+    # a: one huge win; b: several medium; c: small
+    ledger.settle_round(a, 1, rnd(80), "COIN", jackpot_roll=NO_JP)
+    for _ in range(5):
+        ledger.settle_round(b, 1, rnd(20), "COIN", jackpot_roll=NO_JP)
+    ledger.settle_round(c, 1, rnd(5), "COIN", jackpot_roll=NO_JP)
+    day = prizes.perth_date()
+    biggest = prizes.leaderboard("daily", "biggest", day, viewer_id=a)
+    assert [e["nickname"] for e in biggest["entries"][:3]] == ["Alpha Star", "Bravo", "Charlie"]
+    assert biggest["entries"][0]["score"] == game.to_coins(80)
+    assert biggest["me"]["place"] == 1
+    total = prizes.leaderboard("daily", "total", day, viewer_id=b)
+    assert total["entries"][0]["nickname"] == "Bravo"
+    assert total["entries"][0]["score"] == game.to_coins(100)
+    assert total["me"]["place"] == 1
+    weekly = prizes.leaderboard("weekly", "biggest")
+    assert weekly["entries"][0]["nickname"] == "Alpha Star"
+
+    # sanitising
+    assert prizes.sanitize_nickname("  Good  Name!! ") == "Good Name"
+    assert prizes.sanitize_nickname("<script>Bob</script>") == "Bob"
+    assert len(prizes.sanitize_nickname("A" * 40)) == 16
+    try:
+        prizes.sanitize_nickname("fuck")
+        raise AssertionError("profanity should be rejected")
+    except ValueError:
+        pass
+    try:
+        prizes.set_nickname(a, "shithead")
+        raise AssertionError("profane nickname should be rejected")
+    except ValueError:
+        pass
+    assert prizes.profile_public(a)["nickname"] == "Alpha Star"
+    try:
+        prizes.sanitize_nickname("x")
+        raise AssertionError("too short")
+    except ValueError:
+        pass
+    # closed-period payouts are idempotent and grant coins + badge
+    before = ledger.snapshot(a)["coins"]
+    paid = prizes.settle_leaderboard("daily", day, "biggest")
+    assert any(p["player_id"] == a and p["place"] == 1 and p["coins"] == 25000 for p in paid)
+    assert "lb_daily_gold" in prizes.unlocked_ids(a)
+    assert ledger.snapshot(a)["coins"] == before + 25000
+    paid2 = prizes.settle_leaderboard("daily", day, "biggest")
+    assert paid2 == []
+    assert ledger.snapshot(a)["coins"] == before + 25000
+
+    # API
+    os.environ.pop("STRIPE_SECRET_KEY", None)
+    import app as app_module
+    client = app_module.app.test_client()
+    r = client.post("/api/profile", json={"nickname": "NiceOne"})
+    assert r.status_code == 200
+    assert r.get_json()["profile"]["nickname"] == "NiceOne"
+    bad = client.post("/api/profile", json={"nickname": "fuckyou"})
+    assert bad.status_code == 400
+    lb = client.get("/api/leaderboard?period=daily&board=biggest")
+    assert lb.status_code == 200
+    body = lb.get_data(as_text=True)
+    for k in ("pool", "max_win", "cap_aud"):
+        assert k not in body
+
+
+def test_themes_locked_until_level() -> None:
+    fresh_db()
+    pid = new_player(50)
+    themes = {t["id"]: t for t in prizes.themes_public(pid)}
+    assert themes["crystal"]["unlocked"] and themes["crystal"]["selected"]
+    assert not themes["ruby"]["unlocked"]
+    assert not themes["jade"]["unlocked"]
+    assert not themes["sapphire"]["unlocked"]
+    try:
+        prizes.set_theme(pid, "ruby")
+        raise AssertionError("ruby should be locked at level 1")
+    except prizes.ThemeLocked:
+        pass
+    assert prizes.profile_public(pid)["theme"] == "crystal"
+    prizes.debug_set_level(pid, 2)
+    prizes.set_theme(pid, "ruby")
+    assert prizes.profile_public(pid)["theme"] == "ruby"
+    themes = {t["id"]: t for t in prizes.themes_public(pid)}
+    assert themes["ruby"]["unlocked"] and themes["ruby"]["selected"]
+    assert not themes["jade"]["unlocked"]
+    try:
+        prizes.set_theme(pid, "jade")
+        raise AssertionError("jade should stay locked")
+    except prizes.ThemeLocked:
+        pass
+    prizes.debug_set_level(pid, 5)
+    prizes.set_theme(pid, "jade")
+    assert prizes.profile_public(pid)["theme"] == "jade"
+    prizes.debug_set_level(pid, 8)
+    prizes.set_theme(pid, "sapphire")
+    assert prizes.profile_public(pid)["theme"] == "sapphire"
+
+    os.environ.pop("STRIPE_SECRET_KEY", None)
+    import app as app_module
+    client = app_module.app.test_client()
+    locked = client.post("/api/theme", json={"theme": "ruby"})
+    assert locked.status_code == 403
+    ok = client.post("/api/theme", json={"theme": "crystal"})
+    assert ok.status_code == 200
+    assert ok.get_json()["profile"]["theme"] == "crystal"
+    # no cap leak
+    for path in ("/api/balance", "/api/config"):
+        text = client.get(path).get_data(as_text=True)
+        for k in ("pool", "max_win", "cap_aud", "cap_fraction"):
+            assert k not in text, (path, k)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     for t in tests:

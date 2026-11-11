@@ -125,6 +125,8 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         """
     )
     _migrate(c)
+    from prizes import ensure_schema
+    ensure_schema(c)
 
 
 @contextmanager
@@ -246,7 +248,7 @@ def snapshot(player_id: str) -> dict[str, Any]:
     conn = get_conn()
     stats = _player_stats(conn, player_id)
     coins = _coin_balance(conn, player_id)
-    return {
+    out = {
         "coins": coins,
         "stats": {
             "spins": stats["spins"],
@@ -257,6 +259,8 @@ def snapshot(player_id: str) -> dict[str, Any]:
         "gamble": to_coins(stats["gamble_aud"]),
         "bonuses": _bonus_status(conn, player_id),
     }
+    from prizes import attach
+    return attach(player_id, out)
 
 
 def _credit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float) -> None:
@@ -544,7 +548,12 @@ def settle_round(
             """,
             (total_bet_aud, total_paid, total_paid, total_paid if total_paid > 0 else 0.0, player_id),
         )
+    from prizes import after_spin
+    prize = after_spin(player_id, total_bet_aud, total_paid, jackpot_paid, rnd, results)
     snap = snapshot(player_id)
+    snap["trophies"]["new"] = prize.get("trophies", {}).get("new") or []
+    if prize.get("level_up"):
+        snap["level_up"] = prize["level_up"]
     snap["steps"] = results
     snap["total_paid_aud"] = total_paid
     snap["jackpot_hit"] = jackpot_paid > 0

@@ -30,6 +30,7 @@
         <button id="btn-mute" class="icon-btn" type="button" title="Mute / unmute" aria-label="Mute or unmute">🔊</button>
         <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume" title="Master volume" />
       </div>
+      <button id="btn-prizes" class="btn btn-outline" type="button">Prizes</button>
       <button id="btn-wallet" class="btn btn-gold" type="button">Buy Coins</button>
     </div>
   </header>
@@ -152,6 +153,13 @@
         <button type="button" class="btn btn-outline" id="btn-daily-panel">Daily bonus</button>
         <button type="button" class="btn btn-outline" id="btn-hourly-panel">Hourly bonus</button>
       </div>
+      <div class="wallet-actions">
+        <button type="button" class="btn btn-outline" id="btn-prizes-panel">Trophy cabinet</button>
+      </div>
+      <div class="profile-chip" id="profile-chip">
+        <span id="profile-nick">Hopper</span>
+        <span id="profile-level">LV 1</span>
+      </div>
       <div class="stats">
         <div><span>Spins</span><strong id="stat-spins">0</strong></div>
         <div><span>Total won</span><strong id="stat-won">0</strong></div>
@@ -246,6 +254,68 @@
         <label class="check"><input type="checkbox" id="auto-turbo" /> Turbo (fast reels)</label>
         <button id="auto-start" class="btn btn-primary btn-block" type="button">Start auto spin</button>
       </div>
+    </div>
+  </div>
+
+
+  <!-- Prizes: trophies, missions, leaderboards, themes -->
+  <div class="modal" id="modal-prizes" hidden>
+    <div class="modal-backdrop" data-close="prizes"></div>
+    <div class="modal-card wide prizes-card" role="dialog" aria-labelledby="prizes-title">
+      <header>
+        <h2 id="prizes-title">Prizes</h2>
+        <button class="icon-btn" type="button" data-close="prizes" aria-label="Close">✕</button>
+      </header>
+      <div class="tabs" id="prizes-tabs">
+        <button type="button" data-ptab="trophies" class="active">Trophies</button>
+        <button type="button" data-ptab="missions">Missions</button>
+        <button type="button" data-ptab="leaders">Leaders</button>
+        <button type="button" data-ptab="themes">Themes</button>
+      </div>
+      <div class="modal-body scroll">
+        <p class="legal-note" id="prize-legal">All in-game prizes are for entertainment only. Trophies, themes, badges and bonus coins have no cash or real-world value and cannot be redeemed for money or prizes.</p>
+        <section class="ptab" data-ptab="trophies">
+          <form class="nick-row" id="nick-form">
+            <label for="nickname">Player name</label>
+            <input id="nickname" name="nickname" maxlength="16" autocomplete="off" placeholder="Your nickname" />
+            <button type="submit" class="btn btn-gold" id="btn-nick-save">Save</button>
+          </form>
+          <p class="hint">2–16 letters or numbers. This name appears on leaderboards.</p>
+          <div class="trophy-grid" id="trophy-grid"></div>
+        </section>
+        <section class="ptab" data-ptab="missions" hidden>
+          <p class="hint">Three daily missions (Australia/Perth). Claim virtual coin or cosmetic rewards once each.</p>
+          <div class="mission-list" id="mission-list"></div>
+        </section>
+        <section class="ptab" data-ptab="leaders" hidden>
+          <div class="leader-controls">
+            <div class="seg" id="lb-period">
+              <button type="button" data-period="daily" class="active">Daily</button>
+              <button type="button" data-period="weekly">Weekly</button>
+            </div>
+            <div class="seg" id="lb-board">
+              <button type="button" data-board="biggest" class="active">Biggest win</button>
+              <button type="button" data-board="total">Total won</button>
+            </div>
+          </div>
+          <p class="hint" id="lb-hint">Top 3 at the end of each Perth day or week earn bonus coins and an exclusive badge. Coins only — no cash value.</p>
+          <ol class="leader-list" id="leader-list"></ol>
+          <p class="hint" id="lb-me"></p>
+        </section>
+        <section class="ptab" data-ptab="themes" hidden>
+          <p class="hint">Unlock extra reel skins as you level up. Crystal is yours from the start.</p>
+          <div class="theme-grid" id="theme-grid"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="trophy-toast" id="trophy-toast" hidden>
+    <div class="trophy-toast-inner">
+      <div class="trophy-toast-icon" id="trophy-toast-icon">🏆</div>
+      <div class="trophy-toast-kicker">TROPHY UNLOCKED</div>
+      <div class="trophy-toast-title" id="trophy-toast-title"></div>
+      <div class="trophy-toast-sub" id="trophy-toast-sub"></div>
     </div>
   </div>
 

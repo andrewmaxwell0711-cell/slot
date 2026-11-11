@@ -28,6 +28,20 @@ Shop prices are what Stripe charges in AUD. The coins themselves have no cash va
 
 Classic bets: 20–4,000 coins per line (1/5/10/20/25 lines). Megaways bets: 200–100,000 coins.
 
+
+## In-game prizes (virtual only)
+
+All prizes are cosmetic or virtual coins. They have **no cash or real-world value** and cannot be redeemed, transferred, or exchanged for money or prizes.
+
+- **Trophies & badges** for the Green Tea Jackpot, Big/Mega/Epic wins, free-spin triggers, Crystal Pick and Tea Wheel, level milestones, and win streaks. New unlocks play a toast and a sound. The **trophy cabinet** is in the Prizes panel.
+- **Unlockable themes**: Crystal (default), Ruby Palace (level 2), Jade Garden (level 5), Sapphire Night (level 8). The theme picker only applies a skin the player has unlocked.
+- **Missions**: three daily rotating missions (Australia/Perth), tracked on the server, with a progress bar and a one-time claim for bonus coins or a cosmetic badge.
+- **Leaderboards**: daily and weekly (Perth time) top players by biggest win and total won, computed from real spin records. Players set a nickname (2–16 characters, sanitised, basic profanity filter). When a period ends, top 3 receive promotional coins and an exclusive badge.
+
+XP and level are server-authoritative. Mission and leaderboard coin grants are promotional house grants, like the daily chest — they do not change RTP or the hidden 20% cap.
+
+New routes: `POST /api/profile`, `POST /api/theme`, `GET /api/leaderboard`, `POST /api/missions/claim`.
+
 ## Features
 
 - Megaways (up to 117,649 ways, tumbling reels, unlimited free-spin multiplier) and 25-line Classic, with Green Tea Jackpot, Crystal Pick, Tea Wheel, and red/black gamble
@@ -151,7 +165,7 @@ Removed (return 404): `/api/withdraw`, `/api/deposit/checkout`, `/api/deposit/pl
 .venv/bin/python server/test_cap.py
 ```
 
-Coverage includes the hidden 20% cap, jackpot = cap, multi-line and Megaways evaluation, gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, and **coins never converting out**.
+Coverage includes the hidden 20% cap, jackpot = cap, multi-line and Megaways evaluation, gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, and **themes locked until level**.
 
 ## Deploy on Render
 
