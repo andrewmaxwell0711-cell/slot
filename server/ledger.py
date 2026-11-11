@@ -231,12 +231,23 @@ def _bonus_status(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
                 remaining = int(max(0, HOURLY_SECONDS - elapsed))
         except ValueError:
             hourly_available = True
+    # VIP tiers bump the free hourly (and a little of the daily) grant.
+    daily_coins, hourly_coins = DAILY_COINS, HOURLY_COINS
+    try:
+        import prizes as _prizes
+        row2 = conn.execute("SELECT level FROM players WHERE id = ?", (player_id,)).fetchone()
+        level = int((row2["level"] if row2 else 1) or 1)
+        vip = _prizes.vip_for_level(level)
+        daily_coins = int(vip["daily_coins"])
+        hourly_coins = int(vip["hourly_coins"])
+    except Exception:
+        pass
     return {
         "daily_available": daily_available,
-        "daily_coins": DAILY_COINS,
+        "daily_coins": daily_coins,
         "hourly_available": hourly_available,
         "hourly_seconds": remaining,
-        "hourly_coins": HOURLY_COINS,
+        "hourly_coins": hourly_coins,
         "starting_coins": STARTING_COINS,
     }
 
@@ -257,6 +268,19 @@ def snapshot(player_id: str) -> dict[str, Any]:
         "last_win": to_coins(stats["last_win_aud"]),
         "gamble": to_coins(stats["gamble_aud"]),
         "bonuses": _bonus_status(conn, player_id),
+        "progressive": progressive_public()["progressive"],
+    }
+    import json as _json
+    from game import COLLECT_SET, COLLECT_TYPES, COLLECT_PAY_MULT
+    rowm = conn.execute("SELECT collect_meter FROM players WHERE id = ?", (player_id,)).fetchone()
+    try:
+        meter = _json.loads(rowm["collect_meter"] if rowm and "collect_meter" in rowm.keys() and rowm["collect_meter"] else "{}")
+    except Exception:
+        meter = {}
+    out["collection"] = {
+        "meter": {k: int(meter.get(k) or 0) for k in COLLECT_TYPES},
+        "set_size": COLLECT_SET,
+        "pay_mult": COLLECT_PAY_MULT,
     }
     from prizes import attach
     return attach(player_id, out)
@@ -382,7 +406,8 @@ def claim_daily(player_id: str) -> dict[str, Any]:
         status = _bonus_status(conn, player_id)
         if not status["daily_available"]:
             raise BonusUnavailable("Daily bonus already claimed — come back tomorrow")
-        _credit(conn, player_id, COIN_ASSET, DAILY_COINS)
+        awarded = int(status["daily_coins"])
+        _credit(conn, player_id, COIN_ASSET, awarded)
         conn.execute(
             "UPDATE players SET last_daily_date = ? WHERE id = ?",
             (today, player_id),
@@ -393,10 +418,10 @@ def claim_daily(player_id: str) -> dict[str, Any]:
                 (player_id, kind, asset, amount, note, created_at)
             VALUES (?, 'daily_bonus', ?, ?, 'Free daily coins — no cash value', ?)
             """,
-            (player_id, COIN_ASSET, DAILY_COINS, _utc_now()),
+            (player_id, COIN_ASSET, awarded, _utc_now()),
         )
     snap = snapshot(player_id)
-    snap["awarded"] = DAILY_COINS
+    snap["awarded"] = awarded
     snap["bonus"] = "daily"
     return snap
 
@@ -411,7 +436,8 @@ def claim_hourly(player_id: str) -> dict[str, Any]:
                 "Hourly bonus is not ready yet",
                 seconds=status["hourly_seconds"],
             )
-        _credit(conn, player_id, COIN_ASSET, HOURLY_COINS)
+        awarded = int(status["hourly_coins"])
+        _credit(conn, player_id, COIN_ASSET, awarded)
         conn.execute(
             "UPDATE players SET last_hourly_at = ? WHERE id = ?",
             (_utc_now(), player_id),
@@ -422,10 +448,10 @@ def claim_hourly(player_id: str) -> dict[str, Any]:
                 (player_id, kind, asset, amount, note, created_at)
             VALUES (?, 'hourly_bonus', ?, ?, 'Free hourly coins — no cash value', ?)
             """,
-            (player_id, COIN_ASSET, HOURLY_COINS, _utc_now()),
+            (player_id, COIN_ASSET, awarded, _utc_now()),
         )
     snap = snapshot(player_id)
-    snap["awarded"] = HOURLY_COINS
+    snap["awarded"] = awarded
     snap["bonus"] = "hourly"
     return snap
 
@@ -445,16 +471,35 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE players ADD COLUMN last_daily_date TEXT")
     if "last_hourly_at" not in cols:
         conn.execute("ALTER TABLE players ADD COLUMN last_hourly_at TEXT")
+    if "collect_meter" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN collect_meter TEXT NOT NULL DEFAULT '{}'")
+    house_cols = {r["name"] for r in conn.execute("PRAGMA table_info(house)").fetchall()}
+    if "progressive_aud" not in house_cols:
+        conn.execute("ALTER TABLE house ADD COLUMN progressive_aud REAL NOT NULL DEFAULT 25")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS side_sessions (
+            player_id TEXT PRIMARY KEY,
+            game TEXT NOT NULL,
+            state TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
 
 
 def _house_row(conn: sqlite3.Connection) -> dict[str, float]:
     row = conn.execute(
-        "SELECT pool_aud, total_staked_aud, total_paid_aud, biggest_win_aud FROM house WHERE id = 1"
+        "SELECT pool_aud, total_staked_aud, total_paid_aud, biggest_win_aud, progressive_aud FROM house WHERE id = 1"
     ).fetchone()
     if not row:
         conn.execute("INSERT OR IGNORE INTO house (id) VALUES (1)")
-        return {"pool_aud": 0.0, "total_staked_aud": 0.0, "total_paid_aud": 0.0, "biggest_win_aud": 0.0}
-    return {k: float(row[k]) for k in row.keys()}
+        return {"pool_aud": 0.0, "total_staked_aud": 0.0, "total_paid_aud": 0.0, "biggest_win_aud": 0.0,
+                "progressive_aud": 25.0}
+    out = {k: float(row[k]) for k in row.keys() if k in row.keys()}
+    if "progressive_aud" not in out:
+        out["progressive_aud"] = 25.0
+    return out
 
 
 def pool_status() -> dict[str, Any]:
@@ -466,6 +511,19 @@ def pool_status() -> dict[str, Any]:
         "total_staked_aud": round(h["total_staked_aud"], 2),
         "total_paid_aud": round(h["total_paid_aud"], 2),
         "biggest_win_aud": round(h["biggest_win_aud"], 2),
+        "progressive_aud": round(float(h.get("progressive_aud") or 25), 2),
+    }
+
+
+def progressive_public() -> dict[str, Any]:
+    """Published progressive ticker in coins. Never includes the hidden house pool."""
+    from game import PROG_SEED, PROG_RATE, PROG_HIT_P, to_coins
+    h = _house_row(get_conn())
+    pot = max(float(h.get("progressive_aud") or PROG_SEED), 0.0)
+    return {
+        "progressive": to_coins(pot),
+        "seed": to_coins(PROG_SEED),
+        "contribution_rate": PROG_RATE,
     }
 
 
@@ -526,16 +584,50 @@ def settle_round(
         any_capped = settled["any_capped"]
         pool = settled["pool_after"]
         total_paid = round(total_paid, 2)
+
+        import json as _json
+        from game import collection_step, progressive_step, PROG_SEED
+        pot = float(h.get("progressive_aud") or PROG_SEED)
+        prog = progressive_step(total_bet_aud, pot)
+        # Force a provided progressive roll in tests via rnd hook.
+        if rnd.get("_force_progressive") is True:
+            prog = {"contribution": total_bet_aud * 0.01, "pot": PROG_SEED, "hit": True,
+                    "paid_aud": round(pot + total_bet_aud * 0.01, 2)}
+        elif rnd.get("_force_progressive") is False:
+            prog["hit"] = False
+            prog["paid_aud"] = 0.0
+            prog["pot"] = pot + total_bet_aud * 0.01
+        prog_paid = float(prog["paid_aud"] or 0)
+        rowm = conn.execute("SELECT collect_meter FROM players WHERE id = ?", (player_id,)).fetchone()
+        try:
+            meter = _json.loads(rowm["collect_meter"] if rowm and rowm["collect_meter"] else "{}")
+        except Exception:
+            meter = {}
+        coll = collection_step(total_bet_aud, meter)
+        if rnd.get("_force_collection"):
+            coll = dict(coll)
+            # tests may inject a completed set
+        coll_paid = float(coll.get("paid_aud") or 0)
+        extra = round(prog_paid + coll_paid, 2)
+        if extra:
+            total_paid = round(total_paid + extra, 2)
+            pool = max(0.0, round(pool - extra, 6))
         _pay(conn, player_id, total_paid, "spin_win",
-             f"win {to_coins(total_paid)} coins" + (" (jackpot)" if jackpot_paid else ""))
+             f"win {to_coins(total_paid)} coins" + (" (jackpot)" if jackpot_paid else "")
+             + (" (progressive)" if prog_paid else "") + (" (collection)" if coll_paid else ""))
         now = _utc_now()
         conn.execute(
             """
             UPDATE house SET pool_aud = ?, total_staked_aud = total_staked_aud + ?,
-                total_paid_aud = total_paid_aud + ?, biggest_win_aud = MAX(biggest_win_aud, ?), updated_at = ?
+                total_paid_aud = total_paid_aud + ?, biggest_win_aud = MAX(biggest_win_aud, ?),
+                progressive_aud = ?, updated_at = ?
             WHERE id = 1
             """,
-            (round(pool, 6), total_bet_aud, total_paid, total_paid, now),
+            (round(pool, 6), total_bet_aud, total_paid, total_paid, float(prog["pot"]), now),
+        )
+        conn.execute(
+            "UPDATE players SET collect_meter = ? WHERE id = ?",
+            (_json.dumps(coll["meter"]), player_id),
         )
         conn.execute(
             """
@@ -547,6 +639,10 @@ def settle_round(
             (total_bet_aud, total_paid, total_paid, total_paid if total_paid > 0 else 0.0, player_id),
         )
     from prizes import after_spin
+    if prog.get("hit"):
+        rnd["_progressive_hit"] = True
+    if coll.get("completed"):
+        rnd["_collection_completed"] = True
     prize = after_spin(player_id, total_bet_aud, total_paid, jackpot_paid, rnd, results)
     snap = snapshot(player_id)
     snap["trophies"]["new"] = prize.get("trophies", {}).get("new") or []
@@ -557,6 +653,16 @@ def settle_round(
     snap["jackpot_hit"] = jackpot_paid > 0
     snap["jackpot_paid_aud"] = jackpot_paid
     snap["any_capped"] = any_capped
+    snap["progressive"] = to_coins(prog["pot"])
+    snap["progressive_hit"] = bool(prog["hit"])
+    snap["progressive_paid"] = to_coins(prog_paid)
+    snap["collection"] = {
+        "meter": coll["meter"],
+        "added": coll.get("added"),
+        "completed": coll.get("completed"),
+        "paid": to_coins(coll_paid),
+        "set_size": coll.get("set_size"),
+    }
     return snap
 
 
@@ -616,3 +722,202 @@ def gamble_collect(player_id: str) -> dict[str, Any]:
 
 class GambleUnavailable(ValueError):
     pass
+
+
+# ---------------------------------------------------------------------------
+# Side games (lobby). Bets are integer coins; outcomes come from side.py.
+# ---------------------------------------------------------------------------
+
+def _take_coins(conn: sqlite3.Connection, player_id: str, coins: int, kind: str, note: str) -> None:
+    coins = int(coins)
+    if coins <= 0:
+        raise ValueError("Invalid bet")
+    if _coin_balance(conn, player_id) < coins:
+        raise ValueError("Not enough coins — claim a free bonus or buy coins in the shop")
+    _debit(conn, player_id, COIN_ASSET, coins)
+    conn.execute(
+        "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (player_id, kind, COIN_ASSET, coins, note, _utc_now()),
+    )
+
+
+def _pay_coins(conn: sqlite3.Connection, player_id: str, coins: int, kind: str, note: str) -> None:
+    coins = int(coins)
+    if coins <= 0:
+        return
+    _credit(conn, player_id, COIN_ASSET, coins)
+    conn.execute(
+        "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (player_id, kind, COIN_ASSET, coins, note, _utc_now()),
+    )
+
+
+def side_session(player_id: str) -> dict | None:
+    ensure_player(player_id)
+    import json as _json
+    import side as _side
+    row = get_conn().execute(
+        "SELECT game, state FROM side_sessions WHERE player_id = ?", (player_id,)
+    ).fetchone()
+    if not row:
+        return None
+    state = _json.loads(row["state"])
+    return {"game": row["game"], **_side.public_state(state)}
+
+
+def clear_side_session(player_id: str) -> None:
+    with transaction() as conn:
+        conn.execute("DELETE FROM side_sessions WHERE player_id = ?", (player_id,))
+
+
+def play_side(player_id: str, game: str, payload: dict | None = None) -> dict:
+    """Debit/credit coins around a side-game action and persist any open hand."""
+    import json as _json
+    import side as _side
+    payload = payload or {}
+    game = str(game or "").lower().strip()
+    if game not in _side.GAMES:
+        raise ValueError("Unknown game")
+    ensure_player(player_id)
+    action = str(payload.get("action") or "").lower().strip()
+
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT game, state FROM side_sessions WHERE player_id = ?", (player_id,)
+        ).fetchone()
+        existing = _json.loads(row["state"]) if row else None
+        existing_game = row["game"] if row else None
+
+        def _save(state: dict | None) -> None:
+            if state is None or state.get("done"):
+                conn.execute("DELETE FROM side_sessions WHERE player_id = ?", (player_id,))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO side_sessions (player_id, game, state, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(player_id) DO UPDATE SET game = excluded.game, state = excluded.state,
+                        updated_at = excluded.updated_at
+                    """,
+                    (player_id, game, _json.dumps(state), _utc_now()),
+                )
+
+        def _finish(state: dict, debit: int, payout: int) -> dict:
+            # debit already taken; credit payout (includes returned stakes where the rules pay them)
+            _pay_coins(conn, player_id, int(payout), "side_win", f"{game} payout {int(payout)} coins")
+            pub = _side.public_state(state)
+            pub["coins"] = _coin_balance(conn, player_id)
+            return pub
+
+        # --- one-shot games ---
+        if game == "roulette":
+            if existing:
+                raise ValueError("Finish your current game first")
+            bets = payload.get("bets") or []
+            result = _side.roulette_spin(bets)
+            _take_coins(conn, player_id, result["bet"], "side_bet", f"roulette {result['bet']} coins")
+            _save(None)
+            return _finish(result, result["bet"], result["payout"])
+
+        if game == "scratch":
+            if existing:
+                raise ValueError("Finish your current game first")
+            result = _side.scratch_play(payload.get("bet") or payload.get("coins") or 0)
+            _take_coins(conn, player_id, result["bet"], "side_bet", f"scratch {result['bet']} coins")
+            _save(None)
+            return _finish(result, result["bet"], result["payout"])
+
+        if game == "dice":
+            if existing:
+                raise ValueError("Finish your current game first")
+            result = _side.dice_play(payload.get("bet") or payload.get("coins") or 0)
+            _take_coins(conn, player_id, result["bet"], "side_bet", f"dice {result['bet']} coins")
+            _save(None)
+            return _finish(result, result["bet"], result["payout"])
+
+        if game == "highcard":
+            if existing and existing.get("awaiting_war"):
+                if action == "push":
+                    # Stake already taken; pay the push (return bet) and close.
+                    payout = int(existing.get("payout") or existing.get("bet") or 0)
+                    existing["done"] = True
+                    existing["result"] = "push"
+                    existing["awaiting_war"] = False
+                    _save(None)
+                    return _finish(existing, 0, payout)
+                if action == "war":
+                    extra = int(existing["bet"])
+                    _take_coins(conn, player_id, extra, "side_bet", f"highcard war {extra} coins")
+                    result = _side.highcard_play(extra, war=True, previous=existing)
+                    _save(None)
+                    return _finish(result, extra, result["payout"])
+                raise ValueError("Choose war or push")
+            if existing:
+                raise ValueError("Finish your current game first")
+            want_offer = bool(payload.get("war_option") or payload.get("war"))
+            result = _side.highcard_play(payload.get("bet") or payload.get("coins") or 0, war=want_offer)
+            _take_coins(conn, player_id, result["bet"], "side_bet", f"highcard {result['bet']} coins")
+            if result.get("awaiting_war"):
+                _save(result)
+                pub = _side.public_state(result)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            _save(None)
+            return _finish(result, result["bet"], result["payout"])
+
+        if game == "mines":
+            if action in ("", "start", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                state = _side.mines_start(payload.get("bet") or payload.get("coins") or 0,
+                                          payload.get("mines") or 3)
+                _take_coins(conn, player_id, state["bet"], "side_bet", f"mines {state['bet']} coins")
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "mines":
+                raise ValueError("No Crystal Mines round in play")
+            if action == "pick":
+                state = _side.mines_pick(existing, payload.get("tile"))
+            elif action in ("cashout", "cash_out", "collect"):
+                state = _side.mines_cashout(existing)
+            else:
+                raise ValueError("Unknown mines action")
+            if state.get("done"):
+                _save(None)
+                return _finish(state, 0, int(state.get("payout") or 0))
+            _save(state)
+            pub = _side.public_state(state)
+            pub["coins"] = _coin_balance(conn, player_id)
+            return pub
+
+        if game == "blackjack":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                bet = int(payload.get("bet") or payload.get("coins") or 0)
+                state = _side.blackjack_deal(bet)
+                _take_coins(conn, player_id, bet, "side_bet", f"blackjack {bet} coins")
+                if state.get("done"):
+                    _save(None)
+                    return _finish(state, bet, int(state.get("payout") or 0))
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "blackjack":
+                raise ValueError("No blackjack hand in play")
+            extra = _side.blackjack_extra_needed(existing, action)
+            if extra:
+                _take_coins(conn, player_id, extra, "side_bet", f"blackjack {action} {extra} coins")
+            state = _side.blackjack_act(existing, action, extra)
+            if state.get("done"):
+                _save(None)
+                return _finish(state, extra, int(state.get("payout") or 0))
+            _save(state)
+            pub = _side.public_state(state)
+            pub["coins"] = _coin_balance(conn, player_id)
+            return pub
+
+        raise ValueError("Unknown game")

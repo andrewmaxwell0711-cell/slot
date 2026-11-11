@@ -450,25 +450,29 @@ def test_wheel_jackpot_wedge_pays_fixed_multiple() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(19_999)
-    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True)]), "AUD", NO_JP, lambda s, p: True)
+    # Landing on the jackpot wedge always pays the jackpot — no second roll, no near miss.
+    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 0.0)]), "AUD", NO_JP)
     w = snap["steps"][1]
     prize = game.jackpot_amount(1)
     assert w["kind"] == "wheel" and w["wheel_jackpot"] and w["wheel_index"] == 11
     assert w["paid_aud"] == 0 and w["jackpot_aud"] == prize
-    # miss: ticks on to the neighbouring 2x wedge
-    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True, fallback=0)]), "AUD", NO_JP, lambda s, p: False)
+    # A non-jackpot wedge pays its published multiple and never "almost" the jackpot.
+    snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(0, 2.0)]), "AUD", NO_JP)
     w = snap["steps"][1]
     assert not w["wheel_jackpot"] and w["wheel_index"] == 0 and w["paid_aud"] == 2.0 and w["jackpot_aud"] == 0
 
 
-def test_wheel_jackpot_probability_is_fixed() -> None:
-    assert game.wheel_jackpot_probability(0) == 0.0
-    p = game.wheel_jackpot_probability(1)
-    assert p == game.WHEEL_JP_P
-    for pool in (0, 10, 1_000_000):
-        assert game.wheel_jackpot_probability(1, pool) == p
-    # EV if the jackpot wedge is already landed: p * 5000× bet
-    assert abs(p * game.JACKPOT_MULT - (game.WHEEL_JP_P * game.JACKPOT_MULT)) < 1e-12
+def test_wheel_jackpot_wedge_is_weight_proportional() -> None:
+    total = sum(w["weight"] for w in game.WHEEL_WEDGES)
+    jp = game.WHEEL_WEDGES[game.WHEEL_JACKPOT_INDEX]
+    assert jp["type"] == "jackpot"
+    share = jp["weight"] / total
+    angles = game.wheel_wedge_angles()
+    assert abs(angles[game.WHEEL_JACKPOT_INDEX] - 360 * share) < 1e-9
+    # Thin sliver: much smaller than a regular wedge, never an equal 1/12 share.
+    regular = game.WHEEL_WEDGES[0]["weight"] / total
+    assert share < regular / 10
+    assert share * game.JACKPOT_MULT < 5  # modest EV given a wheel spin
 
 
 def test_minigame_shapes() -> None:
@@ -484,7 +488,9 @@ def test_minigame_shapes() -> None:
         elif wedge["type"] == "free_spins":
             assert w["free_spins"] == wedge["value"] and w["raw_win_aud"] == 0
         else:
-            assert w["jackpot_pending"] and game.WHEEL_WEDGES[w["fallback_index"]]["type"] == "mult"
+            assert w.get("jackpot") and w["index"] == game.WHEEL_JACKPOT_INDEX
+            assert not w.get("jackpot_pending") and "fallback_index" not in w
+            assert w["raw_win_aud"] == 0
 
 
 def test_pool_never_negative_random_megaways() -> None:

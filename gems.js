@@ -241,6 +241,17 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">${b}</svg>`;
   }
 
+
+  function coinSVG() {
+    const g = [];
+    g.push(`<circle cx="60" cy="60" r="44" fill="#7a4e00"/>`);
+    g.push(`<circle cx="60" cy="60" r="40" fill="#f3c441"/>`);
+    g.push(`<circle cx="60" cy="60" r="34" fill="none" stroke="#fff3b0" stroke-width="2.2" opacity=".85"/>`);
+    g.push(`<circle cx="60" cy="60" r="28" fill="#d4a017"/>`);
+    g.push(`<polygon points="60,38 64,54 81,54 67,64 72,80 60,70 48,80 53,64 39,54 56,54" fill="#fff3b0"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">${g.join("")}</svg>`;
+  }
+
   const SPECS = {
     quartz: { hue: 330, sat: 85, light: 64, build: () => brilliant(outlineHeart(24), 330, 85, 64, 11) },
     citrine: { hue: 46, sat: 95, light: 55, build: () => brilliant(outlineTrillion(18), 46, 95, 55, 12) },
@@ -258,6 +269,7 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     if (id === "wild") out = wildSVG();
     else if (id === "scatter") out = scatterSVG();
     else if (id === "shard") out = shardSVG();
+    else if (id === "coin") out = coinSVG();
     else if (SPECS[id]) out = gemSVG(id, SPECS[id]);
     else out = shardSVG();
     cache[id] = out;
@@ -279,5 +291,5 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     });
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${b}${sparkle(60, 8, 7)}</svg>`);
   }
-  window.CrystalGems = { svg, url, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard"]) };
+  window.CrystalGems = { svg, url, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin"]) };
 })();

@@ -54,7 +54,7 @@ New routes: `POST /api/profile`, `POST /api/theme`, `GET /api/leaderboard`, `POS
 
 The house pool remains an **internal stat only** — it does not limit wins. `/api/pool` stays 404. Cap and max-win fields are never sent to players.
 
-The paytable is tuned for a long-run **return to player of ~95%** in both Megaways and Classic, including tumbles, free spins, mini games and the Green Tea Jackpot (a published **5,000× total bet** prize). There is no per-spin payout cap. Confirm with:
+The paytable is tuned for a long-run **return to player of ~95%** in both Megaways and Classic, including tumbles, free spins, mini games, Hold & Spin, surprise wilds, the Crystal Collection, the Crystal Crown progressive and the Green Tea Jackpot (a published **5,000× total bet** prize). There is no per-spin payout cap. The Tea Wheel is honest: wedge sizes match true weights and landing on the jackpot sliver always pays. Confirm with:
 
 ```bash
 .venv/bin/python server/simulate_rtp.py
@@ -165,7 +165,7 @@ Removed (return 404): `/api/withdraw`, `/api/deposit/checkout`, `/api/deposit/pl
 .venv/bin/python server/test_cap.py
 ```
 
-Coverage includes uncapped payouts, the fixed Green Tea Jackpot (5,000× bet), multi-line and Megaways evaluation, fair 50/50 gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, and **themes locked until level**.
+Coverage includes uncapped payouts, the fixed Green Tea Jackpot (5,000× bet), an honest weight-proportional Tea Wheel, multi-line and Megaways evaluation, fair 50/50 gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, **themes locked until level**, plus v6 Hold & Spin, progressive, collection, VIP, weekend tournament, and side-game rules/house edges (`server/test_v6.py`).
 
 ## Deploy on Render
 
@@ -209,7 +209,10 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 | `server/app.py` | Flask app: static files, Stripe shop, API |
 | `server/ledger.py` | SQLite ledger (coins, bonuses, idempotent pack credit) |
 | `server/game.py` | Symbol weights, RNG, paytables, coin scale (~95% RTP) |
-| `server/simulate_rtp.py` | Multi-million-spin RTP check (target ~95%) |
+| `server/simulate_rtp.py` | Multi-million-spin RTP check (target ~95%, incl. progressive) |
+| `server/side.py` | Blackjack, European roulette, high card, mines, scratch, dice |
+| `server/test_v6.py` | v6 features, side-game rules and house-edge sims |
+| `lobby.js` | Side-games lobby UI |
 | `server/test_cap.py` | Payout, jackpot, API, shop, and social-casino tests |
 | `server/templates/` | Shop success / cancel pages |
 | `requirements.txt` | Python dependencies (includes gunicorn) |
@@ -221,4 +224,4 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 
 v3–v5 added 25-line Classic, Megaways, mini games, sound, and richer animation. Those game features remain. v5's client-side daily USDT play-money credit has been replaced by the server-authoritative daily and hourly **coin** bonuses. Fiat/crypto wallet display and simulated withdrawals were removed in the social-casino conversion.
 
-Public amounts are coins (`COIN_SCALE = 1000`). The 20% per-step payout cap from v3–v5 has been removed; the Green Tea Jackpot is a fixed 5,000× total bet and long-run RTP is ~95%.
+Public amounts are coins (`COIN_SCALE = 1000`). The 20% per-step payout cap from v3–v5 has been removed. v6 adds an honest Tea Wheel, a live Crystal Crown progressive, Hold & Spin, Crystal Collection, surprise wilds, VIP tiers (by level, never by purchase), a weekend tournament, and a side-games lobby. Long-run slot RTP stays ~95% including the progressive.

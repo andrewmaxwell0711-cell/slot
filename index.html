@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Crystal Casino — Social Casino (TEST MODE)</title>
+  <title>Crystal Casino v6 — Social Casino (TEST MODE)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -26,9 +26,15 @@
       </div>
     </div>
     <div class="header-actions">
+      <nav class="view-nav" role="tablist" aria-label="Casino areas">
+        <button type="button" class="active" data-view="slots" id="nav-slots">Slots</button>
+        <button type="button" data-view="lobby" id="nav-lobby">Side Games</button>
+      </nav>
       <div class="vol-wrap">
-        <button id="btn-mute" class="icon-btn" type="button" title="Mute / unmute" aria-label="Mute or unmute">🔊</button>
-        <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume" title="Master volume" />
+        <button id="btn-mute" class="icon-btn" type="button" title="Mute sound effects" aria-label="Mute or unmute sound effects">🔊</button>
+        <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Sound effects volume" title="SFX volume" />
+        <button id="btn-music" class="icon-btn" type="button" title="Mute background music" aria-label="Mute or unmute music">🎵</button>
+        <input id="music-vol" class="vol" type="range" min="0" max="100" step="1" value="55" aria-label="Music volume" title="Music volume" />
       </div>
       <button id="btn-prizes" class="btn btn-outline" type="button">Prizes</button>
       <button id="btn-wallet" class="btn btn-gold" type="button">Buy Coins</button>
@@ -38,6 +44,7 @@
   <div class="mode-banners">
     <div class="mode-banner"><strong>SOCIAL CASINO · TEST MODE.</strong> Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Stripe Checkout uses test keys only.</div>
     <div class="mode-banner key-banner" id="stripe-key-banner" hidden>Add a Stripe test key to enable the coin shop</div>
+    <div class="mode-banner weekend-banner" id="weekend-banner" hidden>Weekend tournament is on — play the slots for a coin prize. No countdown to buy coins.</div>
   </div>
 
   <main class="layout">
@@ -50,8 +57,12 @@
           <h2 class="marquee-title">Crystal Casino</h2>
           <div class="jackpot-sign" id="jackpot-sign">
             <img src="/assets/green-tea-256.webp" alt="" />
-            <span>GREEN TEA JACKPOT</span>
+            <span>GREEN TEA JACKPOT · 5,000×</span>
             <img src="/assets/green-tea-256.webp" alt="" />
+          </div>
+          <div class="prog-ticker" id="prog-ticker" aria-live="polite">
+            <small>CRYSTAL CROWN</small>
+            <strong id="prog-val">0</strong>
           </div>
         </div>
 
@@ -107,6 +118,10 @@
             <div class="meter classic-only"><small>TOTAL BET</small><strong id="total-bet">500</strong></div>
             <div class="meter win"><small>WIN</small><strong id="win-meter">0</strong></div>
           </div>
+          <div class="collection-meter" id="collection-meter" aria-label="Crystal Collection">
+            <span class="coll-label">COLLECTION</span>
+            <div class="coll-tracks" id="coll-tracks"></div>
+          </div>
           <div class="console-row engage">
             <div class="streak" id="streak" hidden>
               <span class="streak-flame" aria-hidden="true">✦</span>
@@ -159,6 +174,7 @@
       <div class="profile-chip" id="profile-chip">
         <span id="profile-nick">Hopper</span>
         <span id="profile-level">LV 1</span>
+        <span class="vip-badge bronze" id="vip-badge">BRONZE</span>
       </div>
       <div class="stats">
         <div><span>Spins</span><strong id="stat-spins">0</strong></div>
@@ -176,6 +192,19 @@
       </div>
     </aside>
   </main>
+
+  <!-- Side games lobby -->
+  <section class="lobby" id="lobby" hidden>
+    <div class="lobby-head">
+      <div>
+        <h2>Side Games</h2>
+        <p class="hint">Fair table games, coin bets only. Every outcome is decided on the server. Coins have no cash value.</p>
+      </div>
+      <button type="button" class="btn btn-outline" id="btn-lobby-back">Back to slots</button>
+    </div>
+    <div class="lobby-grid" id="lobby-grid"></div>
+    <div class="lobby-table" id="lobby-table" hidden></div>
+  </section>
 
   <!-- Info / paytable -->
   <div class="modal" id="modal-info" hidden>
@@ -399,5 +428,6 @@
   <div id="toast" class="toast" hidden></div>
   <script src="gems.js"></script>
   <script src="app.js"></script>
+  <script src="lobby.js"></script>
 </body>
 </html>

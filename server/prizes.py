@@ -79,6 +79,15 @@ TROPHIES = (
     {"id": "lb_weekly_silver", "name": "Weekly Silver", "desc": "Finish 2nd on a weekly leaderboard", "icon": "🥈", "group": "leaders"},
     {"id": "lb_weekly_bronze", "name": "Weekly Bronze", "desc": "Finish 3rd on a weekly leaderboard", "icon": "🥉", "group": "leaders"},
     {"id": "badge_big_hunter", "name": "Big Hunter", "desc": "Complete the Land a Big Win mission", "icon": "🎯", "group": "missions"},
+    {"id": "hold_spin", "name": "Hold & Spin", "desc": "Trigger the Crystal Hold & Spin bonus", "icon": "🪙", "group": "features"},
+    {"id": "hold_grand", "name": "All Locked", "desc": "Fill every cell in Hold & Spin", "icon": "💍", "group": "features"},
+    {"id": "progressive_hit", "name": "Crown Jackpot", "desc": "Hit the Crystal Crown progressive", "icon": "👑", "group": "jackpot"},
+    {"id": "collection_set", "name": "Collector", "desc": "Complete a Crystal Collection set", "icon": "📦", "group": "features"},
+    {"id": "vip_gold", "name": "VIP Gold", "desc": "Reach the Gold VIP tier", "icon": "🥇", "group": "vip"},
+    {"id": "vip_diamond", "name": "VIP Diamond", "desc": "Reach the Diamond VIP tier", "icon": "💎", "group": "vip"},
+    {"id": "lb_weekend_gold", "name": "Weekend Champion", "desc": "Finish 1st in a weekend tournament", "icon": "🏅", "group": "leaders"},
+    {"id": "lb_weekend_silver", "name": "Weekend Silver", "desc": "Finish 2nd in a weekend tournament", "icon": "🥈", "group": "leaders"},
+    {"id": "lb_weekend_bronze", "name": "Weekend Bronze", "desc": "Finish 3rd in a weekend tournament", "icon": "🥉", "group": "leaders"},
 )
 
 MISSION_CATALOGUE = (
@@ -114,6 +123,76 @@ def perth_week(when: datetime | None = None) -> str:
     dt = when or perth_now()
     y, w, _ = dt.isocalendar()
     return f"{y}-W{int(w):02d}"
+
+
+# VIP tiers by level. Perks are free-play only (bigger hourly/daily coins).
+# Nothing here is locked behind a coin-pack purchase.
+VIP_TIERS = (
+    {"id": "bronze", "name": "Bronze", "min_level": 1, "hourly_mult": 1.0, "daily_mult": 1.0},
+    {"id": "silver", "name": "Silver", "min_level": 5, "hourly_mult": 1.25, "daily_mult": 1.1},
+    {"id": "gold", "name": "Gold", "min_level": 10, "hourly_mult": 1.5, "daily_mult": 1.2},
+    {"id": "platinum", "name": "Platinum", "min_level": 20, "hourly_mult": 2.0, "daily_mult": 1.3},
+    {"id": "diamond", "name": "Diamond", "min_level": 35, "hourly_mult": 2.5, "daily_mult": 1.5},
+)
+WEEKEND_COINS = {1: 50_000, 2: 20_000, 3: 10_000}
+
+
+def vip_for_level(level: int) -> dict[str, Any]:
+    from game import HOURLY_COINS, DAILY_COINS
+    level = max(1, int(level or 1))
+    chosen = VIP_TIERS[0]
+    for tier in VIP_TIERS:
+        if level >= int(tier["min_level"]):
+            chosen = tier
+    nxt = None
+    for tier in VIP_TIERS:
+        if int(tier["min_level"]) > level:
+            nxt = {"id": tier["id"], "name": tier["name"], "min_level": tier["min_level"]}
+            break
+    return {
+        "id": chosen["id"],
+        "name": chosen["name"],
+        "min_level": chosen["min_level"],
+        "hourly_coins": int(round(HOURLY_COINS * chosen["hourly_mult"])),
+        "daily_coins": int(round(DAILY_COINS * chosen["daily_mult"])),
+        "next": nxt,
+        "tiers": [
+            {
+                "id": t["id"], "name": t["name"], "min_level": t["min_level"],
+                "hourly_coins": int(round(HOURLY_COINS * t["hourly_mult"])),
+                "daily_coins": int(round(DAILY_COINS * t["daily_mult"])),
+            }
+            for t in VIP_TIERS
+        ],
+    }
+
+
+def weekend_friday(when: datetime | None = None) -> datetime:
+    """The Friday 00:00 that starts the weekend window containing `when`, or the most recent Friday."""
+    dt = when or perth_now()
+    # Monday=0 ... Sunday=6. Weekend tournament: Friday 00:00 through Sunday 23:59:59.
+    wd = dt.weekday()
+    if wd >= 4:
+        days_back = wd - 4
+    else:
+        days_back = wd + 3
+    start = (dt - timedelta(days=days_back)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start
+
+
+def perth_weekend(when: datetime | None = None) -> str:
+    return weekend_friday(when).date().isoformat()
+
+
+def weekend_active(when: datetime | None = None) -> bool:
+    dt = when or perth_now()
+    return dt.weekday() >= 4
+
+
+def weekend_ends_at(when: datetime | None = None) -> str:
+    start = weekend_friday(when)
+    end = start + timedelta(days=3)  # Monday 00:00
+    return end.isoformat()
 
 
 def xp_needed(level: int) -> int:
@@ -163,6 +242,8 @@ def catalogue() -> dict[str, Any]:
         "legal": PRIZE_LEGAL,
         "xp_base": XP_BASE,
         "leaderboard_coins": dict(LEADERBOARD_COINS),
+        "weekend_coins": dict(WEEKEND_COINS),
+        "vip": [dict(t) for t in VIP_TIERS],
     }
 
 
@@ -193,6 +274,7 @@ def ensure_schema(conn) -> None:
             created_at TEXT NOT NULL,
             perth_date TEXT NOT NULL,
             perth_week TEXT NOT NULL,
+            perth_weekend TEXT,
             bet_aud REAL NOT NULL,
             win_aud REAL NOT NULL
         );
@@ -375,6 +457,7 @@ def profile_public(player_id: str) -> dict[str, Any]:
     p = _profile_row(_conn(), player_id)
     p["xp_needed"] = xp_needed(p["level"])
     p["theme"] = p["theme"] if theme_unlocked_at(p["level"], p["theme"]) else DEFAULT_THEME
+    p["vip"] = vip_for_level(p["level"])
     return p
 
 
@@ -424,6 +507,12 @@ def attach(player_id: str, snap: dict[str, Any] | None = None, newly: list[dict[
     out["missions"] = mission_state(player_id)
     out["themes"] = themes_public(player_id)
     out["prize_legal"] = PRIZE_LEGAL
+    out["weekend"] = {
+        "active": weekend_active(),
+        "key": perth_weekend(),
+        "ends_at": weekend_ends_at(),
+        "rewards": [{"place": p, "coins": c} for p, c in WEEKEND_COINS.items()],
+    }
     return out
 
 
@@ -549,10 +638,10 @@ def after_spin(
     with ledger.transaction() as conn:
         conn.execute(
             """
-            INSERT INTO spin_records (player_id, created_at, perth_date, perth_week, bet_aud, win_aud)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO spin_records (player_id, created_at, perth_date, perth_week, perth_weekend, bet_aud, win_aud)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (player_id, now, day, week, float(bet_aud), float(win_aud)),
+            (player_id, now, day, week, perth_weekend(when), float(bet_aud), float(win_aud)),
         )
         row = conn.execute(
             "SELECT xp, level, current_streak, best_streak FROM players WHERE id = ?",
@@ -588,6 +677,18 @@ def after_spin(
             want.append("crystal_pick")
         if wheel:
             want.append("tea_wheel")
+        if any(g.get("kind") == "hold_spin" for g in games):
+            want.append("hold_spin")
+            if any(g.get("filled") or g.get("grand") for g in games):
+                want.append("hold_grand")
+        if rnd.get("progressive_hit") or rnd.get("_progressive_hit"):
+            want.append("progressive_hit")
+        if rnd.get("collection_completed") or rnd.get("_collection_completed"):
+            want.append("collection_set")
+        if level >= 10:
+            want.append("vip_gold")
+        if level >= 35:
+            want.append("vip_diamond")
         if streak >= 5:
             want.append("streak_5")
         if streak >= 10:
@@ -689,24 +790,36 @@ def _board_sql(period_type: str) -> tuple[str, str]:
 
 
 def _period_column(period_type: str) -> str:
-    return "perth_week" if period_type == "weekly" else "perth_date"
+    if period_type == "weekly":
+        return "perth_week"
+    if period_type == "weekend":
+        return "perth_weekend"
+    return "perth_date"
 
 
 def current_period_key(period_type: str) -> str:
-    return perth_week() if period_type == "weekly" else perth_date()
+    if period_type == "weekly":
+        return perth_week()
+    if period_type == "weekend":
+        return perth_weekend()
+    return perth_date()
 
 
 def previous_period_key(period_type: str) -> str:
     if period_type == "weekly":
         dt = perth_now() - timedelta(days=7)
         return perth_week(dt)
+    if period_type == "weekend":
+        # The Friday of the previous weekend window.
+        dt = weekend_friday() - timedelta(days=7)
+        return perth_weekend(dt)
     dt = perth_now() - timedelta(days=1)
     return perth_date(dt)
 
 
 def leaderboard(period_type: str, board: str, period_key: str | None = None, viewer_id: str | None = None) -> dict[str, Any]:
-    if period_type not in ("daily", "weekly"):
-        raise ValueError("Period must be daily or weekly")
+    if period_type not in ("daily", "weekly", "weekend"):
+        raise ValueError("Period must be daily, weekly or weekend")
     if board not in ("biggest", "total"):
         raise ValueError("Board must be biggest or total")
     key = period_key or current_period_key(period_type)
@@ -756,8 +869,9 @@ def leaderboard(period_type: str, board: str, period_key: str | None = None, vie
         "key": key,
         "entries": entries,
         "me": {"place": my_rank, "score": my_score},
-        "rewards": [{"place": p, "coins": c} for p, c in LEADERBOARD_COINS.items()],
+        "rewards": [{"place": p, "coins": c} for p, c in (WEEKEND_COINS if period_type == "weekend" else LEADERBOARD_COINS).items()],
         "legal": PRIZE_LEGAL,
+        "active": weekend_active() if period_type == "weekend" else True,
     }
 
 
@@ -766,8 +880,8 @@ def settle_leaderboard(period_type: str, period_key: str, board: str | None = No
     import ledger
     from game import COIN_ASSET
 
-    if period_type not in ("daily", "weekly"):
-        raise ValueError("Period must be daily or weekly")
+    if period_type not in ("daily", "weekly", "weekend"):
+        raise ValueError("Period must be daily, weekly or weekend")
     boards = [board] if board else ["biggest", "total"]
     paid: list[dict[str, Any]] = []
     badge = {
@@ -777,6 +891,9 @@ def settle_leaderboard(period_type: str, period_key: str, board: str | None = No
         ("weekly", 1): "lb_weekly_gold",
         ("weekly", 2): "lb_weekly_silver",
         ("weekly", 3): "lb_weekly_bronze",
+        ("weekend", 1): "lb_weekend_gold",
+        ("weekend", 2): "lb_weekend_silver",
+        ("weekend", 3): "lb_weekend_bronze",
     }
     now = _now_iso()
     for b in boards:
@@ -798,7 +915,8 @@ def settle_leaderboard(period_type: str, period_key: str, board: str | None = No
                 (period_key,),
             ).fetchall()
             for place, row in enumerate(rows, start=1):
-                coins = int(LEADERBOARD_COINS.get(place) or 0)
+                table = WEEKEND_COINS if period_type == "weekend" else LEADERBOARD_COINS
+                coins = int(table.get(place) or 0)
                 existing = conn.execute(
                     """
                     SELECT player_id FROM leaderboard_payouts
@@ -845,4 +963,8 @@ def settle_due_periods() -> list[dict[str, Any]]:
     paid = []
     paid.extend(settle_leaderboard("daily", previous_period_key("daily")))
     paid.extend(settle_leaderboard("weekly", previous_period_key("weekly")))
+    last_weekend = previous_period_key("weekend")
+    if last_weekend != perth_weekend() or not weekend_active():
+        # Always settle the previous window; if still in the current weekend, only settle the prior one.
+        paid.extend(settle_leaderboard("weekend", last_weekend))
     return paid

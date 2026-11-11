@@ -33,11 +33,14 @@ SYMBOLS = [
     # Prism SCATTER: 3+ anywhere pays and triggers free spins.
     {"id": "scatter", "name": "Prism Scatter", "emoji": "🌈", "weight": 3, "pays": {}, "scatter": True},
     # Non-paying ice shard (classic blank). Weight is tuned for hit frequency and ~95% RTP.
-    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 12, "pays": {}, "blank": True},
+    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 11.7, "pays": {}, "blank": True},
+    # Crystal Coin: does not pay on a line; 6+ on the paid spin start Hold & Spin.
+    {"id": "coin", "name": "Crystal Coin", "emoji": "🪙", "weight": 10, "pays": {}, "blank": True, "hold": True},
 ]
 
 WILD_ID = "wild"
 SCATTER_ID = "scatter"
+COIN_ID = "coin"
 WILD_MULT = 2  # any line win that uses a wild is doubled
 
 # Scatter count anywhere on the 5×3 grid -> (pay × bet, free spins awarded)
@@ -46,9 +49,10 @@ FREE_SPIN_MULT = 2  # every win during free spins is doubled
 MAX_FREE_SPINS = 50  # retrigger ceiling per bonus round
 
 # Green Tea Jackpot: a fixed prize of JACKPOT_MULT × total bet, on a paid
-# spin or the Tea Wheel jackpot wedge. Hit chance is constant, so expected
-# jackpot return is JACKPOT_P * JACKPOT_MULT of stakes (~2%). The Tea Wheel
-# wedge awards the same prize with chance WHEEL_JP_P (else a near-miss 2×).
+# spin or when the Tea Wheel lands on its (visually thin, weight-proportional)
+# jackpot wedge. Landing on that wedge always pays the jackpot — there is no
+# second roll and no staged near miss. Hit chance on a paid spin is constant,
+# so expected jackpot return is JACKPOT_P * JACKPOT_MULT of stakes (~2%).
 JACKPOT_MULT = 5000
 JACKPOT_P = 0.02 / JACKPOT_MULT  # 2% RTP from the random jackpot
 # Legacy names kept so older comments/imports do not break; they are unused
@@ -195,7 +199,7 @@ def evaluate_payline(symbols: list[str]) -> tuple[int, str | None, bool]:
     count = 0
     used_wild = False
     for sid in symbols:
-        if sid in (SCATTER_ID, BLANK_ID):
+        if sid in (SCATTER_ID, BLANK_ID, COIN_ID):
             break
         if sid == WILD_ID:
             count += 1
@@ -246,9 +250,158 @@ def scatter_positions(grid: list[list[str]]) -> list[list[int]]:
     return [[c, r] for c, col in enumerate(grid) for r, sid in enumerate(col) if sid == SCATTER_ID]
 
 
-def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, Any]:
+
+def coin_positions(grid: list[list[str]]) -> list[list[int]]:
+    return [[c, r] for c, col in enumerate(grid) for r, sid in enumerate(col) if sid == COIN_ID]
+
+
+def mw_coin_positions(cols: list[list[str]]) -> list[list[int]]:
+    return [[c, r] for c, col in enumerate(cols) for r, sid in enumerate(col) if sid == COIN_ID]
+
+
+def apply_surprise_wilds(grid: list[list[str]]) -> list[dict[str, Any]]:
+    """Maybe replace 1–2 non-feature cells with wilds. Mutates `grid`. Paid spins only."""
+    if _rng.random() >= SURPRISE_WILD_P:
+        return []
+    candidates: list[tuple[int, int, str]] = []
+    shards: list[tuple[int, int, str]] = []
+    for c, col in enumerate(grid):
+        for r, sid in enumerate(col):
+            if sid in (WILD_ID, SCATTER_ID, COIN_ID):
+                continue
+            item = (c, r, sid)
+            candidates.append(item)
+            if sid == BLANK_ID:
+                shards.append(item)
+    pool = shards or candidates
+    if not pool:
+        return []
+    n = min(len(pool), _rng.choice(SURPRISE_WILD_COUNTS))
+    _rng.shuffle(pool)
+    placed = []
+    for c, r, prev in pool[:n]:
+        grid[c][r] = WILD_ID
+        placed.append({"col": c, "row": r, "from": prev})
+    return placed
+
+
+def apply_surprise_wilds_mw(cols: list[list[str]]) -> list[dict[str, Any]]:
+    if _rng.random() >= SURPRISE_WILD_P:
+        return []
+    candidates: list[tuple[int, int, str]] = []
+    shards: list[tuple[int, int, str]] = []
+    for c, col in enumerate(cols):
+        for r, sid in enumerate(col):
+            if sid in (WILD_ID, SCATTER_ID, COIN_ID):
+                continue
+            item = (c, r, sid)
+            candidates.append(item)
+            if sid == BLANK_ID:
+                shards.append(item)
+    pool = shards or candidates
+    if not pool:
+        return []
+    n = min(len(pool), _rng.choice(SURPRISE_WILD_COUNTS))
+    _rng.shuffle(pool)
+    placed = []
+    for c, r, prev in pool[:n]:
+        cols[c][r] = WILD_ID
+        placed.append({"col": c, "row": r, "from": prev})
+    return placed
+
+
+def _hold_value() -> float:
+    return float(_weighted(HOLD_VALUES))
+
+
+def play_hold_spin(stake: float, start_positions: list[list[int]] | None = None, start_count: int | None = None) -> dict[str, Any]:
+    """Hold & Spin: locked coin values, 3 respins (reset when a new coin lands).
+    Filling all 15 cells adds HOLD_GRAND_MULT × stake on top of the locked sum.
+    """
+    cells: list[float | None] = [None] * HOLD_CELLS
+    starts = list(start_positions or [])
+    if starts:
+        for i, pos in enumerate(starts[:HOLD_CELLS]):
+            cells[i] = _hold_value()
+    else:
+        n = max(HOLD_TRIGGER, int(start_count or HOLD_TRIGGER))
+        n = min(HOLD_CELLS, n)
+        chosen = list(range(HOLD_CELLS))
+        _rng.shuffle(chosen)
+        for i in chosen[:n]:
+            cells[i] = _hold_value()
+    respins = HOLD_RESPINS
+    rounds: list[dict[str, Any]] = []
+    while respins > 0:
+        respins -= 1
+        added: list[int] = []
+        for i, val in enumerate(cells):
+            if val is not None:
+                continue
+            if _rng.random() < HOLD_RESPIN_P:
+                cells[i] = _hold_value()
+                added.append(i)
+        if added:
+            respins = HOLD_RESPINS
+        rounds.append({
+            "cells": [v for v in cells],
+            "added": added,
+            "respins_left": respins,
+        })
+        if all(v is not None for v in cells):
+            break
+    locked = [v or 0.0 for v in cells]
+    filled = all(v is not None for v in cells)
+    raw = stake * sum(locked)
+    if filled:
+        raw += stake * HOLD_GRAND_MULT
+    return {
+        "kind": "hold_spin",
+        "cells": cells,
+        "values": locked,
+        "rounds": rounds,
+        "filled": filled,
+        "grand": filled,
+        "grand_mult": HOLD_GRAND_MULT if filled else 0,
+        "raw_win_aud": round(raw, 8),
+        "coins_locked": sum(1 for v in cells if v is not None),
+    }
+
+
+def collection_step(stake: float, meter: dict[str, int] | None = None) -> dict[str, Any]:
+    """Advance the Crystal Collection meter. Completing a track pays COLLECT_PAY_MULT × stake."""
+    state = {k: int((meter or {}).get(k) or 0) for k in COLLECT_TYPES}
+    added = None
+    paid = 0.0
+    completed = None
+    if _rng.random() < COLLECT_P:
+        added = _rng.choice(COLLECT_TYPES)
+        state[added] = int(state[added]) + 1
+        if state[added] >= COLLECT_SET:
+            paid = round(stake * COLLECT_PAY_MULT, 8)
+            state[added] = 0
+            completed = added
+    return {"meter": state, "added": added, "completed": completed, "paid_aud": paid, "set_size": COLLECT_SET}
+
+
+def progressive_step(stake: float, pot: float) -> dict[str, Any]:
+    """Add PROG_RATE of the stake to the pot; rare random hit pays the pot and reseeds."""
+    if stake <= 0:
+        return {"contribution": 0.0, "pot": max(float(pot), PROG_SEED), "hit": False, "paid_aud": 0.0}
+    contribution = round(float(stake) * PROG_RATE, 8)
+    pot = max(float(pot), 0.0) + contribution
+    hit = _rng.random() < PROG_HIT_P
+    paid = 0.0
+    if hit:
+        paid = round(pot, 2)
+        pot = float(PROG_SEED)
+    return {"contribution": contribution, "pot": round(pot, 6), "hit": hit, "paid_aud": paid}
+
+
+def play_one(bet_per_line: float, lines: int, multiplier: int = 1, surprise: bool = False) -> dict[str, Any]:
     """One spin's grid and raw win (no payout cap)."""
     grid = spin_grid()
+    surprise_wilds = apply_surprise_wilds(grid) if surprise else []
     total_bet = bet_per_line * lines
     line_wins = evaluate_lines(grid, bet_per_line, lines)
     scatters = count_scatters(grid)
@@ -257,6 +410,7 @@ def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, 
     for w in line_wins:
         w["win_aud"] = round(w["win_aud"] * multiplier, 8)
     raw = sum(w["win_aud"] for w in line_wins) + scatter_win * multiplier
+    coins = coin_positions(grid)
     return {
         "grid": grid,
         "line_wins": line_wins,
@@ -266,6 +420,9 @@ def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, 
         "free_spins_awarded": free_spins,
         "multiplier": multiplier,
         "raw_win_aud": round(raw, 8),
+        "surprise_wilds": surprise_wilds,
+        "coins": coins,
+        "coin_count": len(coins),
     }
 
 
@@ -317,10 +474,10 @@ MW_MAX_CASCADES = 40
 # Symbol weights per landing cell (wild only on reels 2-5, scatter never on the top reel).
 MW_WEIGHTS = {
     "quartz": 20, "citrine": 20, "topaz": 16, "amethyst": 16, "emerald": 13,
-    "sapphire": 11, "ruby": 8, "greentea": 5, "wild": 2, "scatter": 3.8, "shard": 60,
+    "sapphire": 11, "ruby": 8, "greentea": 5, "wild": 2, "scatter": 3.8, "shard": 56, "coin": 6,
 }
 # Free spins use a richer reel set (fewer Ice Shard blanks).
-MW_FREE_WEIGHTS = {**MW_WEIGHTS, "shard": 42, "scatter": 3.0}
+MW_FREE_WEIGHTS = {**MW_WEIGHTS, "shard": 42, "scatter": 3.0, "coin": 0}
 # Pay × total stake PER WAY for 3/4/5/6 of a kind (scaled by MW_PAY_SCALE).
 MW_PAYS = {
     "quartz": {3: 0.10, 4: 0.20, 5: 0.40, 6: 1.0},
@@ -332,7 +489,7 @@ MW_PAYS = {
     "ruby": {3: 0.50, 4: 1.0, 5: 2.5, 6: 10.0},
     "greentea": {3: 1.0, 4: 2.5, 5: 10.0, 6: 50.0},
 }
-MW_PAY_SCALE = 1.525
+MW_PAY_SCALE = 1.40
 # Scatters on the final board -> (pay × stake, free spins)
 MW_SCATTER_PAYS = {4: (1, 10), 5: (5, 15), 6: (25, 20)}
 MW_RETRIGGER = {3: 5, 4: 5, 5: 10, 6: 15}  # during free spins
@@ -439,10 +596,11 @@ def mw_cascade(cols: list[list[str]], cells: set[tuple[int, int]], free: bool = 
     return out, new_counts, top_new
 
 
-def mw_play_one(stake: float, free: bool = False, mult: int = 1) -> dict[str, Any]:
+def mw_play_one(stake: float, free: bool = False, mult: int = 1, surprise: bool = False) -> dict[str, Any]:
     """One Megaways spin with tumbling cascades. In free spins the multiplier
     applies to every win and grows +1 after each winning cascade."""
     cols = mw_board(free)
+    surprise_wilds = apply_surprise_wilds_mw(cols) if (surprise and not free) else []
     stages = []
     raw = 0.0
     new_counts = [len(c) for c in cols]
@@ -477,6 +635,9 @@ def mw_play_one(stake: float, free: bool = False, mult: int = 1) -> dict[str, An
         "multiplier": stages[0]["multiplier"], "multiplier_end": mult if free else 1,
         "has_wild": any(x == WILD_ID for col in final for x in col),
         "raw_win_aud": round(raw, 8),
+        "surprise_wilds": surprise_wilds,
+        "coins": mw_coin_positions(final),
+        "coin_count": len(mw_coin_positions(final)),
     }
 
 
@@ -490,22 +651,53 @@ PICK_COLLECT_P = 0.40  # chance each pick after the first is COLLECT
 PICK_PRIZES = [(0.2, 25), (0.5, 28), (1, 22), (2, 13), (3, 7), (5, 3.5), (10, 1.2), (25, 0.3)]  # (× bet, weight)
 
 # Tea Wheel: bonus combo — 2+ BONUS scatters together with a WILD on the final
-# board (without triggering free spins). 12 equal wedges.
+# board (without triggering free spins). Wedge visual size is proportional to
+# weight. The jackpot wedge is a thin sliver; landing on it always pays the
+# Green Tea Jackpot. There is no second roll and no staged near miss.
 WHEEL_WEDGES = [
-    {"type": "mult", "value": 2}, {"type": "mult", "value": 5}, {"type": "mult", "value": 3},
-    {"type": "mult", "value": 10}, {"type": "mult", "value": 2}, {"type": "free_spins", "value": 8},
-    {"type": "mult", "value": 4}, {"type": "mult", "value": 25}, {"type": "mult", "value": 3},
-    {"type": "mult", "value": 6}, {"type": "mult", "value": 2}, {"type": "jackpot", "value": 0},
+    {"type": "mult", "value": 2, "weight": 1000}, {"type": "mult", "value": 5, "weight": 1000},
+    {"type": "mult", "value": 3, "weight": 1000}, {"type": "mult", "value": 10, "weight": 1000},
+    {"type": "mult", "value": 2, "weight": 1000}, {"type": "free_spins", "value": 8, "weight": 1000},
+    {"type": "mult", "value": 4, "weight": 1000}, {"type": "mult", "value": 25, "weight": 1000},
+    {"type": "mult", "value": 3, "weight": 1000}, {"type": "mult", "value": 6, "weight": 1000},
+    {"type": "mult", "value": 2, "weight": 1000},
+    # ~0.07% of the wheel (thin gold sliver). P × 5000 × typical wheel frequency ≈ 0.6–1% RTP.
+    {"type": "jackpot", "value": 0, "weight": 8},
 ]
 WHEEL_JACKPOT_INDEX = 11
-# Landing on the jackpot wedge wins the Green Tea Jackpot (JACKPOT_MULT × bet)
-# with chance WHEEL_JP_P; otherwise the wheel ticks on to a neighbouring 2×.
-# ~1% RTP is allocated here once typical wheel frequency is taken into account;
-# WHEEL_JP_P is set so EV ≈ 0.01 * stake (see simulate_rtp.py).
-WHEEL_JP_P = 0.0084
-WHEEL_JP_K = WHEEL_JP_P  # legacy alias
 WHEEL_PRIZE_SCALE = 1.0
 WHEEL_MIN_SCATTERS = {"classic": 2, "megaways": 3}  # + a WILD, below the free-spins trigger
+WHEEL_WEIGHT_TOTAL = sum(w["weight"] for w in WHEEL_WEDGES)
+
+# ---- v6 slot features (funded inside the ~95% RTP budget) -----------------
+# Progressive: 1% of every paid stake is added to a public pot. A rare random
+# hit pays the pot and reseeds it. Re-seed EV is small and included in the 95%.
+PROG_RATE = 0.01
+PROG_SEED = 25.0  # game units (25,000 coins on the ticker at the floor)
+PROG_HIT_P = 1 / 8_000
+
+# Hold & Spin: 6+ Crystal Coins on a paid spin start 3 respins on a 5×3 grid.
+HOLD_TRIGGER = 6
+HOLD_COLS, HOLD_ROWS = 5, 3
+HOLD_CELLS = HOLD_COLS * HOLD_ROWS
+HOLD_RESPINS = 3
+HOLD_GRAND_MULT = 50  # extra × bet when every cell is filled
+HOLD_RESPIN_P = 0.10  # chance an empty cell becomes a coin on a respin
+HOLD_VALUES = [(0.5, 36), (1, 30), (2, 16), (3, 8), (5, 5), (8, 3), (10, 1.5), (15, 0.4), (25, 0.1)]
+
+# Crystal Collection: a persistent 3-track meter. Completing a track pays × bet.
+COLLECT_TYPES = ("ruby", "emerald", "sapphire")
+COLLECT_SET = 10
+COLLECT_PAY_MULT = 2.0
+COLLECT_P = 0.04
+
+# Surprise wilds: on a paid spin, a chance to turn 1–2 non-feature cells wild.
+SURPRISE_WILD_P = 0.06
+SURPRISE_WILD_COUNTS = (1, 1, 1, 2)  # mostly one wild
+
+# Slight classic-line scale so new feature EV stays inside the 95% band.
+# Published paytable numbers stay as SYMBOLS["pays"]; this is applied at eval.
+CLASSIC_PAY_SCALE = 0.955
 
 
 def _weighted(items: list[tuple[float, float]]) -> float:
@@ -533,22 +725,30 @@ def play_pick(stake: float) -> dict[str, Any]:
     return {"kind": "pick", "picks": picks, "decoys": decoys, "tiles": PICK_TILES, "raw_win_aud": round(raw, 8)}
 
 
-def wheel_jackpot_probability(stake: float, pool_aud: float = 0.0) -> float:
-    if stake <= 0:
-        return 0.0
-    return WHEEL_JP_P
+def wheel_wedge_angles() -> list[float]:
+    """Sweep angle in degrees for each wedge, proportional to weight."""
+    total = float(WHEEL_WEIGHT_TOTAL) or 1.0
+    return [360.0 * w["weight"] / total for w in WHEEL_WEDGES]
 
 
 def play_wheel(stake: float) -> dict[str, Any]:
-    idx = _rng.randrange(len(WHEEL_WEDGES))
+    """Weighted honest stop: the returned index is the outcome that is paid."""
+    x = _rng.random() * WHEEL_WEIGHT_TOTAL
+    idx = len(WHEEL_WEDGES) - 1
+    for i, w in enumerate(WHEEL_WEDGES):
+        x -= w["weight"]
+        if x <= 0:
+            idx = i
+            break
     wedge = WHEEL_WEDGES[idx]
-    out: dict[str, Any] = {"kind": "wheel", "wedges": WHEEL_WEDGES, "index": idx, "free_spins": 0,
-                           "jackpot_pending": False, "raw_win_aud": 0.0, "prize_mult": 0}
+    out: dict[str, Any] = {
+        "kind": "wheel", "wedges": WHEEL_WEDGES, "index": idx, "free_spins": 0,
+        "jackpot": wedge["type"] == "jackpot", "raw_win_aud": 0.0, "prize_mult": 0,
+        "angles": wheel_wedge_angles(),
+    }
     if wedge["type"] == "jackpot":
-        # Resolved at settlement; fallback = neighbouring 2× wedge on a near miss.
-        fb = _rng.choice((WHEEL_JACKPOT_INDEX - 1, (WHEEL_JACKPOT_INDEX + 1) % len(WHEEL_WEDGES)))
-        out.update(jackpot_pending=True, fallback_index=fb, prize_mult=WHEEL_WEDGES[fb]["value"],
-                   raw_win_aud=round(stake * WHEEL_WEDGES[fb]["value"] * WHEEL_PRIZE_SCALE, 8))
+        # Paid at settlement as JACKPOT_MULT × stake. No fallback, no near miss.
+        out["raw_win_aud"] = 0.0
     elif wedge["type"] == "mult":
         out.update(prize_mult=wedge["value"], raw_win_aud=round(stake * wedge["value"] * WHEEL_PRIZE_SCALE, 8))
     else:
@@ -563,6 +763,9 @@ def _minigames(stake: float, base: dict[str, Any]) -> list[dict[str, Any]]:
         games.append(play_wheel(stake))
     if _rng.random() < PICK_TRIGGER_P:
         games.append(play_pick(stake))
+    coins = list(base.get("coins") or [])
+    if len(coins) >= HOLD_TRIGGER:
+        games.append(play_hold_spin(stake, start_positions=coins))
     return games
 
 
@@ -573,7 +776,7 @@ def _classic_has_wild(grid: list[list[str]]) -> bool:
 def play_classic(bet_per_line: float, lines: int) -> dict[str, Any]:
     """Classic 25-line round incl. mini games and free spins (wheel can add free spins)."""
     stake = round(bet_per_line * lines, 8)
-    base = play_one(bet_per_line, lines, 1)
+    base = play_one(bet_per_line, lines, 1, surprise=True)
     base["kind"] = "spin"
     base["mode"] = "classic"
     base["has_wild"] = _classic_has_wild(base["grid"])
@@ -596,7 +799,7 @@ def play_classic(bet_per_line: float, lines: int) -> dict[str, Any]:
 
 
 def play_megaways(stake: float) -> dict[str, Any]:
-    base = mw_play_one(stake)
+    base = mw_play_one(stake, surprise=True)
     games = _minigames(stake, base)
     remaining = base["free_spins_awarded"] + sum(g.get("free_spins", 0) for g in games)
     total_awarded = remaining
@@ -628,11 +831,10 @@ def settle_steps(
 
     `pool` already includes this round's stake and is updated as an internal
     stat only — it never limits a payout and is floored at 0. A Green Tea
-    Jackpot pays the fixed JACKPOT_MULT × stake on the base spin or a winning
-    Tea Wheel jackpot wedge, added to that step's other wins (wheel jackpot
-    replaces the fallback 2×).
+    Jackpot pays the fixed JACKPOT_MULT × stake on the base spin or when the
+    Tea Wheel lands on its jackpot wedge (the visual stop is the outcome).
+    `wheel_roll` is ignored (kept for older call sites).
     """
-    roll = wheel_roll or (lambda s, p: _rng.random() < wheel_jackpot_probability(s, p))
     results = []
     total_paid = jackpot_paid = 0.0
     jp_prize = jackpot_amount(stake)
@@ -642,11 +844,9 @@ def settle_steps(
         wheel_index = None
         if step.get("kind") == "wheel":
             wheel_index = step["index"]
-            if step.get("jackpot_pending"):
-                if roll(stake, pool):
-                    jp_step, raw = True, 0.0
-                else:
-                    wheel_index = step["fallback_index"]
+            wedge = (step.get("wedges") or WHEEL_WEDGES)[wheel_index]
+            if wedge.get("type") == "jackpot" or step.get("jackpot"):
+                jp_step, raw = True, 0.0
         paid = raw
         jp = jp_prize if jp_step else 0.0
         step_total = round(paid + jp, 2)
@@ -657,7 +857,7 @@ def settle_steps(
                "capped": False, "jackpot_aud": jp}
         if wheel_index is not None:
             res["wheel_index"] = wheel_index
-            res["wheel_jackpot"] = jp_step
+            res["wheel_jackpot"] = bool(jp_step and step.get("kind") == "wheel")
         results.append(res)
     return {"steps": results, "total_paid_aud": round(total_paid, 2), "jackpot_paid_aud": round(jackpot_paid, 2),
             "any_capped": False, "pool_after": pool}

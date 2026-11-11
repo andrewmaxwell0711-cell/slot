@@ -37,7 +37,7 @@ import ledger  # noqa: E402
 import prizes  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -206,7 +206,24 @@ def _config_payload() -> dict:
             "pick_prizes": [p for p, _ in game.PICK_PRIZES],
             "wheel_wedges": game.WHEEL_WEDGES,
             "wheel_min_scatters": game.WHEEL_MIN_SCATTERS,
+            "wheel_angles": game.wheel_wedge_angles(),
         },
+        "hold_spin": {
+            "trigger": game.HOLD_TRIGGER,
+            "cells": game.HOLD_CELLS,
+            "cols": game.HOLD_COLS,
+            "rows": game.HOLD_ROWS,
+            "respins": game.HOLD_RESPINS,
+            "grand_mult": game.HOLD_GRAND_MULT,
+        },
+        "collection": {
+            "types": list(game.COLLECT_TYPES),
+            "set_size": game.COLLECT_SET,
+            "pay_mult": game.COLLECT_PAY_MULT,
+        },
+        "surprise_wilds": True,
+        "progressive": ledger.progressive_public(),
+        "side": __import__("side").catalogue(),
     }
 
 
@@ -230,6 +247,11 @@ def app_js():
     return send_from_directory(ROOT, "app.js")
 
 
+@app.get("/lobby.js")
+def lobby_js():
+    return send_from_directory(ROOT, "lobby.js")
+
+
 ASSETS_DIR = ROOT / "assets"
 
 
@@ -250,7 +272,8 @@ def _public_snap(snap: dict, include_config: bool = False) -> dict:
         "gamble": snap["gamble"],
         "bonuses": snap["bonuses"],
     }
-    for key in ("profile", "trophies", "missions", "themes", "prize_legal", "level_up"):
+    for key in ("profile", "trophies", "missions", "themes", "prize_legal", "level_up",
+                "progressive", "progressive_hit", "progressive_paid", "collection", "weekend"):
         if key in snap:
             out[key] = snap[key]
     if include_config:
@@ -575,12 +598,20 @@ def _spin_payload(step: dict, settled: dict) -> dict:
         out.update(picks=step["picks"], decoys=step["decoys"], tiles=step["tiles"])
     elif kind == "wheel":
         idx = settled.get("wheel_index", step["index"])
-        jackpot = bool(settled.get("wheel_jackpot"))
+        jackpot = bool(settled.get("wheel_jackpot") or step.get("jackpot"))
+        wedge = game.WHEEL_WEDGES[idx]
         out.update(
             wedges=step["wedges"], index=idx, jackpot=jackpot,
-            near_miss=bool(step.get("jackpot_pending")) and not jackpot,
-            prize_mult=0 if jackpot else game.WHEEL_WEDGES[idx].get("value", 0) if game.WHEEL_WEDGES[idx]["type"] == "mult" else 0,
+            angles=step.get("angles") or game.wheel_wedge_angles(),
+            prize_mult=0 if jackpot else wedge.get("value", 0) if wedge["type"] == "mult" else 0,
             free_spins=step.get("free_spins", 0),
+        )
+    elif kind == "hold_spin":
+        out.update(
+            cells=step.get("cells"), values=step.get("values"),
+            rounds=step.get("rounds"), filled=bool(step.get("filled")),
+            grand=bool(step.get("grand")), grand_mult=step.get("grand_mult") or 0,
+            coins_locked=step.get("coins_locked"),
         )
     elif step.get("mode") == "megaways":
         out.update(
@@ -588,12 +619,18 @@ def _spin_payload(step: dict, settled: dict) -> dict:
             scatters=step["scatters"], scatter_pos=step["scatter_pos"], scatter_win_aud=step["scatter_win_aud"],
             free_spins_awarded=step["free_spins_awarded"], multiplier=step["multiplier"],
             multiplier_end=step["multiplier_end"],
+            surprise_wilds=step.get("surprise_wilds") or [],
+            coins=step.get("coins") or [],
+            coin_count=step.get("coin_count") or 0,
         )
     else:
         out.update(
             mode="classic", grid=step["grid"], line_wins=step["line_wins"], scatters=step["scatters"],
             scatter_pos=step["scatter_pos"], scatter_win_aud=step["scatter_win_aud"],
             free_spins_awarded=step["free_spins_awarded"], multiplier=step["multiplier"],
+            surprise_wilds=step.get("surprise_wilds") or [],
+            coins=step.get("coins") or [],
+            coin_count=step.get("coin_count") or 0,
         )
     return _to_coins_tree(out)
 
@@ -675,6 +712,43 @@ def api_gamble():
 @app.post("/api/gamble/collect")
 def api_gamble_collect():
     return jsonify(_public_snap(ledger.gamble_collect(g.player_id)))
+
+
+@app.get("/api/jackpots")
+def api_jackpots():
+    return jsonify(ledger.progressive_public())
+
+
+@app.post("/api/side/cancel")
+def api_side_cancel():
+    ledger.clear_side_session(g.player_id)
+    return jsonify({**_public_snap(ledger.snapshot(g.player_id)), "session": None})
+
+
+@app.get("/api/side/session")
+def api_side_session():
+    sess = ledger.side_session(g.player_id)
+    if not sess:
+        return jsonify({"session": None, **_public_snap(ledger.snapshot(g.player_id))})
+    out = _public_snap(ledger.snapshot(g.player_id))
+    out["session"] = sess
+    return jsonify(out)
+
+
+@app.post("/api/side/<game>")
+def api_side(game: str):
+    data = request.get_json(silent=True) or {}
+    try:
+        result = ledger.play_side(g.player_id, game, data)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    snap = _public_snap(ledger.snapshot(g.player_id))
+    snap["result"] = result
+    # result already includes coins after the action
+    if "coins" in result:
+        snap["coins"] = result["coins"]
+    return jsonify(snap)
+
 
 
 def main() -> None:

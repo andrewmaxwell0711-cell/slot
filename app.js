@@ -57,6 +57,13 @@
   let themes = [];
   let prizeLegal = "All in-game prizes are for entertainment only. Trophies, themes, badges and bonus coins have no cash or real-world value and cannot be redeemed for money or prizes.";
   let prizeEvents = { newTrophies: [], levelUp: 0 };
+  let progressiveCoins = 0;
+  let lastProgHit = 0;
+  let collection = { meter: {}, set_size: 10, pay_mult: 2, types: ["ruby","emerald","sapphire"] };
+  let weekend = { active: false, key: "", rewards: [] };
+  let HOLD = { trigger: 6, cells: 15, cols: 5, rows: 3, respins: 3, grand_mult: 50 };
+  let SIDE = {};
+  let currentView = "slots";
   let lbPeriod = "daily";
   let lbBoard = "biggest";
   let stripeEnabled = false;
@@ -64,6 +71,8 @@
   let ready = false;
   let muted = !!prefs.muted;
   let volume = Number.isFinite(prefs.volume) ? prefs.volume : 70;
+  let musicMuted = !!prefs.musicMuted;
+  let musicVolume = Number.isFinite(prefs.musicVolume) ? prefs.musicVolume : 55;
   let turbo = !!prefs.turbo;
   let mode = prefs.mode === "classic" ? "classic" : "megaways";
   let lineIdx = prefs.lineIdx;
@@ -111,7 +120,7 @@
   const waysVal = $("#ways-val");
 
   // ---- Prefs & history ----
-  function defaultPrefs() { return { mode: "megaways", lineIdx: 4, bplIdx: 0, mwBetIdx: 1, muted: false, volume: 70, turbo: false, autoCount: "25" }; }
+  function defaultPrefs() { return { mode: "megaways", lineIdx: 4, bplIdx: 0, mwBetIdx: 1, muted: false, volume: 70, musicMuted: false, musicVolume: 55, turbo: false, autoCount: "25" }; }
   function loadPrefs() {
     try {
       const old = JSON.parse(localStorage.getItem("crystal-reels-prefs-v2") || "{}");
@@ -121,7 +130,7 @@
     } catch { return defaultPrefs(); }
   }
   function savePrefs() {
-    prefs = { mode, lineIdx, bplIdx, mwBetIdx, muted, volume, turbo, autoCount: autoCountChoice };
+    prefs = { mode, lineIdx, bplIdx, mwBetIdx, muted, volume, musicMuted, musicVolume, turbo, autoCount: autoCountChoice };
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
   }
   function loadHistory() { try { const h = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); return Array.isArray(h) ? h.slice(0, 40) : []; } catch { return []; } }
@@ -186,6 +195,10 @@
     if (s.level_up) prizeEvents.levelUp = s.level_up;
     applyTheme(profile.theme);
     if (s.config) applyConfig(s.config);
+    if (typeof s.progressive === "number") progressiveCoins = s.progressive;
+    if (s.collection) collection = { ...collection, ...s.collection };
+    if (s.weekend) weekend = s.weekend;
+    if (s.progressive_hit) lastProgHit = s.progressive_paid || 0;
   }
   function applyConfig(cfg) {
     stripeEnabled = !!cfg.stripe_enabled;
@@ -206,6 +219,10 @@
       if (Array.isArray(cfg.megaways.bet)) MW.bet_aud = cfg.megaways.bet;
     }
     if (cfg.minigames) MINIS = { ...MINIS, ...cfg.minigames };
+    if (cfg.hold_spin) HOLD = { ...HOLD, ...cfg.hold_spin };
+    if (cfg.collection) collection = { ...collection, ...cfg.collection, meter: collection.meter || {} };
+    if (cfg.progressive && typeof cfg.progressive.progressive === "number") progressiveCoins = cfg.progressive.progressive;
+    if (cfg.side) SIDE = cfg.side;
     if (Array.isArray(cfg.symbols)) SYMBOLS = cfg.symbols.map((s) => ({ ...s, pays: Object.fromEntries(Object.entries(s.pays || {}).map(([k, v]) => [Number(k), v])) }));
     lineIdx = Math.min(lineIdx, LINE_OPTIONS.length - 1);
     bplIdx = Math.min(bplIdx, BPL.length - 1);
@@ -233,6 +250,9 @@
     $("#stat-won").textContent = moneyShort(stats.totalWonAud);
     $("#stat-bet").textContent = moneyShort(stats.totalBetAud);
     btnMute.textContent = muted || volume === 0 ? "🔇" : volume < 40 ? "🔉" : "🔊";
+    const btnMusic = $("#btn-music"); if (btnMusic) btnMusic.textContent = musicMuted || musicVolume === 0 ? "🔇" : "🎵";
+    const mv = $("#music-vol"); if (mv) mv.value = String(musicVolume);
+    renderV6Hud();
     volEl.value = String(volume);
     btnTurbo.setAttribute("aria-pressed", String(turbo));
     const lock = busy || auto.running;
@@ -724,9 +744,16 @@
     if (audioCtx.state === "suspended") audioCtx.resume();
   }
   function applyVolume() {
-    if (!master) return;
-    const v = muted ? 0 : Math.pow(volume / 100, 1.6) * 1.1;
-    master.gain.setTargetAtTime(v, audioCtx.currentTime, 0.03);
+    if (!master || !audioCtx) return;
+    master.gain.setTargetAtTime(1, audioCtx.currentTime, 0.03);
+    if (sfxBus) {
+      const v = muted ? 0 : Math.pow(volume / 100, 1.6) * 1.1;
+      sfxBus.gain.setTargetAtTime(v, audioCtx.currentTime, 0.03);
+    }
+    if (musicBus) {
+      const v = (musicMuted || musicVolume === 0) ? 0 : Math.pow(musicVolume / 100, 1.6) * 0.7;
+      musicBus.gain.setTargetAtTime(v, audioCtx.currentTime, 0.05);
+    }
   }
   const silent = () => muted || volume === 0 || !audioCtx;
   function tone(freq, dur, { type = "sine", gain = 0.05, delay = 0, slideTo = null, bus = null, attack = 0.01 } = {}) {
@@ -784,6 +811,7 @@
   function startMusic(kind = "bonus") {
     ensureAudio();
     if (!audioCtx || music) return;
+    stopBgMusic();
     const bass = kind === "wheel" ? [48, 48, 55, 55, 51, 51, 53, 55] : [48, 48, 51, 51, 53, 53, 46, 50];
     const arp = kind === "wheel" ? [72, 75, 79, 82, 84, 82, 79, 75] : [67, 70, 72, 75, 77, 75, 72, 70];
     let step = 0;
@@ -798,7 +826,27 @@
     };
     music = setInterval(tick, 117);
   }
-  function stopMusic() { if (music) clearInterval(music); music = null; }
+  function stopMusic() { if (music) clearInterval(music); music = null; if (!musicMuted && musicVolume > 0) startBgMusic(); }
+  let bgMusic = null;
+  function startBgMusic() {
+    ensureAudio();
+    if (!audioCtx || bgMusic || musicMuted || musicVolume === 0) return;
+    const pad = [57, 60, 64, 67];
+    const bass = [33, 33, 36, 38, 33, 31, 29, 33];
+    let step = 0;
+    const tick = () => {
+      if (silentMusic() || music) return;
+      const t = step++;
+      tone(NOTE(bass[t % 8]), 0.55, { type: "sine", gain: 0.045, bus: musicBus });
+      if (t % 2 === 0) tone(NOTE(pad[(t >> 1) % 4]), 0.8, { type: "triangle", gain: 0.02, bus: musicBus });
+      if (t % 4 === 0) chime(NOTE(72 + (t % 3)), 0.35, 0.012, 0, musicBus);
+    };
+    tick();
+    bgMusic = setInterval(tick, 480);
+  }
+  function stopBgMusic() { if (bgMusic) clearInterval(bgMusic); bgMusic = null; }
+  function silentMusic() { return !audioCtx || musicMuted || musicVolume === 0; }
+
   const sfx = {
     spin() { ensureAudio(); noise(0.2, 0.04, 2400, { type: "highpass" }); tone(180, 0.25, { type: "triangle", gain: 0.03, slideTo: 520 }); startSpinLoop(); },
     spinEnd() { stopSpinLoop(); },
@@ -838,6 +886,11 @@
     streak() { ensureAudio(); [72, 76, 79, 84].forEach((n, i) => chime(NOTE(n), 0.35, 0.05, i * 0.06)); },
     trophy() { ensureAudio(); [67, 71, 74, 79, 86, 91].forEach((n, i) => chime(NOTE(n), 0.7, 0.06, i * 0.08)); tone(NOTE(43), 0.8, { type: "triangle", gain: 0.05 }); },
     coins() { ensureAudio(); for (let i = 0; i < 8; i++) tone(900 + Math.random() * 800, 0.08, { type: "square", gain: 0.02, delay: i * 0.05 }); },
+    chip() { ensureAudio(); tone(1400, 0.05, { type: "square", gain: 0.03 }); tone(900, 0.06, { type: "triangle", gain: 0.025, delay: 0.03 }); },
+    roulette() { ensureAudio(); for (let i = 0; i < 28; i++) tone(700 + i * 18, 0.05, { type: "square", gain: 0.02, delay: i * 0.09 }); noise(0.3, 0.05, 1800, { delay: 2.4 }); },
+    dice() { ensureAudio(); noise(0.18, 0.08, 1400, { type: "bandpass", q: 1.2 }); tone(180, 0.12, { type: "triangle", gain: 0.06, slideTo: 90 }); },
+    scratch() { ensureAudio(); noise(0.16, 0.07, 3500, { type: "highpass" }); },
+    progressive() { ensureAudio(); [60, 67, 72, 79, 84, 91].forEach((n, i) => chime(NOTE(n), 1.0, 0.07, i * 0.1)); },
   };
 
   // ---- Sparkles ----
@@ -1191,18 +1244,32 @@
   // Tea Wheel
   const WEDGE_COLORS = ["#5b21b6", "#7c2d92", "#4c1d95", "#9d174d", "#5b21b6", "#0e7490", "#6d28d9", "#b45309", "#4c1d95", "#7c2d92", "#5b21b6", "#15803d"];
   function wedgeLabel(w) { return w.type === "mult" ? `${w.value}×` : w.type === "free_spins" ? `${w.value} FS` : "JACKPOT"; }
-  function wheelSvg(wedges) {
-    const R = 140, n = wedges.length, seg = 360 / n;
+  function wedgeAngles(wedges) {
+    const given = wedges.map((w) => Number(w.weight) || 0);
+    const total = given.reduce((a, b) => a + b, 0);
+    if (total > 0) return given.map((w) => 360 * w / total);
+    return wedges.map(() => 360 / Math.max(1, wedges.length));
+  }
+  function wheelSvg(wedges, angles) {
+    const R = 140, angs = angles || wedgeAngles(wedges);
     const pt = (a, r = R) => [Math.sin((a * Math.PI) / 180) * r, -Math.cos((a * Math.PI) / 180) * r].map((v) => v.toFixed(2)).join(",");
+    let cursor = 0;
     const slices = wedges.map((w, i) => {
-      const a0 = i * seg, a1 = a0 + seg, ac = a0 + seg / 2;
-      const fill = WEDGE_COLORS[i % WEDGE_COLORS.length];
+      const a0 = cursor, a1 = cursor + angs[i], ac = a0 + angs[i] / 2;
+      cursor = a1;
+      const fill = w.type === "jackpot" ? "#f3c441" : WEDGE_COLORS[i % WEDGE_COLORS.length];
+      const thin = angs[i] < 2;
       const label = w.type === "jackpot"
-        ? `<image href="${TEA_IMG}" x="-17" y="${-R * 0.9}" width="34" height="34" /><text y="${-R * 0.55}" class="wl jp">JACKPOT</text>`
+        ? (thin ? `<text y="${-R - 8}" class="wl jp" font-size="8">JP</text>` : `<image href="${TEA_IMG}" x="-17" y="${-R * 0.9}" width="34" height="34" /><text y="${-R * 0.55}" class="wl jp">JACKPOT</text>`)
         : `<text y="${-R * 0.7}" class="wl${w.value >= 10 || w.type === "free_spins" ? " hi" : ""}">${wedgeLabel(w)}</text>`;
-      return `<path d="M0,0 L${pt(a0)} A${R},${R} 0 0 1 ${pt(a1)} Z" fill="${fill}" stroke="#f3c441" stroke-width="2"/><g transform="rotate(${ac})">${label}</g>`;
+      const stroke = thin ? 3 : 2;
+      return `<path d="M0,0 L${pt(a0)} A${R},${R} 0 0 1 ${pt(a1)} Z" fill="${fill}" stroke="#f3c441" stroke-width="${stroke}"/><g transform="rotate(${ac})">${label}</g>`;
     }).join("");
-    const bulbs = wedges.map((_, i) => `<circle cx="${pt(i * seg, R + 9).split(",")[0]}" cy="${pt(i * seg, R + 9).split(",")[1]}" r="4" class="bulb" style="animation-delay:${(i % 2) * 0.4}s"/>`).join("");
+    cursor = 0;
+    const bulbs = angs.map((seg, i) => {
+      const a = cursor; cursor += seg;
+      return `<circle cx="${pt(a, R + 9).split(",")[0]}" cy="${pt(a, R + 9).split(",")[1]}" r="4" class="bulb" style="animation-delay:${(i % 2) * 0.4}s"/>`;
+    }).join("");
     return `<svg class="wheel-svg" viewBox="-160 -160 320 320" aria-label="Tea Wheel">
       <defs><radialGradient id="whub"><stop offset="0" stop-color="#fff3b0"/><stop offset="1" stop-color="#b8860b"/></radialGradient></defs>
       <circle r="${R + 16}" fill="#2a0a5c" stroke="#f3c441" stroke-width="5"/>${bulbs}
@@ -1212,44 +1279,42 @@
     </svg>`;
   }
   let wheelRot = 0;
-  function spinWheelTo(target, ms, ease = (k) => 1 - Math.pow(1 - k, 4)) {
+  function spinWheelTo(target, ms, ease = (k) => 1 - Math.pow(1 - k, 4), tickEvery = 30) {
     const g = document.getElementById("wheel-rot"), pointer = miniStage.querySelector(".wheel-pointer");
-    const from = wheelRot, seg = 360 / (MINIS.wheel_wedges.length || 12);
+    const from = wheelRot;
     return new Promise((res) => {
-      const t0 = performance.now(); let lastSeg = Math.floor(from / seg);
+      const t0 = performance.now(); let lastSeg = Math.floor(from / tickEvery);
       const step = (t) => {
         const k = Math.min(1, (t - t0) / ms), r = from + (target - from) * ease(k);
         g.setAttribute("transform", `rotate(${r.toFixed(2)})`);
-        const sg = Math.floor(r / seg);
+        const sg = Math.floor(r / tickEvery);
         if (sg !== lastSeg) { lastSeg = sg; sfx.wheelTick(); if (pointer) { pointer.classList.remove("flick"); void pointer.getBBox(); pointer.classList.add("flick"); } }
         if (k < 1) requestAnimationFrame(step); else { wheelRot = target; res(); }
       };
       requestAnimationFrame(step);
     });
   }
-  const rotFor = (i, n, jitter = 0) => -((i + 0.5) * (360 / n) + jitter);
+  function rotForIndex(index, angles, jitter = 0) {
+    let start = 0;
+    for (let i = 0; i < index; i++) start += angles[i];
+    const mid = start + angles[index] / 2;
+    const span = Math.max(0.02, angles[index] * 0.4);
+    return -(mid + jitter * span);
+  }
   async function playWheel(g, bet) {
-    const wedges = g.wedges || MINIS.wheel_wedges, n = wedges.length, seg = 360 / n;
-    miniOpen("wheel", "BONUS + WILD", "TEA WHEEL", "Spin the Tea Wheel for multipliers, free spins or the GREEN TEA JACKPOT!");
+    const wedges = g.wedges || MINIS.wheel_wedges;
+    const angles = g.angles || wedgeAngles(wedges);
+    miniOpen("wheel", "BONUS + WILD", "TEA WHEEL", "The wheel stops where the server decided — wedge sizes match the true odds.");
     wheelRot = 0;
-    miniStage.innerHTML = `<div class="wheel-wrap">${wheelSvg(wedges)}</div>`;
+    miniStage.innerHTML = `<div class="wheel-wrap">${wheelSvg(wedges, angles)}</div>`;
     sfx.bonusSting(); startMusic("wheel"); rain(50);
     await miniWait("SPIN THE WHEEL", 1200);
     $("#mini-sub").textContent = "Round and round…";
-    const first = g.near_miss ? wedges.findIndex((w) => w.type === "jackpot") : g.index;
-    const jitter = g.near_miss ? (g.index === (first + 1) % n ? -seg * 0.32 : seg * 0.32) : (Math.random() - 0.5) * seg * 0.6;
-    const base = rotFor(first, n, jitter);
+    const jitter = (Math.random() - 0.5);
+    const base = rotForIndex(g.index, angles, jitter);
     const turns = (turbo ? 3 : 6) * 360;
     let target = base; while (target < wheelRot + turns) target += 360;
     await spinWheelTo(target, turbo ? 2200 : 5200);
-    if (g.near_miss) {
-      $("#mini-sub").textContent = "JACKPOT…?"; sfx.anticipate(3);
-      await sleep(speed(900));
-      // ticks over to the neighbouring wedge
-      let t2 = rotFor(g.index, n, 0); while (t2 - wheelRot > 180) t2 -= 360; while (wheelRot - t2 > 180) t2 += 360;
-      await spinWheelTo(t2, 1100, (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2));
-      sfx.nearMiss();
-    }
     const w = wedges[g.index];
     const paid = winOf(g) + jackpotOf(g);
     miniModal.classList.add("summary");
@@ -1260,7 +1325,7 @@
       $("#mini-title").textContent = `${g.free_spins} FREE SPINS!`; $("#mini-sub").textContent = mode === "megaways" ? "Free spins with a multiplier that grows on every tumble" : `Free spins with every win ×${FEATURES.free_spin_mult}`;
       sfx.bonus(); rain(80);
     } else {
-      $("#mini-title").textContent = `${g.prize_mult}× TOTAL BET`; $("#mini-sub").textContent = g.near_miss ? "So close to the jackpot!" : g.limited ? "TABLE LIMIT APPLIED" : "Tea Wheel prize";
+      $("#mini-title").textContent = `${g.prize_mult}× TOTAL BET`; $("#mini-sub").textContent = "Tea Wheel prize";
       sfx.winScaled(g.prize_mult); burstAt(miniStage, 40);
     }
     await miniRoll(0, paid, paid > 0 ? 900 : 1);
@@ -1333,8 +1398,10 @@
       else if ((base.line_wins || []).length > 1 && !auto.running && !(res.free_spins || []).length && !games.length) await cycleWins(base, token, false);
     } else {
       const trig = isMw ? 4 : 3;
-      if (base.scatters === trig - 1 && !games.some((g) => g.kind === "wheel")) { setMsg(`SO CLOSE! ${base.scatters} BONUS — ${trig} TRIGGER FREE SPINS`, true); sfx.nearMiss(); }
-      else { setMsg(isMw ? `${fmtWays(base.ways)} WAYS · NO WIN — SPIN AGAIN` : `${lines()} LINE${lines() > 1 ? "S" : ""} · NO WIN — SPIN AGAIN`, true); sfx.lose(); }
+      if (base.scatters === trig - 1 && !games.some((g) => g.kind === "wheel")) {
+        setMsg(`${base.scatters} BONUS — ${trig} trigger free spins`, true);
+        sfx.lose();
+      } else { setMsg(isMw ? `${fmtWays(base.ways)} WAYS · NO WIN — SPIN AGAIN` : `${lines()} LINE${lines() > 1 ? "S" : ""} · NO WIN — SPIN AGAIN`, true); sfx.lose(); }
     }
 
     if (jackpotOf(base) > 0) {
@@ -1349,16 +1416,17 @@
     for (const g of games) {
       await sleep(speed(400));
       clearHighlights();
+      const titles = { pick: "CRYSTAL PICK", wheel: "TEA WHEEL", hold_spin: "HOLD & SPIN" };
       await showSting({
-        kicker: "MYSTERY BONUS",
-        title: g.kind === "pick" ? "CRYSTAL PICK" : "TEA WHEEL",
-        sub: g.kind === "pick" ? "Pick crystals for cash prizes — until COLLECT" : "Spin for multipliers, free spins or the jackpot",
+        kicker: "FEATURE",
+        title: titles[g.kind] || "BONUS",
+        sub: g.kind === "pick" ? "Pick crystals for coin prizes — until COLLECT" : g.kind === "hold_spin" ? "Lock Crystal Coins and respin" : "Spin for multipliers, free spins or the jackpot",
         kind: "mini",
         hold: 1600,
       });
-      const paid = g.kind === "pick" ? await playPick(g, bet) : await playWheel(g, bet);
+      const paid = g.kind === "pick" ? await playPick(g, bet) : g.kind === "hold_spin" ? await playHoldSpin(g, bet) : await playWheel(g, bet);
       if (g.kind === "wheel") wheelFs += g.free_spins || 0;
-      if (paid > 0) { await rollUp(shown, shown + paid, speed(700)); shown += paid; ctx.onShown(shown); setMsg(`${g.kind === "pick" ? "CRYSTAL PICK" : "TEA WHEEL"} · ${money(paid)}`); }
+      if (paid > 0) { await rollUp(shown, shown + paid, speed(700)); shown += paid; ctx.onShown(shown); setMsg(`${(titles[g.kind] || g.kind).toUpperCase()} · ${money(paid)}`); }
     }
 
     const fs = res.free_spins || [];
@@ -1402,14 +1470,25 @@
       });
     }
 
+    if (res.progressive_hit && (res.progressive_paid || 0) > 0) {
+      const sign = $("#prog-ticker"); if (sign) { sign.classList.remove("hit"); void sign.offsetWidth; sign.classList.add("hit"); }
+      sfx.progressive();
+      await celebrate({ kind: "jackpot", title: "CRYSTAL CROWN!", amountAud: res.progressive_paid, sub: "Progressive jackpot — the live ticker pot", hold: 4000 });
+    }
+    if (res.collection && res.collection.completed) {
+      toast(`Crystal Collection complete — ${money(res.collection.paid)} (${res.collection.completed})`);
+      sfx.collect();
+    }
     pendingWinAud = 0;
     winMeter.textContent = money(totalWin);
     const x = bet ? totalWin / bet : 0;
-    if (x >= BIG_WIN_X && !field(res, "jackpot_paid", "jackpot_paid_aud")) {
+    const netWin = totalWin > bet + 1e-9;
+    // Wins at or below the total bet are not celebrated (no disguised-loss fanfare).
+    if (netWin && x >= BIG_WIN_X && !field(res, "jackpot_paid", "jackpot_paid_aud") && !res.progressive_hit) {
       const tier = winTier(x);
       await celebrate({ kind: "big", tier, title: bigTitle(x), amountAud: totalWin, sub: `${Math.round(x)}× your total bet`, hold: tier === "epic" ? 4400 : tier === "mega" ? 4000 : 3400 });
     }
-    if (totalWin > 0) setMsg(`TOTAL WIN ${money(totalWin)}${fs.length ? ` · ${fs.length} FREE SPINS` : ""}${games.length ? ` · ${games.map((g) => (g.kind === "pick" ? "PICK" : "WHEEL")).join(" + ")}` : ""}${field(res, "jackpot_paid", "jackpot_paid_aud") ? " · JACKPOT" : ""}${res.limited ? " · TABLE LIMIT APPLIED" : ""}${!auto.running ? " · GAMBLE OR SPIN" : ""}`);
+    if (totalWin > 0) setMsg(`${netWin ? "TOTAL WIN" : "RETURN"} ${money(totalWin)}${fs.length ? ` · ${fs.length} FREE SPINS` : ""}${games.length ? ` · ${games.map((g) => (g.kind === "pick" ? "PICK" : g.kind === "hold_spin" ? "HOLD" : "WHEEL")).join(" + ")}` : ""}${field(res, "jackpot_paid", "jackpot_paid_aud") ? " · JACKPOT" : ""}${res.progressive_hit ? " · CROWN" : ""}${!auto.running && netWin ? " · GAMBLE OR SPIN" : ""}`);
 
     history.unshift({ t: Date.now(), bet, mode: isMw ? "MW" : "L", lines: res.lines, win: totalWin, fs: fs.length, jp: !!field(res, "jackpot_paid", "jackpot_paid_aud"), mini: games.map((g) => g.kind) });
     history = history.slice(0, 40); saveHistory(); renderHistory();
@@ -1552,6 +1631,79 @@
     if (auto.running) stopAuto("Auto spin finished");
   }
 
+
+  function renderV6Hud() {
+    const pv = $("#prog-val");
+    if (pv) pv.textContent = money(progressiveCoins);
+    const badge = $("#vip-badge");
+    if (badge && profile.vip) {
+      badge.textContent = (profile.vip.name || "Bronze").toUpperCase();
+      badge.className = "vip-badge " + (profile.vip.id || "bronze");
+    }
+    const nick = $("#profile-nick"); if (nick && profile.nickname) nick.textContent = profile.nickname;
+    const wb = $("#weekend-banner");
+    if (wb) {
+      wb.hidden = !weekend.active;
+      if (weekend.active) wb.textContent = "Weekend tournament is on — biggest slot wins this weekend win a coin prize. Coins have no cash value.";
+    }
+    const tracks = $("#coll-tracks");
+    if (tracks) {
+      const types = collection.types || ["ruby", "emerald", "sapphire"];
+      const size = collection.set_size || 10;
+      const meter = collection.meter || {};
+      tracks.innerHTML = types.map((id) => {
+        const n = Number(meter[id] || 0);
+        const pct = Math.min(100, (n / size) * 100);
+        return `<div class="coll-track ${id}"><div class="coll-name">${id}</div><div class="coll-bar"><span style="width:${pct}%"></span></div><div class="coll-count">${n} / ${size}</div></div>`;
+      }).join("");
+    }
+  }
+  function setView(name) {
+    currentView = name === "lobby" ? "lobby" : "slots";
+    document.body.classList.toggle("view-lobby", currentView === "lobby");
+    document.body.classList.toggle("view-slots", currentView === "slots");
+    const lobby = $("#lobby");
+    if (lobby) lobby.hidden = currentView !== "lobby";
+    document.querySelectorAll(".view-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === currentView));
+    if (currentView === "lobby" && window.CrystalLobby) window.CrystalLobby.renderGrid();
+  }
+
+  async function playHoldSpin(g, betAmt) {
+    miniOpen("hold", "HOLD & SPIN", "CRYSTAL HOLD & SPIN", "Locked coins stay. New coins reset the 3 respins. Fill every cell for the grand prize.");
+    const stage = $("#mini-stage");
+    const values = g.values || [];
+    const rounds = g.rounds || [];
+    const first = (rounds[0] && rounds[0].cells) || g.cells || [];
+    const startLocked = first.map((v) => v != null);
+    const paint = (cells, added = []) => {
+      stage.innerHTML = `<div class="hold-grid">${(cells || []).map((v, i) =>
+        `<div class="hold-cell${v != null ? " locked" : ""}${added.includes(i) ? " new" : ""}">${v != null ? (v + "×") : ""}</div>`
+      ).join("")}</div>`;
+    };
+    paint(first);
+    sfx.bonusSting();
+    await miniWait("Start", 900);
+    let last = first;
+    for (const rnd of rounds) {
+      paint(rnd.cells, rnd.added || []);
+      if ((rnd.added || []).length) sfx.collect();
+      else sfx.tick();
+      $("#mini-sub").textContent = `${rnd.respins_left} respin${rnd.respins_left === 1 ? "" : "s"} left`;
+      await sleep(speed(500));
+      last = rnd.cells;
+    }
+    const paid = winOf(g) || (g.raw_win || 0);
+    if (g.filled || g.grand) {
+      $("#mini-title").textContent = "GRAND FILL!";
+      sfx.jackpot();
+    } else sfx.winScaled((paid || 0) / (betAmt || 1));
+    miniTotal.textContent = money(paid);
+    await miniWait("Collect", 1400);
+    closeModal("mini");
+    stopMusic();
+    return paid;
+  }
+
   // ---- Info modal ----
   function renderInfo() {
     const isMw = mode === "megaways";
@@ -1589,11 +1741,16 @@
         : `<div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Crystal Wild</b> lands on reels 2–4, substitutes for every gem except the Prism Scatter, and <b>doubles</b> any line win it completes.</div></div>
       <div class="feat"><img src="${Gems.url("scatter")}" alt="" /><div><b>Prism Scatter</b> pays anywhere: 3/4/5 pay ${Object.keys(sp).map((k) => sp[k].pay + "×").join(" / ")} total bet and award <b>${Object.keys(sp).map((k) => sp[k].free_spins).join(" / ")} free spins</b> with every win ×${FEATURES.free_spin_mult}. Free spins can retrigger (max ${FEATURES.max_free_spins}).</div></div>`}
       <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Gamble / Double up.</b> After any win, pick red or black. Guess right to double, wrong and the win is lost. Up to ${FEATURES.gamble_max_rounds} times in a row. The card is drawn on the server.</div></div>
-      <div class="feat"><img src="${Gems.url("shard")}" alt="" /><div><b>Social casino · TEST MODE.</b> Malfunction voids all pays and plays. Coins have no cash value and cannot be redeemed for money or prizes.</div></div>`;
+      <div class="feat"><img src="${Gems.url("coin")}" alt="" /><div><b>Hold &amp; Spin.</b> Land <b>${HOLD.trigger || 6}+ Crystal Coins</b> on a paid spin to lock their values and play 3 respins. Each new coin resets the respin count. Fill every cell for a <b>${HOLD.grand_mult || 50}×</b> grand prize on top of the locked coins.</div></div>
+      <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Crystal Collection.</b> Over spins you gather ruby, emerald and sapphire charms. Completing a set of ${collection.set_size || 10} pays <b>${collection.pay_mult || 2}×</b> your total bet.</div></div>
+      <div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Surprise wilds.</b> On a paid spin, one or two symbols may flip into Crystal Wilds before the win is counted. The flip you see is the server outcome.</div></div>
+      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Crystal Crown progressive.</b> A small share of every slot bet feeds a live jackpot ticker. When it drops, the pot is paid in full and reseeds. Funded inside the ~95% RTP budget.</div></div>
+      <div class="feat"><img src="${Gems.url("shard")}" alt="" /><div><b>Social casino · TEST MODE.</b> Malfunction voids all pays and plays. Coins have no cash value and cannot be redeemed for money or prizes. VIP perks (bigger hourly bonus) unlock with level, never with a purchase.</div></div>`;
     const wedges = MINIS.wheel_wedges || [];
     $("#minis-info").innerHTML = `
       <div class="feat"><img src="${Gems.url("amethyst")}" alt="" /><div><b>Crystal Pick</b> — a <b>mystery bonus</b> that can start after any paid spin. Pick crystals from a grid of ${MINIS.pick_tiles}: each one reveals a coin prize (${(MINIS.pick_prizes || []).map((p) => p + "×").join(", ")} total bet) until you find a COLLECT crystal.</div></div>
-      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Tea Wheel</b> — land <b>${(MINIS.wheel_min_scatters || {})[mode] || 2}+ BONUS together with a WILD</b> (without triggering free spins) to spin the wheel: ${wedges.map(wedgeLabel).join(" · ")}. The Free Spins wedge starts a bonus; the JACKPOT wedge can award the Green Tea Jackpot.</div></div>
+      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Tea Wheel</b> — land <b>${(MINIS.wheel_min_scatters || {})[mode] || 2}+ BONUS together with a WILD</b> (without triggering free spins) to spin the wheel. Wedge sizes match their true weights; the jackpot is a thin sliver, and landing on it always pays the Green Tea Jackpot. There are no staged near misses.</div></div>
+      <div class="feat"><img src="${Gems.url("coin")}" alt="" /><div><b>Hold &amp; Spin</b> — 6+ Crystal Coins start a respin bonus with locked values and a grand prize if the board fills.</div></div>
       <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Red / Black Gamble</b> — after any win, double up on a card colour (50/50), up to ${FEATURES.gamble_max_rounds} times.</div></div>
       <p class="hint">Every mini-game result is decided on the server the moment it triggers — your picks reveal it.</p>`;
   }
@@ -1838,6 +1995,20 @@
     celebrateEl.addEventListener("click", () => celebrateResolve && celebrateResolve());
     btnMute.addEventListener("click", () => { muted = !muted; if (!muted && volume === 0) volume = 50; ensureAudio(); applyVolume(); savePrefs(); render(); if (!muted) chime(1046, 0.3, 0.05); });
     volEl.addEventListener("input", () => { volume = Number(volEl.value) || 0; muted = volume === 0; ensureAudio(); applyVolume(); savePrefs(); render(); });
+    const btnMusic = $("#btn-music"), musicVolEl = $("#music-vol");
+    if (btnMusic) btnMusic.addEventListener("click", () => {
+      musicMuted = !musicMuted;
+      if (!musicMuted && musicVolume === 0) musicVolume = 55;
+      ensureAudio(); applyVolume(); savePrefs(); render();
+      if (musicMuted) stopBgMusic(); else startBgMusic();
+    });
+    if (musicVolEl) musicVolEl.addEventListener("input", () => {
+      musicVolume = Number(musicVolEl.value) || 0;
+      musicMuted = musicVolume === 0;
+      ensureAudio(); applyVolume(); savePrefs(); render();
+      if (musicMuted) stopBgMusic(); else startBgMusic();
+    });
+    document.querySelectorAll(".view-nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
     volEl.addEventListener("change", () => { if (!muted) chime(880, 0.25, 0.05); });
     const openShop = () => openModal("shop");
     const openPrizes = (tab) => {
@@ -1903,7 +2074,7 @@
     let rt = null;
     window.addEventListener("resize", () => { resizeCanvas(); clearTimeout(rt); rt = setTimeout(() => { layoutBadges(); clearLines(); if (!busy && mwCols) setMwBoard(mwCols); }, 120); });
     // unlock audio on first interaction (browsers block autoplay)
-    const unlock = () => { ensureAudio(); window.removeEventListener("pointerdown", unlock); };
+    const unlock = () => { ensureAudio(); startBgMusic(); window.removeEventListener("pointerdown", unlock); };
     window.addEventListener("pointerdown", unlock);
   }
   async function previewLines() {
@@ -1939,6 +2110,24 @@
     }
   }
 
+  function startProgTick() {
+    const tick = async () => {
+      try {
+        const j = await api("/api/jackpots");
+        if (j && typeof j.progressive === "number") { progressiveCoins = j.progressive; renderV6Hud(); }
+      } catch { /* ignore */ }
+    };
+    tick();
+    setInterval(tick, 6000);
+  }
+
+  window.CrystalCasino = {
+    api, money, toast, ensureAudio, applySnapshot,
+    sfx, startBgMusic, stopBgMusic, setView, presentHoldSpin: playHoldSpin,
+    get coins() { return coins; },
+    get config() { return { side: SIDE, hold: HOLD, collection, progressive: progressiveCoins }; },
+  };
+
   let started = false;
   async function startGame() {
     if (started) return;
@@ -1950,6 +2139,8 @@
     } catch { toast("Could not load the server ledger — is the Flask app running?", true); }
     startHourlyTick();
     renderEngage();
+    setView("slots");
+    startProgTick();
     setMsg(mode === "megaways" ? `MEGAWAYS · UP TO ${fmtWays(MW.max_ways)} WAYS` : "PLACE YOUR BET");
     ready = true;
   }
