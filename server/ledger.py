@@ -1,27 +1,37 @@
-"""SQLite ledger — authoritative balances, idempotent Stripe credits, simulated withdrawals."""
+"""SQLite ledger — authoritative coin balances, idempotent Stripe coin-pack credits.
+
+Social casino: coins have no cash value and cannot be withdrawn, redeemed,
+transferred or exchanged for money or prizes. There is no cash-out path.
+"""
 
 from __future__ import annotations
 
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
+from zoneinfo import ZoneInfo
 
 from game import jackpot_roll as game_jackpot_roll
 from game import settle_steps as game_settle_steps
 from game import (
-    ALL_ASSETS,
-    CRYPTO,
-    FIAT,
+    COIN_ASSET,
+    COIN_PACKS,
+    DAILY_COINS,
     GAMBLE_MAX_ROUNDS,
+    HOURLY_COINS,
+    HOURLY_SECONDS,
+    STARTING_COINS,
     cap_for_pool,
     clean_amount,
-    from_aud,
-    to_aud,
-    total_aud,
+    from_coins,
+    pack_by_id,
+    to_coins,
 )
+
+PERTH = ZoneInfo("Australia/Perth")
 
 DB_PATH = Path(__file__).resolve().parent / "ledger.db"
 
@@ -143,22 +153,32 @@ def ensure_player(player_id: str) -> None:
             "INSERT INTO players (id, created_at) VALUES (?, ?)",
             (player_id, now),
         )
-        for asset in ALL_ASSETS:
-            c.execute(
-                "INSERT INTO balances (player_id, asset, amount) VALUES (?, ?, 0)",
-                (player_id, asset),
-            )
+        c.execute(
+            "INSERT INTO balances (player_id, asset, amount) VALUES (?, ?, ?)",
+            (player_id, COIN_ASSET, STARTING_COINS),
+        )
+        c.execute(
+            """
+            INSERT INTO ledger_entries
+                (player_id, kind, asset, amount, note, created_at)
+            VALUES (?, 'welcome_grant', ?, ?, 'Free starting coins — no cash value', ?)
+            """,
+            (player_id, COIN_ASSET, STARTING_COINS, now),
+        )
 
 
-def _balances_map(conn: sqlite3.Connection, player_id: str) -> dict[str, float]:
-    rows = conn.execute(
-        "SELECT asset, amount FROM balances WHERE player_id = ?",
-        (player_id,),
-    ).fetchall()
-    balances = {asset: 0.0 for asset in ALL_ASSETS}
-    for row in rows:
-        balances[row["asset"]] = float(row["amount"])
-    return balances
+def _coin_balance(conn: sqlite3.Connection, player_id: str) -> int:
+    row = conn.execute(
+        "SELECT amount FROM balances WHERE player_id = ? AND asset = ?",
+        (player_id, COIN_ASSET),
+    ).fetchone()
+    if not row:
+        conn.execute(
+            "INSERT INTO balances (player_id, asset, amount) VALUES (?, ?, 0)",
+            (player_id, COIN_ASSET),
+        )
+        return 0
+    return int(round(float(row["amount"])))
 
 
 def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
@@ -188,35 +208,55 @@ def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
     }
 
 
-def snapshot(player_id: str) -> dict[str, Any]:
-    ensure_player(player_id)
-    conn = get_conn()
-    balances = _balances_map(conn, player_id)
-    stats = _player_stats(conn, player_id)
+def _bonus_status(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT last_daily_date, last_hourly_at FROM players WHERE id = ?",
+        (player_id,),
+    ).fetchone()
+    today = datetime.now(PERTH).date().isoformat()
+    last_daily = (row["last_daily_date"] if row else None) or ""
+    daily_available = last_daily != today
+    last_hourly = (row["last_hourly_at"] if row else None) or ""
+    remaining = 0
+    hourly_available = True
+    if last_hourly:
+        try:
+            ts = datetime.fromisoformat(last_hourly)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds()
+            if elapsed < HOURLY_SECONDS:
+                hourly_available = False
+                remaining = int(max(0, HOURLY_SECONDS - elapsed))
+        except ValueError:
+            hourly_available = True
     return {
-        "balances": balances,
-        "total_aud": total_aud(balances),
-        "stats": {
-            "spins": stats["spins"],
-            "total_won_aud": stats["total_won_aud"],
-            "total_bet_aud": stats["total_bet_aud"],
-        },
-        "last_win_aud": stats["last_win_aud"],
-        "gamble_aud": round(stats["gamble_aud"], 2),
-        "display_currency": stats["display_currency"],
+        "daily_available": daily_available,
+        "daily_coins": DAILY_COINS,
+        "hourly_available": hourly_available,
+        "hourly_seconds": remaining,
+        "hourly_coins": HOURLY_COINS,
+        "starting_coins": STARTING_COINS,
     }
 
 
-def set_display_currency(player_id: str, currency: str) -> dict[str, Any]:
-    if currency not in FIAT:
-        raise ValueError("Display currency must be AUD, USD, or EUR")
+def snapshot(player_id: str) -> dict[str, Any]:
+    """Player-facing snapshot. Coins only — no fiat, crypto, pool or cash-out fields."""
     ensure_player(player_id)
-    with transaction() as conn:
-        conn.execute(
-            "UPDATE players SET display_currency = ? WHERE id = ?",
-            (currency, player_id),
-        )
-    return snapshot(player_id)
+    conn = get_conn()
+    stats = _player_stats(conn, player_id)
+    coins = _coin_balance(conn, player_id)
+    return {
+        "coins": coins,
+        "stats": {
+            "spins": stats["spins"],
+            "total_won": to_coins(stats["total_won_aud"]),
+            "total_bet": to_coins(stats["total_bet_aud"]),
+        },
+        "last_win": to_coins(stats["last_win_aud"]),
+        "gamble": to_coins(stats["gamble_aud"]),
+        "bonuses": _bonus_status(conn, player_id),
+    }
 
 
 def _credit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float) -> None:
@@ -250,46 +290,30 @@ def _debit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float) 
     )
 
 
-def credit_play_money(player_id: str, asset: str, amount: float) -> dict[str, Any]:
-    """Play-money crypto (or any explicitly allowed demo) credit — not a real transfer."""
-    if asset not in CRYPTO:
-        raise ValueError("Play-money deposits are only available for crypto assets")
-    if amount <= 0:
-        raise ValueError("Enter a valid amount")
-    if amount > 1e9:
-        raise ValueError("Amount too large for demo")
-    ensure_player(player_id)
-    amount = clean_amount(asset, amount)
-    with transaction() as conn:
-        _credit(conn, player_id, asset, amount)
-        conn.execute(
-            """
-            INSERT INTO ledger_entries
-                (player_id, kind, asset, amount, note, created_at)
-            VALUES (?, 'deposit_play', ?, ?, 'Play-money crypto credit', ?)
-            """,
-            (player_id, asset, amount, _utc_now()),
-        )
-    return snapshot(player_id)
-
-
-def credit_stripe_session(
+def credit_coin_pack(
     session_id: str,
     player_id: str,
-    asset: str,
-    amount: float,
+    pack_id: str,
+    coins: int,
+    price_aud: float | None = None,
 ) -> tuple[bool, str, dict[str, Any] | None]:
-    """Credit a paid Checkout Session once. Idempotent per session_id.
+    """Credit a paid coin-pack Checkout Session once. Idempotent per session_id.
 
     Returns (credited_now, message, snapshot_or_none).
+    Coins are virtual only — this never creates a redeemable or cash balance.
     """
-    if asset not in FIAT:
-        raise ValueError("Stripe deposits are only accepted in AUD, USD, or EUR")
     if not session_id or not player_id:
         raise ValueError("Missing session or player id")
-    if amount <= 0:
-        raise ValueError("Invalid deposit amount")
-    amount = clean_amount(asset, amount)
+    pack = pack_by_id(pack_id)
+    if not pack:
+        raise ValueError("Unknown coin pack")
+    coins = int(coins)
+    if coins != int(pack["coins"]):
+        raise ValueError("Coin pack amount does not match the catalogue")
+    if coins <= 0:
+        raise ValueError("Invalid coin pack")
+    if price_aud is not None and abs(float(price_aud) - float(pack["price_aud"])) > 0.001:
+        raise ValueError("Coin pack price does not match the catalogue")
     ensure_player(player_id)
     with transaction() as conn:
         existing = conn.execute(
@@ -297,24 +321,30 @@ def credit_stripe_session(
             (session_id,),
         ).fetchone()
         if existing:
-            snap = snapshot(player_id)
-            return False, "already credited", snap
-        _credit(conn, player_id, asset, amount)
+            return False, "already credited", snapshot(player_id)
+        _credit(conn, player_id, COIN_ASSET, coins)
         now = _utc_now()
         conn.execute(
             """
             INSERT INTO processed_sessions (session_id, player_id, asset, amount, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (session_id, player_id, asset, amount, now),
+            (session_id, player_id, COIN_ASSET, coins, now),
         )
         conn.execute(
             """
             INSERT INTO ledger_entries
                 (player_id, kind, asset, amount, stripe_session_id, note, created_at)
-            VALUES (?, 'deposit_stripe', ?, ?, ?, 'Stripe test-mode Checkout credit', ?)
+            VALUES (?, 'shop_pack', ?, ?, ?, ?, ?)
             """,
-            (player_id, asset, amount, session_id, now),
+            (
+                player_id,
+                COIN_ASSET,
+                coins,
+                session_id,
+                f"Stripe test-mode coin pack {pack_id} — virtual coins, no cash value",
+                now,
+            ),
         )
     return True, "credited", snapshot(player_id)
 
@@ -335,43 +365,65 @@ def get_processed_session(session_id: str) -> dict[str, Any] | None:
     }
 
 
-WITHDRAWAL_STATUS = "test withdrawal recorded"
+class BonusUnavailable(ValueError):
+    def __init__(self, message: str, seconds: int = 0):
+        super().__init__(message)
+        self.seconds = seconds
 
 
-def withdraw(player_id: str, asset: str, amount: float) -> dict[str, Any]:
-    """Simulated test withdrawal: debit the ledger only. No Stripe payouts/transfers."""
-    if asset not in ALL_ASSETS:
-        raise ValueError("Unknown asset")
-    if amount <= 0:
-        raise ValueError("Enter a valid amount")
-    amount = clean_amount(asset, amount)
+def claim_daily(player_id: str) -> dict[str, Any]:
+    """Free daily chest. Once per Australia/Perth calendar day."""
     ensure_player(player_id)
+    today = datetime.now(PERTH).date().isoformat()
     with transaction() as conn:
-        _debit(conn, player_id, asset, amount)
-        now = _utc_now()
-        cur = conn.execute(
-            """
-            INSERT INTO withdrawals (player_id, asset, amount, status, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (player_id, asset, amount, WITHDRAWAL_STATUS, now),
+        status = _bonus_status(conn, player_id)
+        if not status["daily_available"]:
+            raise BonusUnavailable("Daily bonus already claimed — come back tomorrow")
+        _credit(conn, player_id, COIN_ASSET, DAILY_COINS)
+        conn.execute(
+            "UPDATE players SET last_daily_date = ? WHERE id = ?",
+            (today, player_id),
         )
         conn.execute(
             """
             INSERT INTO ledger_entries
                 (player_id, kind, asset, amount, note, created_at)
-            VALUES (?, 'withdraw', ?, ?, ?, ?)
+            VALUES (?, 'daily_bonus', ?, ?, 'Free daily coins — no cash value', ?)
             """,
-            (player_id, asset, amount, WITHDRAWAL_STATUS, now),
+            (player_id, COIN_ASSET, DAILY_COINS, _utc_now()),
         )
-        withdrawal_id = cur.lastrowid
     snap = snapshot(player_id)
-    snap["withdrawal"] = {
-        "id": withdrawal_id,
-        "asset": asset,
-        "amount": amount,
-        "status": WITHDRAWAL_STATUS,
-    }
+    snap["awarded"] = DAILY_COINS
+    snap["bonus"] = "daily"
+    return snap
+
+
+def claim_hourly(player_id: str) -> dict[str, Any]:
+    """Free hourly coin drop so play never requires a purchase."""
+    ensure_player(player_id)
+    with transaction() as conn:
+        status = _bonus_status(conn, player_id)
+        if not status["hourly_available"]:
+            raise BonusUnavailable(
+                "Hourly bonus is not ready yet",
+                seconds=status["hourly_seconds"],
+            )
+        _credit(conn, player_id, COIN_ASSET, HOURLY_COINS)
+        conn.execute(
+            "UPDATE players SET last_hourly_at = ? WHERE id = ?",
+            (_utc_now(), player_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO ledger_entries
+                (player_id, kind, asset, amount, note, created_at)
+            VALUES (?, 'hourly_bonus', ?, ?, 'Free hourly coins — no cash value', ?)
+            """,
+            (player_id, COIN_ASSET, HOURLY_COINS, _utc_now()),
+        )
+    snap = snapshot(player_id)
+    snap["awarded"] = HOURLY_COINS
+    snap["bonus"] = "hourly"
     return snap
 
 
@@ -386,6 +438,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE players ADD COLUMN gamble_aud REAL NOT NULL DEFAULT 0")
     if "gamble_rounds" not in cols:
         conn.execute("ALTER TABLE players ADD COLUMN gamble_rounds INTEGER NOT NULL DEFAULT 0")
+    if "last_daily_date" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN last_daily_date TEXT")
+    if "last_hourly_at" not in cols:
+        conn.execute("ALTER TABLE players ADD COLUMN last_hourly_at TEXT")
 
 
 def _house_row(conn: sqlite3.Connection) -> dict[str, float]:
@@ -411,43 +467,30 @@ def pool_status() -> dict[str, Any]:
     }
 
 
-def _take_stake(conn: sqlite3.Connection, player_id: str, amount_aud: float, kind: str, note: str) -> None:
-    """Debit amount_aud from the player's balances (fiat first, then play crypto)."""
-    balances = _balances_map(conn, player_id)
-    if total_aud(balances) + 1e-9 < amount_aud:
-        raise ValueError("Insufficient balance — deposit first")
-    remaining = amount_aud
-    now = _utc_now()
-    for asset in list(FIAT) + list(CRYPTO):
-        if remaining <= 1e-9:
-            break
-        bal_aud = to_aud(asset, balances.get(asset, 0.0) or 0.0)
-        if bal_aud <= 0:
-            continue
-        take_aud = min(bal_aud, remaining)
-        take_asset = from_aud(asset, take_aud)
-        if clean_amount(asset, take_asset) <= 0:
-            continue
-        _debit(conn, player_id, asset, take_asset)
-        conn.execute(
-            "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (player_id, kind, asset, clean_amount(asset, take_asset), note, now),
-        )
-        remaining -= take_aud
-    if remaining > 0.0001:
-        raise ValueError("Insufficient balance — deposit first")
-
-
-def _pay(conn: sqlite3.Connection, player_id: str, amount_aud: float, currency: str, kind: str, note: str) -> None:
-    if amount_aud <= 0:
-        return
-    amt = from_aud(currency, amount_aud)
-    if clean_amount(currency, amt) <= 0:
-        return
-    _credit(conn, player_id, currency, amt)
+def _take_stake(conn: sqlite3.Connection, player_id: str, amount_units: float, kind: str, note: str) -> None:
+    """Debit the coin equivalent of a game-unit stake. No cash leaves the ledger."""
+    coins = to_coins(amount_units)
+    if coins <= 0:
+        raise ValueError("Invalid bet")
+    if _coin_balance(conn, player_id) < coins:
+        raise ValueError("Not enough coins — claim a free bonus or buy coins in the shop")
+    _debit(conn, player_id, COIN_ASSET, coins)
     conn.execute(
         "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (player_id, kind, currency, clean_amount(currency, amt), note, _utc_now()),
+        (player_id, kind, COIN_ASSET, coins, note, _utc_now()),
+    )
+
+
+def _pay(conn: sqlite3.Connection, player_id: str, amount_units: float, kind: str, note: str) -> None:
+    if amount_units <= 0:
+        return
+    coins = to_coins(amount_units)
+    if coins <= 0:
+        return
+    _credit(conn, player_id, COIN_ASSET, coins)
+    conn.execute(
+        "INSERT INTO ledger_entries (player_id, kind, asset, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (player_id, kind, COIN_ASSET, coins, note, _utc_now()),
     )
 
 
@@ -466,12 +509,10 @@ def settle_round(
     """
     if total_bet_aud <= 0:
         raise ValueError("Invalid bet")
-    if display_currency not in FIAT:
-        display_currency = "AUD"
     roll = jackpot_roll or game_jackpot_roll
     ensure_player(player_id)
     with transaction() as conn:
-        _take_stake(conn, player_id, total_bet_aud, "spin_bet", f"bet {total_bet_aud} AUD")
+        _take_stake(conn, player_id, total_bet_aud, "spin_bet", f"bet {to_coins(total_bet_aud)} coins")
         h = _house_row(conn)
         pool = h["pool_aud"] + total_bet_aud
         jackpot_hit = bool(roll(total_bet_aud, pool))
@@ -483,8 +524,8 @@ def settle_round(
         any_capped = settled["any_capped"]
         pool = settled["pool_after"]
         total_paid = round(total_paid, 2)
-        _pay(conn, player_id, total_paid, display_currency, "spin_win",
-             f"win {total_paid} AUD" + (" (jackpot)" if jackpot_paid else "") + (" (capped)" if any_capped else ""))
+        _pay(conn, player_id, total_paid, "spin_win",
+             f"win {to_coins(total_paid)} coins" + (" (jackpot)" if jackpot_paid else "") + (" (capped)" if any_capped else ""))
         now = _utc_now()
         conn.execute(
             """
@@ -498,10 +539,10 @@ def settle_round(
             """
             UPDATE players
             SET spins = spins + 1, total_bet_aud = total_bet_aud + ?, total_won_aud = total_won_aud + ?,
-                last_win_aud = ?, display_currency = ?, gamble_aud = ?, gamble_rounds = 0
+                last_win_aud = ?, gamble_aud = ?, gamble_rounds = 0
             WHERE id = ?
             """,
-            (total_bet_aud, total_paid, total_paid, display_currency, total_paid if total_paid > 0 else 0.0, player_id),
+            (total_bet_aud, total_paid, total_paid, total_paid if total_paid > 0 else 0.0, player_id),
         )
     snap = snapshot(player_id)
     snap["steps"] = results
@@ -522,10 +563,9 @@ def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> d
         raise ValueError("Pick red or black")
     ensure_player(player_id)
     with transaction() as conn:
-        row = conn.execute("SELECT gamble_aud, gamble_rounds, display_currency FROM players WHERE id = ?", (player_id,)).fetchone()
+        row = conn.execute("SELECT gamble_aud, gamble_rounds FROM players WHERE id = ?", (player_id,)).fetchone()
         stake = round(float(row["gamble_aud"]), 2)
         rounds = int(row["gamble_rounds"])
-        currency = row["display_currency"] if row["display_currency"] in FIAT else "AUD"
         if stake <= 0:
             raise ValueError("Nothing to gamble — win a spin first")
         if rounds >= GAMBLE_MAX_ROUNDS:
@@ -537,11 +577,11 @@ def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> d
             # Double would break the 20% cap: auto-collect (commit), then report.
             conn.execute("UPDATE players SET gamble_aud = 0, gamble_rounds = 0 WHERE id = ?", (player_id,))
         else:
-            _take_stake(conn, player_id, stake, "gamble_bet", f"gamble {stake} AUD on {choice}")
+            _take_stake(conn, player_id, stake, "gamble_bet", f"gamble {to_coins(stake)} coins on {choice}")
             card = draw()
             won = card["colour"] == choice
             payout = round(2 * stake, 2) if won else 0.0
-            _pay(conn, player_id, payout, currency, "gamble_win", f"gamble win {payout} AUD")
+            _pay(conn, player_id, payout, "gamble_win", f"gamble win {to_coins(payout)} coins")
             pool = max(0.0, pool_with_stake - payout)
             new_stake = payout if won and rounds + 1 < GAMBLE_MAX_ROUNDS else 0.0
             conn.execute(
@@ -560,6 +600,7 @@ def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> d
     snap = snapshot(player_id)
     snap["card"] = card
     snap["won"] = won
+    snap["gamble_aud"] = new_stake  # game units, for tests
     snap["gamble_stake_aud"] = stake
     snap["gamble_payout_aud"] = payout
     snap["rounds_left"] = (GAMBLE_MAX_ROUNDS - rounds - 1) if new_stake else 0

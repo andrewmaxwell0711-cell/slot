@@ -1,24 +1,50 @@
-# Crystal Casino · Crystal Reels — Demo Slot Machine (TEST MODE)
+# Crystal Casino — Social Casino (TEST MODE)
 
-A 5-reel demo slot with a **server-side ledger**, **server-side RNG**, and optional **Stripe Checkout in test mode** for fiat deposits (AUD, USD, EUR).
+A social-casino slot (Megaways + 25-line Classic) with a **server-side ledger**, **server-side RNG**, free coin grants, and optional **Stripe Checkout in test mode** for coin packs.
 
 This is **not** real-money gambling.
 
-- **TEST MODE only.** The server refuses to start if `STRIPE_SECRET_KEY` is set and does not begin with `sk_test_`. Live keys are never accepted.
-- **Withdrawals are simulated.** The ledger is debited and marked `test withdrawal recorded`. There are no Stripe Connect accounts, payouts, or transfers.
-- **Crypto deposits are play money only.** They never touch a chain or a payment processor.
-- Real-money play would need a **gambling licence plus Stripe approval**. Stripe prohibits unlicensed gambling, and real-money online gambling is illegal in Australia without a licence.
+- **Virtual coins only.** Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. They cannot be withdrawn, transferred, or exchanged for money.
+- **There is no cash-out.** Withdrawal and crypto deposit/withdraw demo flows have been removed.
+- **TEST MODE only.** The server refuses to start if `STRIPE_SECRET_KEY` is set and does not begin with `sk_test_`. Live keys (`sk_live_`) are never accepted.
+- Buying coins is optional. New players receive a free starting grant, plus a free **daily chest** and a free **hourly bonus**, so play never requires a purchase.
+- An **18+ age gate** is shown on first visit. A responsible-play note appears in the footer and shop.
+
+## Coin economy
+
+Internal game math still uses the original game units (so paytables, the hidden 20% cap, and RTP are unchanged). The public API and UI speak **integer coins** at `COIN_SCALE = 1000` (1 game unit = 1,000 coins).
+
+| Grant / pack | Coins | Price (AUD, Stripe test charge only) |
+|--------------|------:|--------------------------------------|
+| Starting grant | 25,000 | Free |
+| Daily chest (once per Australia/Perth calendar day) | 8,000 | Free |
+| Hourly bonus (every 60 minutes) | 2,000 | Free |
+| Pouch (`pack_5`) | 50,000 | A$4.99 |
+| Sack (`pack_10`, Popular) | 120,000 | A$9.99 |
+| Chest (`pack_20`, Best value) | 280,000 | A$19.99 |
+| Vault (`pack_50`, Biggest) | 800,000 | A$49.99 |
+
+Shop prices are what Stripe charges in AUD. The coins themselves have no cash value.
+
+Classic bets: 20–4,000 coins per line (1/5/10/20/25 lines). Megaways bets: 200–100,000 coins.
 
 ## Features
 
-- 5-reel slot with spin animation, center payline wins, and optional sound
-- Wallet with:
-  - Fiat deposits via **Stripe test Checkout** (AUD, USD, EUR)
-  - Play-money crypto credits (BTC, ETH, USDT, SOL)
-  - Simulated withdrawals
+- Megaways (up to 117,649 ways, tumbling reels, unlimited free-spin multiplier) and 25-line Classic, with Green Tea Jackpot, Crystal Pick, Tea Wheel, and red/black gamble
+- v5 animation, sound, XP/streak engagement, autoplay, turbo, MAX BET, info, history
+- Wallet shows a single **Coins** balance — no AUD/USDT display, no currency picker
+- Coin shop via **Stripe test Checkout**; credits only after the session is retrieved and verified `paid`, matching the catalogue pack, **idempotent per session id**
 - Authoritative balances in SQLite (`server/ledger.db`), keyed by an HTTP-only player cookie
-- Spin outcomes and payouts computed on the server (`POST /api/spin`) so the client cannot fake wins
-- Dark casino UI — mobile-friendly
+- Spin outcomes and payouts computed on the server (`POST /api/spin`)
+- Dark casino UI, mobile-friendly, 18+ age gate, legal footer
+
+The house pool and 20% per-spin cap still exist **server-side only**, now measured in the same hidden game units / coin scale. `/api/pool` stays 404. Cap and max-win fields are never sent to players.
+
+The paytable is tuned for a long-run **return to player of ~20%**. Every spin is an independent fair RNG outcome computed on the server. Game math was not changed for the social-casino conversion, so `simulate_rtp.py` does not need a re-run unless weights or settle logic are edited:
+
+```bash
+.venv/bin/python server/simulate_rtp.py
+```
 
 ## Setup
 
@@ -40,7 +66,7 @@ cp .env.example .env
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `STRIPE_SECRET_KEY` | No | Stripe **test** secret key. Must start with `sk_test_`. If unset, the app still runs and shows: *Add a Stripe test key to enable checkout*. |
+| `STRIPE_SECRET_KEY` | No | Stripe **test** secret key. Must start with `sk_test_`. If unset, the app still runs and shows: *Add a Stripe test key to enable the coin shop*. |
 | `STRIPE_WEBHOOK_SECRET` | No | Webhook signing secret (`whsec_...`) from the Stripe CLI or Dashboard. When set, `POST /api/stripe/webhook` verifies signatures. |
 | `PUBLIC_BASE_URL` | No | Public origin used in Checkout success/cancel URLs (default: request host, e.g. `http://localhost:8765`). |
 | `PORT` | No | Listen port (default `8765`). |
@@ -54,7 +80,7 @@ Stop any old static server on port 8765 first, then:
 
 ```bash
 cd /workspace/slot-app
-# leave STRIPE_SECRET_KEY unset to run without checkout, or export a sk_test_ key
+# leave STRIPE_SECRET_KEY unset to run without the shop, or export a sk_test_ key
 .venv/bin/python server/app.py
 ```
 
@@ -62,7 +88,7 @@ The app listens on **http://0.0.0.0:8765/**.
 
 Open: **http://localhost:8765/**
 
-## Stripe test Checkout
+## Stripe test Checkout (coin shop)
 
 1. Put a test secret key in `.env` or the environment:
 
@@ -72,16 +98,14 @@ Open: **http://localhost:8765/**
 
 2. Restart the server. If the value does not start with `sk_test_`, it will refuse to start.
 
-3. In the app, click **Deposit**, choose a fiat currency, enter an amount (minimum 0.50), and click **Pay with Stripe (test mode)**.
-
-4. Pay with the Stripe test card:
+3. In the app, click **Buy Coins**, choose a pack, and pay with the Stripe test card:
 
    - Card: `4242 4242 4242 4242`
    - Expiry: any future date
    - CVC: any 3 digits
    - ZIP: any value
 
-5. After payment you land on `/deposit/success`, which **retrieves the Checkout Session from Stripe** and credits the ledger **once** (idempotent per session id). The webhook does the same if it is configured.
+4. After payment you land on `/shop/success`, which **retrieves the Checkout Session from Stripe** and credits the catalogue coin amount **once** (idempotent per session id). The webhook does the same if it is configured. The credited amount is the pack's coin count, never a conversion of `amount_total` into cash-out value.
 
 ### Webhooks (optional but recommended)
 
@@ -93,37 +117,41 @@ stripe listen --forward-to localhost:8765/api/stripe/webhook
 
 Copy the printed `whsec_...` value into `STRIPE_WEBHOOK_SECRET` (or `.env`) and restart the server. The endpoint handles `checkout.session.completed` and verifies the signature when the secret is set.
 
-If `STRIPE_WEBHOOK_SECRET` is not set, the webhook returns 503. Deposits still credit when the player returns to the success page.
+If `STRIPE_WEBHOOK_SECRET` is not set, the webhook returns 503. Packs still credit when the player returns to the success page.
 
 ## API
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | App shell |
-| `GET` | `/api/balance` | Server ledger snapshot (works without a Stripe key) |
-| `GET` | `/api/config` | Test-mode flags, rates, paytable |
-| `POST` | `/api/deposit/checkout` | Create a Stripe Checkout Session (`mode=payment`) and return its URL |
-| `GET` | `/deposit/success` | Verify the session server-side and credit once |
-| `GET` | `/deposit/cancel` | Cancelled Checkout |
+| `GET` | `/api/balance` | Server ledger snapshot (coins, stats, bonuses; works without a Stripe key) |
+| `GET` | `/api/config` | Social-casino flags, legal copy, coin packs, paytable |
+| `POST` | `/api/shop/checkout` | Create a Stripe Checkout Session for a catalogue pack and return its URL |
+| `GET` | `/shop/success` | Verify the session server-side and credit the pack once |
+| `GET` | `/shop/cancel` | Cancelled Checkout |
 | `POST` | `/api/stripe/webhook` | `checkout.session.completed` (signature verified when secret is set) |
-| `POST` | `/api/deposit/play` | Play-money crypto credit only |
-| `POST` | `/api/withdraw` | Simulated test withdrawal |
+| `POST` | `/api/bonus/daily` | Claim the free daily coin chest |
+| `POST` | `/api/bonus/hourly` | Claim the free hourly coin bonus |
 | `POST` | `/api/spin` | Server RNG + payout against the ledger |
-| `POST` | `/api/prefs` | Display currency |
+| `POST` | `/api/gamble` | Red/black double-up |
+| `POST` | `/api/gamble/collect` | Collect a gamble stake |
+
+Removed (return 404): `/api/withdraw`, `/api/deposit/checkout`, `/api/deposit/play`, `/api/prefs`, `/deposit/success`, `/deposit/cancel`, `/api/pool`.
 
 ## How to play
 
-1. Deposit fiat via Stripe test Checkout, or add play-money crypto.
-2. Adjust **Bet** with − / +.
-3. Hit **SPIN** (or press Space). The server rolls the reels and pays wins.
-4. Match **3+ identical symbols** on the center payline (payout = multiplier × bet).
-5. Click **Withdraw** to debit the test ledger (status: **test withdrawal recorded**).
+1. Confirm you are 18 or older.
+2. Play with your free starting coins, or claim the daily / hourly bonuses. Buying packs is optional.
+3. Toggle **MEGAWAYS** or **25 LINES**, set the bet, and hit **SPIN** (or press Space). The server rolls the reels and pays wins in coins.
+4. After a win you can **GAMBLE** (red/black) or spin again.
 
-The paytable is tuned for a long-run **return to player of 20%** (about 10,000 paid back for every 50,000 wagered). Every spin is an independent fair RNG outcome computed on the server — there is no per-player rigging. Confirm with:
+## Tests
 
 ```bash
-.venv/bin/python server/simulate_rtp.py
+.venv/bin/python server/test_cap.py
 ```
+
+Coverage includes the hidden 20% cap, jackpot = cap, multi-line and Megaways evaluation, gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, and **coins never converting out**.
 
 ## Deploy on Render
 
@@ -131,103 +159,52 @@ The app is a Python web service (Flask + gunicorn). A Blueprint is in `render.ya
 
 1. Push this repo to GitHub (or another Git provider Render supports) and create a new Blueprint in the [Render Dashboard](https://dashboard.render.com/), pointing at the repo root.
 2. When prompted, enter a Stripe **test** secret key (`sk_test_...`) for `STRIPE_SECRET_KEY`. Live keys are rejected at startup.
-3. After the first deploy, set `PUBLIC_BASE_URL` to the public origin (for example `https://fortune-reels.onrender.com`) and redeploy so Stripe Checkout success/cancel URLs are correct. `FLASK_SECRET_KEY` is generated automatically.
+3. After the first deploy, set `PUBLIC_BASE_URL` to the public origin (for example `https://slot-yqoa.onrender.com`) and redeploy so Stripe Checkout success/cancel URLs are correct. `FLASK_SECRET_KEY` is generated automatically.
 4. The start command is `gunicorn server.app:app --bind 0.0.0.0:$PORT`. Render provides `PORT`; the app also honours it when you run `server/app.py` locally.
 
 **SQLite on Render's free tier is ephemeral.** The ledger lives in `server/ledger.db` on the instance disk. Free web services have no persistent disk, so balances, spin history, and player cookies' matching rows are **wiped on every redeploy and typically lost when the instance spins down**. That is fine for this demo. For anything longer-lived, use a managed Postgres database (and a persistent session secret).
 
 Free web services also spin down after inactivity, so the first request after a rest can be slow.
 
+## Going live with real coin purchases
+
+This demo stays in Stripe **test mode**. Accepting real payments for coin packs would still need, at least:
+
+- A Stripe account approved to sell virtual currency / social-casino coins. This is often a **restricted business** category and can require a Stripe review even though coins are not redeemable for cash.
+- Clear terms, 18+ enforcement, and the legal copy that coins have no monetary value and cannot be redeemed for cash or prizes.
+- Confirmation that the product is a **non-redeemable social casino** in the target jurisdiction (in Australia, real-money online slots need a licence; a social casino with no cash-out is the intended legal path, but you should get legal advice before charging real money).
+- Switching the secret key is **not** enough: the server will refuse `sk_live_`. Enabling live keys would be a deliberate, reviewed change after those approvals — and even then there must still be **no withdrawals or cash-out**.
+
 ## Demo caveats
 
 - No real money moves except Stripe *test* charges, which never settle live funds.
-- Withdrawals never leave this app.
-- Bets debit wallet balances (fiat first, then crypto) by AUD-equivalent value.
-- Wins credit into the selected **display currency**.
-- The ledger lives in `server/ledger.db`. A browser cookie (`fr_player`) identifies the player. Mute / bet size still persist in `localStorage` as UI prefs only.
+- Coins cannot be withdrawn or converted to cash.
+- The ledger lives in `server/ledger.db`. A browser cookie identifies the player. Mute / bet size still persist in `localStorage` as UI prefs only. The 18+ gate is stored in `localStorage` (`crystal-casino-age-ok-v1`).
 - On Render's free tier, that SQLite file is wiped on redeploy (see above).
 - Sound uses the Web Audio API; use the mute button to silence.
-- This 20% RTP is demo math only. Licensed real-money slots are typically required to return around 85–95%.
+- This ~20% RTP is social-casino / demo math only. Licensed real-money slots are typically required to return around 85–95%.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell & modals |
+| `index.html` | App shell, shop, age gate, footer |
 | `styles.css` | Dark casino styling |
 | `app.js` | UI, reel animation, API client |
-| `server/app.py` | Flask app: static files, Stripe, API |
-| `server/ledger.py` | SQLite ledger |
-| `server/game.py` | Symbol weights, RNG, payline (20% RTP) |
+| `gems.js` | Procedural gem art |
+| `server/app.py` | Flask app: static files, Stripe shop, API |
+| `server/ledger.py` | SQLite ledger (coins, bonuses, idempotent pack credit) |
+| `server/game.py` | Symbol weights, RNG, paytables, coin scale (~20% RTP) |
 | `server/simulate_rtp.py` | 1,000,000-spin RTP check |
-| `server/templates/` | Checkout success / cancel pages |
+| `server/test_cap.py` | Cap, API, shop, and social-casino tests |
+| `server/templates/` | Shop success / cancel pages |
 | `requirements.txt` | Python dependencies (includes gunicorn) |
 | `render.yaml` | Render Blueprint for a Python web service |
 | `.env.example` | Env var template |
 | `README.md` | This file |
 
+## Earlier versions (Nov 2026)
 
-## Crystal Casino v3 (Nov 2026)
+v3–v5 added 25-line Classic, Megaways, mini games, sound, and richer animation. Those game features remain. v5's client-side daily USDT play-money credit has been replaced by the server-authoritative daily and hourly **coin** bonuses. Fiat/crypto wallet display and simulated withdrawals were removed in the social-casino conversion.
 
-- 5×3 reels, **25 paylines** (standard patterns incl. V, ^ and zigzags). Choose 1/5/10/20/25 lines and
-  bet per line A$0.02–A$4; total bet = lines × bet per line (max A$100). Wins pay left to right on active
-  lines; winning lines are drawn over the reels with numbered line badges on both edges.
-- Symbols (pays × bet per line for 3/4/5): Green Tea 50/150/500 (top symbol, packet art in `assets/`),
-  Ruby 25/80/200, Sapphire 15/50/100, Emerald 10/30/80, Amethyst 6/16/50, Topaz 6/16/40,
-  Citrine 4/10/20, Rose Quartz 4/10/20. Crystal Wild (reels 2–4) substitutes and doubles line wins;
-  Prism Scatter 3/4/5 anywhere pays 2/5/20× total bet + 8/12/20 free spins at ×2. Ice Shard is non-paying.
-  Gem art is procedural faceted SVG (`gems.js`).
-- **Green Tea Jackpot** pays the table maximum: the spin's total win becomes exactly 20% of the house pool.
-  Hit chance = 0.20 × total bet / pool (max 1/1000), so expected jackpot return is a fixed 4% of stakes.
-- **Gamble / double-up**: after a win, pick red/black (server-drawn card, 50/50), up to 5 times. A double
-  is refused (auto-collect) if 2× the stake would exceed 20% of the pool.
-- **House pool and cap** (server only): pool = all stakes − all payouts (SQLite `house` table). Every
-  spin's total (lines + scatter + jackpot, and each free spin) is clamped to 20% of the pool; pool never
-  negative. Pool, cap and max-win are **not** exposed to players (no `/api/pool`; not in any response).
-- Auto spin (10/25/50/100/∞ with stop on bonus / big win / balance below X), turbo, MAX BET, info screen
-  (paytable, paylines, features), spin history, win roll-up, anticipation, celebrations, Web Audio.
-- `python server/test_cap.py` (cap, jackpot = cap, multi-line evaluation, gamble, API hides pool) and
-  `python server/simulate_rtp.py [spins] [lines] [start_pool]` (expected total RTP ~19.9%).
-- On Render's free plan SQLite resets on each deploy: the pool restarts at 0, so early wins and jackpots
-  are small until players have bet.
-
-## Crystal Casino v4 (Nov 2026): Megaways, mini games, sound
-
-- **Mode toggle** above the reels: **MEGAWAYS** (default) or **25 LINES** (the v3 classic game). Both share
-  the wallet, Green Tea Jackpot, gamble, autoplay, turbo and history.
-- **Megaways**: 6 reels; reels 1 and 6 land 2–7 symbols, reels 2–5 land 2–6 plus one symbol on a horizontal
-  **top reel**, so every spin has 324 – **117,649 ways** (shown by the animated ways counter). Wins pay left to
-  right on adjacent reels from reel 1: pay per way × ways (matches multiplied reel by reel), stake A$0.20–A$100.
-  **Tumbling reels**: winning symbols shatter and new ones drop in, repeating until no new win.
-  Crystal Wild on reels 2–5 (incl. top reel). 4/5/6+ BONUS on the final board pay 1/5/25× and award
-  10/15/20 free spins; in free spins the **win multiplier starts at ×1 and rises +1 after every winning tumble,
-  with no upper limit**, never resetting during the bonus (3+ BONUS retrigger, max 50 spins).
-- **Mini games** (both modes; outcomes drawn on the server when they trigger, the UI only reveals them):
-  - *Crystal Pick*: mystery trigger (~1 in 280 paid spins). Pick from 12 crystals; each reveals 0.2×–25×
-    total bet until a COLLECT crystal.
-  - *Tea Wheel*: 2+ BONUS (classic) / 3 BONUS (Megaways) together with a WILD, without triggering free spins.
-    12 wedges: 2×–25× total bet, 8 FREE SPINS, and a GREEN TEA JACKPOT wedge. Landing on the jackpot wedge wins
-    the jackpot (exactly 20% of the pool) with chance min(1, 30 × bet / pool); otherwise the wheel ticks on to
-    a neighbouring 2× (near miss). Expected value is bounded however large the pool gets.
-  - Red/Black gamble as before.
-- **Cap**: every step (the paid spin incl. all its tumbles, each mini game, each free spin) is clamped to 20%
-  of the pool at that moment, and the pool is reduced before the next step (`game.settle_steps`, shared by the
-  ledger and the simulator). The pool never goes negative and its size is never sent to players.
-- **Sound** (all synthesised with Web Audio, no recorded assets): reel-spin loop, per-reel stop thuds,
-  crystal shatter on tumbles, rising anticipation tones as BONUS symbols land, win jingles scaled by win
-  size, roll-up ticks, ways-counter ticks, wheel ticks, bonus/wheel music loop, button clicks. Master volume
-  slider and mute in the header, saved in localStorage.
-- Engagement: ambient sparkles, near-miss messages and anticipation reels, multiplier bumps, celebrations.
-- RTP (expected value, jackpots at their exact EV; `python server/simulate_rtp.py 1000000 both 1000000`):
-  Megaways ~19.5–19.8%, Classic ~20.0–20.3%. Tests: `python server/test_cap.py` (29 tests).
-
-
-## Crystal Casino v5 (Nov 2026): richer animation & engagement
-
-Animation and presentation polish on top of v4. **Server game math is unchanged** (20% per-spin cap, ~20% RTP, pool hidden from players).
-
-- **Reels:** stronger motion blur while spinning, staggered stops with a bounce/overshoot, symbol pop on land, and a longer anticipation slow-down plus gold glow when enough BONUS symbols have landed that more could trigger a feature.
-- **Symbols:** idle sheen/sparkle on premium crystals, a pulsing Crystal Wild, winning symbols scale and glow, traveling highlights on paylines, shatter particles on Megaways tumbles, and new symbols drop with a gravity bounce. Win amounts count up on the WIN meter and a “+amount” chip flies off the board.
-- **Celebrations:** tiered Big / Mega / Epic Win full-screen overlays with rotating light rays, a coin and gem shower, and cabinet shake (heavier on Mega/Epic). The Green Tea Jackpot gets a cinematic zoom of the tea packet, a golden burst and confetti. Tap or press Escape to skip. Free-spin intro and outro banners pop the multiplier; Crystal Pick and Tea Wheel open with a feature sting.
-- **Ambient:** chasing lights around the gold cabinet frame, floating background motes, a breathing SPIN button, and press-flash feedback on buttons. Sound cues are synced to landings, showers, level-ups, the daily chest and streaks. Particle counts drop on small screens, and `prefers-reduced-motion` shortens or disables motion.
-- **Engagement (play money / decorative only):** a level/XP bar that fills as you spin (level-up splash), a win-streak badge, and a once-a-day bonus chest that credits **5 USDT play money** via the existing play-money deposit API (resets at midnight Australia/Perth). None of this changes spin outcomes or the hidden house pool.
+Internal math (weights, paytables, 20% per-step cap, hidden house pool) is unchanged from v5. Public amounts are coins (`COIN_SCALE = 1000`).

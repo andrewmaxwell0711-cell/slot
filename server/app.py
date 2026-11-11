@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Crystal Reels — test-mode-only Flask backend.
+"""Crystal Casino — social casino, test-mode-only Flask backend.
 
-Serves the static demo slot and exposes a server-side ledger, spin RNG,
-Stripe Checkout (sk_test_ keys only), and simulated withdrawals.
+Virtual coins, a Stripe test-mode coin shop, free starting/daily/hourly
+coins, and a server-side slot RNG. Coins have no cash value and cannot be
+withdrawn, redeemed or exchanged for money or prizes. Live Stripe keys
+(sk_live_) are refused.
 """
 
 from __future__ import annotations
@@ -35,8 +37,6 @@ import ledger  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
 ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js"}
-MIN_FIAT_CENTS = 50
-MAX_FIAT_CENTS = 100_000  # $1,000.00 test cap
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -142,14 +142,28 @@ def _config_payload() -> dict:
     return {
         "stripe_enabled": STRIPE_ENABLED,
         "test_mode": True,
+        "social_casino": True,
         "banner": None
         if STRIPE_ENABLED
-        else "Add a Stripe test key to enable checkout",
-        "fiat": list(game.FIAT),
-        "crypto": list(game.CRYPTO),
-        "rates_to_aud": game.RATES_TO_AUD,
+        else "Add a Stripe test key to enable the coin shop",
+        "legal": game.LEGAL_COINS,
+        "responsible_play": game.RESPONSIBLE_PLAY,
+        "coin_scale": game.COIN_SCALE,
+        "starting_coins": game.STARTING_COINS,
+        "packs": [
+            {
+                "id": p["id"],
+                "label": p["label"],
+                "price": p["price_aud"],
+                "price_cents": p["price_cents"],
+                "currency": "AUD",
+                "coins": p["coins"],
+                "tag": p["tag"],
+            }
+            for p in game.COIN_PACKS
+        ],
         "line_options": game.LINE_OPTIONS,
-        "bet_per_line_aud": game.BET_PER_LINE_AUD,
+        "bet_per_line": [game.to_coins(x) for x in game.BET_PER_LINE_AUD],
         "paylines": [list(p) for p in game.PAYLINES],
         "symbols": [
             {
@@ -173,7 +187,7 @@ def _config_payload() -> dict:
         },
         "modes": list(game.MODES),
         "megaways": {
-            "bet_aud": game.MW_BET_AUD,
+            "bet": [game.to_coins(x) for x in game.MW_BET_AUD],
             "reels": game.MW_REELS,
             "top_reels": list(game.MW_TOP_REELS),
             "min_rows": game.MW_MIN_ROWS,
@@ -222,6 +236,24 @@ def assets(filename: str):
     return resp
 
 
+
+def _public_snap(snap: dict, include_config: bool = False) -> dict:
+    """Player-facing ledger view: coins only, no pool or cash-out fields."""
+    out = {
+        "coins": snap["coins"],
+        "stats": snap["stats"],
+        "last_win": snap["last_win"],
+        "gamble": snap["gamble"],
+        "bonuses": snap["bonuses"],
+    }
+    if include_config:
+        out["config"] = _config_payload()
+    if "awarded" in snap:
+        out["awarded"] = snap["awarded"]
+        out["bonus"] = snap.get("bonus")
+    return out
+
+
 @app.get("/api/config")
 def api_config():
     return jsonify(_config_payload())
@@ -229,56 +261,17 @@ def api_config():
 
 @app.get("/api/balance")
 def api_balance():
-    snap = ledger.snapshot(g.player_id)
-    snap["config"] = _config_payload()
-    return jsonify(snap)
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
 
 
-@app.post("/api/prefs")
-def api_prefs():
-    data = request.get_json(silent=True) or {}
-    currency = str(data.get("display_currency") or "").upper()
-    try:
-        snap = ledger.set_display_currency(g.player_id, currency)
-    except ValueError as exc:
-        return _json_error(str(exc))
-    return jsonify(snap)
-
-
-def _parse_amount(raw) -> Decimal:
-    try:
-        amount = Decimal(str(raw))
-    except (InvalidOperation, TypeError):
-        raise ValueError("Enter a valid amount")
-    if amount <= 0:
-        raise ValueError("Enter a valid amount")
-    return amount
-
-
-@app.post("/api/deposit/checkout")
-def api_deposit_checkout():
+@app.post("/api/shop/checkout")
+def api_shop_checkout():
     if not STRIPE_ENABLED:
-        return _json_error("Add a Stripe test key to enable checkout", 503)
-
+        return _json_error("Add a Stripe test key to enable the coin shop", 503)
     data = request.get_json(silent=True) or {}
-    currency = str(data.get("currency") or data.get("asset") or "").upper()
-    if currency not in game.FIAT:
-        return _json_error("Fiat deposits must be AUD, USD, or EUR")
-
-    try:
-        amount = _parse_amount(data.get("amount"))
-    except ValueError as exc:
-        return _json_error(str(exc))
-
-    # Stripe expects integer minor units for these currencies.
-    cents = int((amount * 100).quantize(Decimal("1")))
-    if amount != (Decimal(cents) / 100):
-        return _json_error("Amount must have at most two decimal places")
-    if cents < MIN_FIAT_CENTS:
-        return _json_error("Minimum test deposit is 0.50")
-    if cents > MAX_FIAT_CENTS:
-        return _json_error("Maximum test deposit is 1000.00")
-
+    pack = game.pack_by_id(str(data.get("pack_id") or ""))
+    if not pack:
+        return _json_error("Unknown coin pack")
     base = _public_base_url()
     try:
         session = stripe.checkout.Session.create(
@@ -286,45 +279,32 @@ def api_deposit_checkout():
             line_items=[
                 {
                     "price_data": {
-                        "currency": currency.lower(),
+                        "currency": "aud",
                         "product_data": {
-                            "name": f"Crystal Reels test deposit ({currency})",
+                            "name": f"Crystal Casino — {pack['coins']:,} Coins ({pack['label']})",
                             "description": (
-                                "TEST MODE only. Demo ledger credit — not real-money gambling."
+                                f"{game.LEGAL_COINS} TEST MODE only. Not real-money gambling."
                             ),
                         },
-                        "unit_amount": cents,
+                        "unit_amount": pack["price_cents"],
                     },
                     "quantity": 1,
                 }
             ],
-            success_url=base + "/deposit/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url=base + "/deposit/cancel",
+            success_url=base + "/shop/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=base + "/shop/cancel",
             client_reference_id=g.player_id,
             metadata={
                 "player_id": g.player_id,
-                "asset": currency,
-                "amount": str(Decimal(cents) / 100),
-                "app": "crystal-reels-test",
+                "pack_id": pack["id"],
+                "coins": str(pack["coins"]),
+                "price_cents": str(pack["price_cents"]),
+                "app": "crystal-casino-social",
             },
         )
-    except Exception as exc:  # stripe.error.StripeError and network errors
+    except Exception as exc:
         return _json_error(f"Could not start Stripe Checkout: {exc}", 502)
-
-    return jsonify({"url": session.url, "session_id": session.id, "test_mode": True})
-
-
-@app.post("/api/deposit/play")
-def api_deposit_play():
-    """Play-money crypto credit only. Fiat must go through Stripe test Checkout."""
-    data = request.get_json(silent=True) or {}
-    asset = str(data.get("asset") or data.get("currency") or "").upper()
-    try:
-        amount = float(_parse_amount(data.get("amount")))
-        snap = ledger.credit_play_money(g.player_id, asset, amount)
-    except ValueError as exc:
-        return _json_error(str(exc))
-    return jsonify(snap)
+    return jsonify({"url": session.url, "session_id": session.id, "test_mode": True, "pack_id": pack["id"]})
 
 
 def _credit_from_stripe_session(session: dict) -> tuple[bool, str, dict | None]:
@@ -335,20 +315,26 @@ def _credit_from_stripe_session(session: dict) -> tuple[bool, str, dict | None]:
 
     metadata = session.get("metadata") or {}
     player_id = metadata.get("player_id") or session.get("client_reference_id")
-    asset = (metadata.get("asset") or session.get("currency") or "").upper()
-    amount_total = session.get("amount_total")
-    if amount_total is None:
-        return False, "Checkout session is missing an amount.", None
-    amount = float(Decimal(int(amount_total)) / 100)
+    pack_id = metadata.get("pack_id") or ""
+    pack = game.pack_by_id(str(pack_id))
+    if not pack:
+        return False, "Checkout session is missing a valid coin pack.", None
     if not player_id:
         return False, "Checkout session is missing a player id.", None
-    if asset not in game.FIAT:
-        return False, "Unsupported deposit currency.", None
-    return ledger.credit_stripe_session(session_id, str(player_id), asset, amount)
+
+    amount_total = session.get("amount_total")
+    currency = (session.get("currency") or "").lower()
+    if amount_total is None:
+        return False, "Checkout session is missing an amount.", None
+    if currency != "aud" or int(amount_total) != int(pack["price_cents"]):
+        return False, "Checkout session does not match the coin pack price.", None
+    return ledger.credit_coin_pack(
+        session_id, str(player_id), pack["id"], pack["coins"], pack["price_aud"]
+    )
 
 
-@app.get("/deposit/success")
-def deposit_success():
+@app.get("/shop/success")
+def shop_success():
     session_id = (request.args.get("session_id") or "").strip()
     if not session_id:
         return render_template(
@@ -359,17 +345,15 @@ def deposit_success():
             message="No Checkout session id was provided.",
             amount_label=None,
         )
-
     if not STRIPE_ENABLED:
         return render_template(
             "success.html",
             ok=False,
             status_label="unavailable",
             heading="Stripe is not configured",
-            message="Add a Stripe test key to enable checkout.",
+            message="Add a Stripe test key to enable the coin shop.",
             amount_label=None,
         )
-
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         session_dict = session.to_dict() if hasattr(session, "to_dict") else dict(session)
@@ -382,7 +366,6 @@ def deposit_success():
             message=str(exc),
             amount_label=None,
         ), 400
-
     try:
         credited, message, snap = _credit_from_stripe_session(session_dict)
     except ValueError as exc:
@@ -390,7 +373,7 @@ def deposit_success():
             "success.html",
             ok=False,
             status_label="error",
-            heading="Deposit not credited",
+            heading="Coins not credited",
             message=str(exc),
             amount_label=None,
         ), 400
@@ -398,15 +381,21 @@ def deposit_success():
     processed = ledger.get_processed_session(session_id)
     amount_label = None
     if processed:
-        amount_label = f"{processed['amount']:.2f} {processed['asset']}"
+        amount_label = f"{int(processed['amount']):,} coins"
         if credited:
-            heading = "Test deposit credited"
-            detail = "Your server-side ledger has been credited once for this Checkout session."
+            heading = "Coins added to your account"
+            detail = (
+                "Your coin pack has been credited once for this Checkout session. "
+                + game.LEGAL_COINS
+            )
         else:
             heading = "Already credited"
-            detail = "This Checkout session was already applied to the ledger (idempotent)."
+            detail = (
+                "This Checkout session was already applied to your coin balance (idempotent). "
+                + game.LEGAL_COINS
+            )
     else:
-        heading = "Deposit not credited"
+        heading = "Coins not credited"
         detail = message
         credited = False
 
@@ -420,23 +409,49 @@ def deposit_success():
     )
 
 
-@app.get("/deposit/cancel")
-def deposit_cancel():
+@app.get("/shop/cancel")
+def shop_cancel():
     return render_template("cancel.html")
+
+
+@app.post("/api/bonus/daily")
+def api_bonus_daily():
+    try:
+        snap = ledger.claim_daily(g.player_id)
+    except ledger.BonusUnavailable as exc:
+        out = _public_snap(ledger.snapshot(g.player_id))
+        out["error"] = str(exc)
+        return jsonify(out), 429
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(_public_snap(snap))
+
+
+@app.post("/api/bonus/hourly")
+def api_bonus_hourly():
+    try:
+        snap = ledger.claim_hourly(g.player_id)
+    except ledger.BonusUnavailable as exc:
+        out = _public_snap(ledger.snapshot(g.player_id))
+        out["error"] = str(exc)
+        out["hourly_seconds"] = getattr(exc, "seconds", 0)
+        return jsonify(out), 429
+    except ValueError as exc:
+        return _json_error(str(exc))
+    return jsonify(_public_snap(snap))
 
 
 @app.post("/api/stripe/webhook")
 def stripe_webhook():
     payload = request.get_data()
     if not STRIPE_ENABLED:
-        return _json_error("Add a Stripe test key to enable checkout", 503)
+        return _json_error("Add a Stripe test key to enable the coin shop", 503)
     if not STRIPE_WEBHOOK_SECRET:
         return _json_error(
             "STRIPE_WEBHOOK_SECRET is not set. Run: stripe listen --forward-to "
             f"localhost:{PORT}/api/stripe/webhook",
             503,
         )
-
     sig = request.headers.get("Stripe-Signature", "")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
@@ -454,23 +469,41 @@ def stripe_webhook():
         try:
             credited, message, _snap = _credit_from_stripe_session(obj)
         except ValueError as exc:
-            # Don't retry permanently invalid sessions.
             return jsonify({"received": True, "credited": False, "error": str(exc)}), 200
         return jsonify({"received": True, "credited": credited, "message": message})
-
     return jsonify({"received": True, "ignored": event_type})
 
 
-@app.post("/api/withdraw")
-def api_withdraw():
-    data = request.get_json(silent=True) or {}
-    asset = str(data.get("asset") or data.get("currency") or "").upper()
-    try:
-        amount = float(_parse_amount(data.get("amount")))
-        snap = ledger.withdraw(g.player_id, asset, amount)
-    except ValueError as exc:
-        return _json_error(str(exc))
-    return jsonify(snap)
+
+def _to_coins_tree(obj):
+    """Convert game-unit money fields to integer coins and drop _aud suffixes."""
+    rename = {
+        "raw_win_aud": "raw_win",
+        "win_aud": "win",
+        "jackpot_aud": "jackpot",
+        "scatter_win_aud": "scatter_win",
+        "bet_aud": "bet",
+        "bet_per_line_aud": "bet_per_line",
+        "gamble_aud": "gamble",
+        "gamble_stake_aud": "gamble_stake",
+        "gamble_payout_aud": "gamble_payout",
+        "total_paid_aud": "win",
+        "jackpot_paid_aud": "jackpot_paid",
+        "last_win_aud": "last_win",
+        "total_won_aud": "total_won",
+        "total_bet_aud": "total_bet",
+    }
+    if isinstance(obj, list):
+        return [_to_coins_tree(x) for x in obj]
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if k in rename:
+                out[rename[k]] = game.to_coins(v) if isinstance(v, (int, float)) else _to_coins_tree(v)
+            else:
+                out[k] = _to_coins_tree(v)
+        return out
+    return obj
 
 
 def _spin_payload(step: dict, settled: dict) -> dict:
@@ -507,15 +540,12 @@ def _spin_payload(step: dict, settled: dict) -> dict:
             scatter_pos=step["scatter_pos"], scatter_win_aud=step["scatter_win_aud"],
             free_spins_awarded=step["free_spins_awarded"], multiplier=step["multiplier"],
         )
-    return out
+    return _to_coins_tree(out)
 
 
 @app.post("/api/spin")
 def api_spin():
     data = request.get_json(silent=True) or {}
-    display_currency = str(data.get("display_currency") or "AUD").upper()
-    if display_currency not in game.FIAT:
-        display_currency = "AUD"
     mode = str(data.get("mode") or "classic").lower()
     if mode not in game.MODES:
         return _json_error("Invalid mode")
@@ -538,32 +568,28 @@ def api_spin():
 
     rnd = game.play_megaways(total_bet) if mode == "megaways" else game.play_classic(bpl, lines)
     try:
-        snap = ledger.settle_round(g.player_id, total_bet, rnd, display_currency)
+        snap = ledger.settle_round(g.player_id, total_bet, rnd, "COIN")
     except ValueError as exc:
         return _json_error(str(exc))
 
     steps = game.round_steps(rnd)
     payload = [_spin_payload(st, se) for st, se in zip(steps, snap["steps"])]
     n_games = len(rnd.get("minigames") or [])
+    pub = _public_snap(snap)
     return jsonify(
         {
             "mode": mode,
             "lines": lines,
-            "bet_per_line_aud": bpl,
-            "bet_aud": total_bet,
+            "bet_per_line": game.to_coins(bpl) if bpl is not None else None,
+            "bet": game.to_coins(total_bet),
             "base": payload[0],
             "minigames": payload[1:1 + n_games],
             "free_spins": payload[1 + n_games:],
             "jackpot_hit": snap["jackpot_hit"],
-            "jackpot_paid_aud": snap["jackpot_paid_aud"],
-            "win_aud": snap["total_paid_aud"],
+            "jackpot_paid": game.to_coins(snap["jackpot_paid_aud"]),
+            "win": game.to_coins(snap["total_paid_aud"]),
             "limited": snap["any_capped"],
-            "gamble_aud": snap["gamble_aud"],
-            "balances": snap["balances"],
-            "total_aud": snap["total_aud"],
-            "stats": snap["stats"],
-            "last_win_aud": snap["last_win_aud"],
-            "display_currency": snap["display_currency"],
+            **pub,
         }
     )
 
@@ -575,23 +601,31 @@ def api_gamble():
     try:
         snap = ledger.gamble(g.player_id, choice, game.draw_card)
     except ledger.GambleUnavailable as exc:
-        out = ledger.snapshot(g.player_id)
+        out = _public_snap(ledger.snapshot(g.player_id))
         out["error"] = str(exc)
         out["gamble_closed"] = True
         return jsonify(out), 409
     except ValueError as exc:
         return _json_error(str(exc))
-    return jsonify(snap)
+    out = _public_snap(snap)
+    out.update(
+        card=snap["card"],
+        won=snap["won"],
+        gamble_stake=game.to_coins(snap["gamble_stake_aud"]),
+        gamble_payout=game.to_coins(snap["gamble_payout_aud"]),
+        rounds_left=snap["rounds_left"],
+    )
+    return jsonify(out)
 
 
 @app.post("/api/gamble/collect")
 def api_gamble_collect():
-    return jsonify(ledger.gamble_collect(g.player_id))
+    return jsonify(_public_snap(ledger.gamble_collect(g.player_id)))
 
 
 def main() -> None:
-    mode = "Stripe test checkout enabled" if STRIPE_ENABLED else "no Stripe key — checkout disabled"
-    print(f"Crystal Reels TEST MODE listening on http://0.0.0.0:{PORT}/ ({mode})")
+    mode = "Stripe test coin shop enabled" if STRIPE_ENABLED else "no Stripe key — coin shop disabled"
+    print(f"Crystal Casino SOCIAL · TEST MODE listening on http://0.0.0.0:{PORT}/ ({mode})")
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
 

@@ -73,20 +73,55 @@ RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 # No single spin may pay more than this fraction of the house pool.
 POOL_CAP_FRACTION = 0.20
 
-# Illustrative demo rates only — not live market prices.
-RATES_TO_AUD = {
-    "AUD": 1.0,
-    "USD": 1.52,
-    "EUR": 1.65,
-    "BTC": 145000.0,
-    "ETH": 5200.0,
-    "USDT": 1.52,
-    "SOL": 280.0,
-}
+# Social-casino virtual currency. 1 internal game unit = 1,000 coins.
+# Internal math (bets, pool, cap, RTP) stays in the original units so the
+# 20% cap and ~20% RTP are unchanged. Players only ever see integer coins.
+COIN_SCALE = 1000
+COIN_ASSET = "COIN"
+STARTING_COINS = 25_000
+DAILY_COINS = 8_000
+HOURLY_COINS = 2_000
+HOURLY_SECONDS = 60 * 60
 
-FIAT = ("AUD", "USD", "EUR")
-CRYPTO = ("BTC", "ETH", "USDT", "SOL")
-ALL_ASSETS = FIAT + CRYPTO
+# Shop packs: AUD is the Stripe charge currency only. Coins have no cash value
+# and cannot be redeemed, transferred or exchanged for money or prizes.
+COIN_PACKS = (
+    {"id": "pack_5", "label": "Pouch", "price_aud": 4.99, "price_cents": 499, "coins": 50_000, "tag": None},
+    {"id": "pack_10", "label": "Sack", "price_aud": 9.99, "price_cents": 999, "coins": 120_000, "tag": "Popular"},
+    {"id": "pack_20", "label": "Chest", "price_aud": 19.99, "price_cents": 1999, "coins": 280_000, "tag": "Best value"},
+    {"id": "pack_50", "label": "Vault", "price_aud": 49.99, "price_cents": 4999, "coins": 800_000, "tag": "Biggest"},
+)
+
+LEGAL_COINS = (
+    "Coins are for entertainment only, have no monetary value and cannot be "
+    "redeemed for cash or prizes."
+)
+RESPONSIBLE_PLAY = (
+    "Play for fun. This is a social casino, not real-money gambling. "
+    "If you need a break, step away. 18+ only."
+)
+
+# Legacy aliases kept so older helpers/tests that still mention asset lists
+# do not break on import. The ledger no longer holds fiat or crypto.
+RATES_TO_AUD = {"AUD": 1.0}
+FIAT = ("AUD",)
+CRYPTO = ()
+ALL_ASSETS = (COIN_ASSET,)
+
+
+def to_coins(units: float | int | None) -> int:
+    return int(round(float(units or 0) * COIN_SCALE))
+
+
+def from_coins(coins: float | int | None) -> float:
+    return float(coins or 0) / COIN_SCALE
+
+
+def pack_by_id(pack_id: str) -> dict | None:
+    for pack in COIN_PACKS:
+        if pack["id"] == pack_id:
+            return pack
+    return None
 
 _rng = secrets.SystemRandom()
 BLANK_ID = "shard"
@@ -101,21 +136,31 @@ _REEL_TABLES = [_reel_table(r) for r in range(REEL_COUNT)]
 
 
 def to_aud(asset: str, amount: float) -> float:
+    """Deprecated helper: leftover name. COIN amounts are already coins."""
+    if asset == COIN_ASSET:
+        return from_coins(amount)
     return amount * (RATES_TO_AUD.get(asset) or 1.0)
 
 
 def from_aud(asset: str, aud_amount: float) -> float:
+    if asset == COIN_ASSET:
+        return float(to_coins(aud_amount))
     return aud_amount / (RATES_TO_AUD.get(asset) or 1.0)
 
 
 def total_aud(balances: dict[str, float]) -> float:
-    return sum(to_aud(a, balances.get(a, 0.0) or 0.0) for a in ALL_ASSETS)
+    """Game-unit value of a balance map (coins / COIN_SCALE)."""
+    if COIN_ASSET in balances:
+        return from_coins(balances.get(COIN_ASSET, 0) or 0)
+    return sum(to_aud(a, balances.get(a, 0.0) or 0.0) for a in balances)
 
 
 def clean_amount(asset: str, amount: float) -> float:
     if amount < 1e-12:
         return 0.0
-    if asset in FIAT or asset == "USDT":
+    if asset == COIN_ASSET:
+        return float(int(round(amount)))
+    if asset in FIAT:
         return round(amount, 2)
     return round(amount, 8)
 

@@ -27,10 +27,15 @@ def fresh_db() -> None:
     ledger.init_db()
 
 
-def fund(pid: str, aud: float) -> None:
+def fund(pid: str, units: float) -> None:
+    """Set a player's coin balance to the coin equivalent of `units` (game units)."""
     ledger.ensure_player(pid)
+    coins = game.to_coins(units)
     with ledger.transaction() as c:
-        c.execute("UPDATE balances SET amount = ? WHERE player_id = ? AND asset = 'AUD'", (aud, pid))
+        c.execute(
+            "UPDATE balances SET amount = ? WHERE player_id = ? AND asset = ?",
+            (coins, pid, game.COIN_ASSET),
+        )
 
 
 def set_pool(pool: float) -> None:
@@ -61,7 +66,7 @@ def test_empty_pool_tiny_bet() -> None:
     snap = ledger.settle_round(pid, 0.5, rnd(250.0), "AUD", NO_JP)
     assert snap["total_paid_aud"] == 0.10 and snap["any_capped"]  # pool 0.50 -> cap 0.10
     assert abs(ledger.pool_status()["pool_aud"] - 0.40) < 1e-9
-    assert abs(snap["balances"]["AUD"] - 9.60) < 1e-9
+    assert snap["coins"] == game.to_coins(9.60)
 
 
 def test_example_100k() -> None:
@@ -241,7 +246,7 @@ def test_gamble_win_lose_and_limit() -> None:
         raise AssertionError("should be limited")
     except ledger.GambleUnavailable:
         pass
-    assert ledger.snapshot(pid)["gamble_aud"] == 0
+    assert ledger.snapshot(pid)["gamble"] == 0
 
 
 def test_gamble_max_rounds() -> None:
@@ -291,9 +296,10 @@ def test_public_api_hides_pool() -> None:
         for k in bad + ("fallback_index", "jackpot_pending", "wheel_roll"):
             assert k not in b, (k, b[:200])
     m = json.loads(mw[0])
-    assert m["mode"] == "megaways" and m["bet_aud"] == 1 and m["base"]["stages"] and m["base"]["ways"] >= 324
+    assert m["mode"] == "megaways" and m["bet"] == game.to_coins(1) and m["base"]["stages"] and m["base"]["ways"] >= 324
+    assert "coins" in m and "balances" not in m and "total_aud" not in m
     j = json.loads(bodies[1])
-    assert j["bet_aud"] == 2.5 and j["lines"] == 25
+    assert j["bet"] == game.to_coins(2.5) and j["lines"] == 25
 
 
 # ---- v4: Megaways ----------------------------------------------------------
@@ -495,6 +501,91 @@ def test_pool_never_negative_random_megaways() -> None:
             assert s["cap_aud"] <= 0.2 * before + 1e-6
         assert ledger.pool_status()["pool_aud"] >= 0
 
+
+
+
+# ---- social casino: no cash-out, coin packs, free coins --------------------
+
+def test_no_withdraw_route() -> None:
+    fresh_db()
+    os.environ.pop("STRIPE_SECRET_KEY", None)
+    import app as app_module
+    client = app_module.app.test_client()
+    for path in (
+        "/api/withdraw",
+        "/api/deposit/play",
+        "/api/deposit/checkout",
+        "/api/prefs",
+        "/deposit/success",
+        "/deposit/cancel",
+    ):
+        for meth in ("get", "post"):
+            r = getattr(client, meth)(path, json={})
+            assert r.status_code == 404, (path, meth, r.status_code)
+
+
+def test_coin_pack_checkout_credit_is_idempotent() -> None:
+    fresh_db()
+    pid = str(uuid.uuid4())
+    ledger.ensure_player(pid)
+    start = ledger.snapshot(pid)["coins"]
+    assert start == game.STARTING_COINS
+    pack = game.COIN_PACKS[0]
+    ok, msg, snap = ledger.credit_coin_pack("cs_test_sess_1", pid, pack["id"], pack["coins"], pack["price_aud"])
+    assert ok and "credit" in msg
+    assert snap["coins"] == start + pack["coins"]
+    ok2, msg2, snap2 = ledger.credit_coin_pack("cs_test_sess_1", pid, pack["id"], pack["coins"], pack["price_aud"])
+    assert not ok2 and "already" in msg2.lower()
+    assert snap2["coins"] == start + pack["coins"]
+    # a second session can credit again
+    ok3, _, snap3 = ledger.credit_coin_pack("cs_test_sess_2", pid, pack["id"], pack["coins"], pack["price_aud"])
+    assert ok3 and snap3["coins"] == start + 2 * pack["coins"]
+    # mismatched catalogue amount is rejected and does not credit
+    try:
+        ledger.credit_coin_pack("cs_test_bad", pid, pack["id"], pack["coins"] + 1, pack["price_aud"])
+        raise AssertionError("mismatched pack should fail")
+    except ValueError:
+        assert ledger.snapshot(pid)["coins"] == start + 2 * pack["coins"]
+
+
+def test_coins_never_convert_out() -> None:
+    fresh_db()
+    os.environ.pop("STRIPE_SECRET_KEY", None)
+    import app as app_module
+    client = app_module.app.test_client()
+    assert not hasattr(ledger, "withdraw")
+    assert not hasattr(ledger, "credit_play_money")
+    r = client.get("/api/balance")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert isinstance(body["coins"], int) and body["coins"] == game.STARTING_COINS
+    assert "balances" not in body
+    assert "total_aud" not in body
+    assert "display_currency" not in body
+    text = r.get_data(as_text=True)
+    for banned in ("withdraw", "cash-out", "cash_out", "payout_aud", "USDT", "BTC"):
+        assert banned not in text, banned
+    # no conversion / redeem endpoint
+    for path in ("/api/redeem", "/api/cashout", "/api/exchange", "/api/withdraw"):
+        assert client.post(path, json={"coins": 1000}).status_code == 404
+    # official pack catalogue is purchase-only; coins are not priced as cash on the way out
+    packs = body["config"]["packs"]
+    assert len(packs) == 4
+    assert all(p["coins"] > 0 and p["price_cents"] > 0 and p["currency"] == "AUD" for p in packs)
+    legal = body["config"]["legal"]
+    assert "no monetary value" in legal.lower()
+    assert "cannot be redeemed" in legal.lower()
+    # daily + hourly free coins work and never debit a cash account
+    d = client.post("/api/bonus/daily")
+    assert d.status_code == 200, d.get_data(as_text=True)
+    dj = d.get_json()
+    assert dj["awarded"] == game.DAILY_COINS
+    assert dj["coins"] == game.STARTING_COINS + game.DAILY_COINS
+    assert client.post("/api/bonus/daily").status_code == 429
+    h = client.post("/api/bonus/hourly")
+    assert h.status_code == 200
+    assert h.get_json()["awarded"] == game.HOURLY_COINS
+    assert client.post("/api/bonus/hourly").status_code == 429
 
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]

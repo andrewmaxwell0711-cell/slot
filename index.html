@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Crystal Casino — Crystal Reels (TEST MODE)</title>
+  <title>Crystal Casino — Social Casino (TEST MODE)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -30,13 +30,13 @@
         <button id="btn-mute" class="icon-btn" type="button" title="Mute / unmute" aria-label="Mute or unmute">🔊</button>
         <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Master volume" title="Master volume" />
       </div>
-      <button id="btn-wallet" class="btn btn-gold" type="button">Wallet</button>
+      <button id="btn-wallet" class="btn btn-gold" type="button">Buy Coins</button>
     </div>
   </header>
 
   <div class="mode-banners">
-    <div class="mode-banner"><strong>DEMO · TEST MODE.</strong> Stripe Checkout uses test keys only. Withdrawals are simulated — no real payouts. Crypto stays play money.</div>
-    <div class="mode-banner key-banner" id="stripe-key-banner" hidden>Add a Stripe test key to enable checkout</div>
+    <div class="mode-banner"><strong>SOCIAL CASINO · TEST MODE.</strong> Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Stripe Checkout uses test keys only.</div>
+    <div class="mode-banner key-banner" id="stripe-key-banner" hidden>Add a Stripe test key to enable the coin shop</div>
   </div>
 
   <main class="layout">
@@ -82,17 +82,17 @@
           </div>
           <div class="fs-banner" id="fs-banner" hidden>
             <span>FREE SPINS</span><strong id="fs-count">0 / 0</strong><span class="fs-mult" id="fs-mult">ALL WINS ×2</span>
-            <span class="fs-total">BONUS <b id="fs-total">A$0.00</b></span>
+            <span class="fs-total">BONUS <b id="fs-total">0</b></span>
           </div>
           <div class="win-strip"><span class="msg" id="msg">PLACE YOUR BET</span></div>
         </div>
 
         <div class="console">
           <div class="console-row meters">
-            <div class="meter"><small>BALANCE</small><strong id="credit">A$0.00</strong></div>
+            <div class="meter"><small>BALANCE</small><strong id="credit">0</strong></div>
             <div class="meter stepper mw-only">
               <small>BET</small>
-              <div><button id="mwbet-down" class="step-btn" type="button" aria-label="Lower bet">−</button><strong id="mwbet-val">A$0.40</strong><button id="mwbet-up" class="step-btn" type="button" aria-label="Raise bet">+</button></div>
+              <div><button id="mwbet-down" class="step-btn" type="button" aria-label="Lower bet">−</button><strong id="mwbet-val">400</strong><button id="mwbet-up" class="step-btn" type="button" aria-label="Raise bet">+</button></div>
             </div>
             <div class="meter mw-only"><small>WAYS</small><strong id="ways-meter">117,649</strong></div>
             <div class="meter stepper classic-only">
@@ -101,10 +101,10 @@
             </div>
             <div class="meter stepper classic-only">
               <small>BET / LINE</small>
-              <div><button id="bpl-down" class="step-btn" type="button" aria-label="Lower bet per line">−</button><strong id="bpl-val">A$0.02</strong><button id="bpl-up" class="step-btn" type="button" aria-label="Raise bet per line">+</button></div>
+              <div><button id="bpl-down" class="step-btn" type="button" aria-label="Lower bet per line">−</button><strong id="bpl-val">20</strong><button id="bpl-up" class="step-btn" type="button" aria-label="Raise bet per line">+</button></div>
             </div>
-            <div class="meter classic-only"><small>TOTAL BET</small><strong id="total-bet">A$0.50</strong></div>
-            <div class="meter win"><small>WIN</small><strong id="win-meter">A$0.00</strong></div>
+            <div class="meter classic-only"><small>TOTAL BET</small><strong id="total-bet">500</strong></div>
+            <div class="meter win"><small>WIN</small><strong id="win-meter">0</strong></div>
           </div>
           <div class="console-row engage">
             <div class="streak" id="streak" hidden>
@@ -115,9 +115,13 @@
               <div class="xp-meta"><span id="xp-level">LV 1</span><span id="xp-label">0 / 80</span></div>
               <div class="xp-track"><div class="xp-fill" id="xp-fill"></div></div>
             </div>
-            <button class="daily-chest" id="btn-daily" type="button" title="Daily play-money bonus">
+            <button class="daily-chest" id="btn-daily" type="button" title="Free daily coins">
               <span class="chest-icon" aria-hidden="true">🍵</span>
               <span class="chest-copy"><small>DAILY</small><strong id="daily-label">BONUS</strong></span>
+            </button>
+            <button class="daily-chest hourly" id="btn-hourly" type="button" title="Free hourly coins">
+              <span class="chest-icon" aria-hidden="true">⏰</span>
+              <span class="chest-copy"><small>HOURLY</small><strong id="hourly-label">BONUS</strong></span>
             </button>
           </div>
           <div class="console-row buttons">
@@ -134,26 +138,24 @@
     </section>
 
     <aside class="panel wallet-panel">
-      <h2>Wallet</h2>
-      <p class="hint">Server-side test ledger · Stripe test deposits for fiat, play money for crypto</p>
+      <h2>Your Coins</h2>
+      <p class="hint">Free to play · optional coin packs via Stripe test checkout</p>
       <div class="primary-balance">
-        <span class="label">Play balance</span>
-        <strong id="primary-balance">A$0.00</strong>
-        <span class="sub" id="primary-currency-label">Displayed in AUD</span>
+        <span class="label">Coin balance</span>
+        <strong id="primary-balance">0</strong>
+        <span class="sub" id="primary-currency-label">Virtual coins · no cash value</span>
       </div>
-      <div class="balance-list" id="balance-list"></div>
-      <div class="wallet-actions">
-        <button id="btn-deposit" class="btn btn-primary" type="button">Deposit</button>
-        <button id="btn-withdraw" class="btn btn-outline" type="button">Withdraw</button>
+      <div class="wallet-actions shop-actions">
+        <button id="btn-deposit" class="btn btn-primary" type="button">Buy Coins</button>
       </div>
-      <div class="display-currency">
-        <label for="display-currency">Display as</label>
-        <select id="display-currency"><option value="AUD">AUD</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
+      <div class="free-row">
+        <button type="button" class="btn btn-outline" id="btn-daily-panel">Daily bonus</button>
+        <button type="button" class="btn btn-outline" id="btn-hourly-panel">Hourly bonus</button>
       </div>
       <div class="stats">
         <div><span>Spins</span><strong id="stat-spins">0</strong></div>
-        <div><span>Total won</span><strong id="stat-won">A$0.00</strong></div>
-        <div><span>Total bet</span><strong id="stat-bet">A$0.00</strong></div>
+        <div><span>Total won</span><strong id="stat-won">0</strong></div>
+        <div><span>Total bet</span><strong id="stat-bet">0</strong></div>
       </div>
     </aside>
 
@@ -161,8 +163,8 @@
       <h2>Spin history</h2>
       <ul class="history" id="history"><li class="empty">No spins yet</li></ul>
       <div class="disclaimer">
-        <strong>Entertainment only · TEST MODE.</strong>
-        Withdrawals are simulated and never sent through Stripe. Real-money play needs a gambling licence plus Stripe approval. Crypto is play money only. All outcomes are decided on the server.
+        <strong>Entertainment only · TEST MODE · 18+.</strong>
+        Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Play for fun. This is a social casino, not real-money gambling. If you need a break, step away. All outcomes are decided on the server.
       </div>
     </aside>
   </main>
@@ -197,8 +199,8 @@
       <header><h2 id="gamble-title">Gamble · Double up</h2></header>
       <div class="modal-body">
         <div class="gamble-meters">
-          <div><small>GAMBLE AMOUNT</small><strong id="g-stake">A$0.00</strong></div>
-          <div><small>WIN TO</small><strong id="g-to">A$0.00</strong></div>
+          <div><small>GAMBLE AMOUNT</small><strong id="g-stake">0</strong></div>
+          <div><small>WIN TO</small><strong id="g-to">0</strong></div>
         </div>
         <div class="card-stage"><div class="playing-card" id="g-card"><div class="card-back"></div><div class="card-face" id="g-face"></div></div></div>
         <div class="g-history" id="g-history"></div>
@@ -220,7 +222,7 @@
       <div class="mini-title" id="mini-title">CRYSTAL PICK</div>
       <div class="mini-sub" id="mini-sub"></div>
       <div class="mini-stage" id="mini-stage"></div>
-      <div class="mini-total"><small>BONUS WIN</small><b id="mini-total">A$0.00</b></div>
+      <div class="mini-total"><small>BONUS WIN</small><b id="mini-total">0</b></div>
       <button class="btn btn-gold btn-block" id="mini-btn" type="button">START</button>
     </div>
   </div>
@@ -240,49 +242,26 @@
         <label class="check"><input type="checkbox" id="auto-stop-bonus" checked /> Stop when free spins or a mini game trigger</label>
         <label class="check"><input type="checkbox" id="auto-stop-bigwin" checked /> Stop on a big win (15× total bet or more)</label>
         <label class="check"><input type="checkbox" id="auto-stop-balance-on" /> Stop if balance drops below</label>
-        <input id="auto-stop-balance" type="number" min="0" step="any" placeholder="e.g. 20" />
+        <input id="auto-stop-balance" type="number" min="0" step="1" placeholder="e.g. 5000 coins" />
         <label class="check"><input type="checkbox" id="auto-turbo" /> Turbo (fast reels)</label>
         <button id="auto-start" class="btn btn-primary btn-block" type="button">Start auto spin</button>
       </div>
     </div>
   </div>
 
-  <!-- Deposit -->
-  <div class="modal" id="modal-deposit" hidden>
-    <div class="modal-backdrop" data-close="deposit"></div>
-    <div class="modal-card" role="dialog" aria-labelledby="deposit-title">
-      <header><h2 id="deposit-title">Deposit (TEST MODE)</h2><button class="icon-btn" type="button" data-close="deposit" aria-label="Close">✕</button></header>
+  <!-- Coin shop -->
+  <div class="modal" id="modal-shop" hidden>
+    <div class="modal-backdrop" data-close="shop"></div>
+    <div class="modal-card wide" role="dialog" aria-labelledby="shop-title">
+      <header>
+        <h2 id="shop-title">Buy Coins</h2>
+        <button class="icon-btn" type="button" data-close="shop" aria-label="Close">✕</button>
+      </header>
       <div class="modal-body">
-        <label>Asset type</label>
-        <div class="seg" id="deposit-type"><button type="button" class="active" data-type="fiat">Fiat</button><button type="button" data-type="crypto">Crypto</button></div>
-        <label for="deposit-asset">Currency / Crypto</label>
-        <select id="deposit-asset"></select>
-        <label for="deposit-amount">Amount</label>
-        <input id="deposit-amount" type="number" min="0.01" step="any" placeholder="0.00" />
-        <p class="convert-hint" id="deposit-hint"></p>
-        <p class="modal-note" id="deposit-note"></p>
-        <button id="confirm-deposit" class="btn btn-primary btn-block" type="button">Pay with Stripe (test mode)</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Withdraw -->
-  <div class="modal" id="modal-withdraw" hidden>
-    <div class="modal-backdrop" data-close="withdraw"></div>
-    <div class="modal-card" role="dialog" aria-labelledby="withdraw-title">
-      <header><h2 id="withdraw-title">Withdraw (TEST MODE)</h2><button class="icon-btn" type="button" data-close="withdraw" aria-label="Close">✕</button></header>
-      <div class="modal-body">
-        <label>Asset type</label>
-        <div class="seg" id="withdraw-type"><button type="button" class="active" data-type="fiat">Fiat</button><button type="button" data-type="crypto">Crypto</button></div>
-        <label for="withdraw-asset">Currency / Crypto</label>
-        <select id="withdraw-asset"></select>
-        <label for="withdraw-amount">Amount</label>
-        <input id="withdraw-amount" type="number" min="0.01" step="any" placeholder="0.00" />
-        <p class="convert-hint" id="withdraw-hint"></p>
-        <p class="available" id="withdraw-available"></p>
-        <button id="confirm-withdraw" class="btn btn-primary btn-block" type="button">Confirm withdraw</button>
-        <div class="processing" id="withdraw-processing" hidden><div class="spinner"></div><p>Recording test withdrawal…</p></div>
-        <div class="success" id="withdraw-success" hidden><p>✓ Test withdrawal recorded</p></div>
+        <p class="legal-note" id="shop-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
+        <p class="hint" id="shop-hint">TEST MODE. Use Stripe test card 4242 4242 4242 4242. You can also claim free daily and hourly coins — buying is never required to play.</p>
+        <div class="pack-grid" id="pack-grid"></div>
+        <p class="modal-note" id="shop-note"></p>
       </div>
     </div>
   </div>
@@ -316,6 +295,34 @@
       <div class="level-up-label">LEVEL UP</div>
       <div class="level-up-val" id="level-up-val">2</div>
       <div class="level-up-sub">Keep spinning, crystal hopper</div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    <p id="footer-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
+    <p id="footer-responsible">Play for fun. This is a social casino, not real-money gambling. If you need a break, step away. 18+ only. DEMO · TEST MODE.</p>
+  </footer>
+
+  <!-- 18+ age gate -->
+  <div class="modal age-gate" id="modal-age" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card age-card" role="dialog" aria-labelledby="age-title" aria-modal="true">
+      <div class="modal-body">
+        <div class="age-badge">18+</div>
+        <h2 id="age-title">Are you 18 or older?</h2>
+        <p>Crystal Casino is a social casino for entertainment. Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
+        <p class="hint">Play for fun. This is not real-money gambling. If you need a break, step away.</p>
+        <div class="age-actions">
+          <button id="age-yes" class="btn btn-gold" type="button">I am 18 or older</button>
+          <button id="age-no" class="btn btn-outline" type="button">Leave</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="age-blocked" id="age-blocked" hidden>
+    <div>
+      <h2>18+ only</h2>
+      <p>You must be 18 or older to play Crystal Casino.</p>
     </div>
   </div>
 
