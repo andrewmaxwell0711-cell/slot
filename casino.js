@@ -337,8 +337,50 @@
   let ballAngle = 0;
   let wheelAnim = 0;
 
+  const WHEEL_CX = 220, WHEEL_CY = 220;
+  // Land the winning pocket at the near (bottom) edge, facing the player.
+  const LAND_DEG = 180;
+  const TRACK_Y = 40;   // SVG y: distance from top of viewBox = 180 from centre
+  const POCKET_Y = 72;  // 148 from centre
+
+  function bowlRingsHTML() {
+    const layers = 16;
+    const parts = [];
+    for (let i = 0; i < layers; i++) {
+      const t = i / (layers - 1);
+      const z = (2 + t * 48).toFixed(1);
+      const size = (92 + t * 8.5).toFixed(2);
+      const isLip = t > 0.82;
+      const cls = isLip ? "bowl-ring lip" : "bowl-ring";
+      parts.push(`<div class="${cls}" style="width:${size}%;height:${size}%;transform:translate(-50%,-50%) translateZ(${z}px)"></div>`);
+    }
+    return `<div class="bowl-3d" aria-hidden="true">${parts.join("")}</div>`;
+  }
+
+  function turretHTML() {
+    const discs = [
+      { s: 49, z: 6, c: "base" },
+      { s: 44, z: 14, c: "dark" },
+      { s: 38, z: 22, c: "mid" },
+      { s: 30, z: 30, c: "dark" },
+      { s: 24, z: 38, c: "mid" },
+      { s: 16, z: 46, c: "dark" },
+      { s: 13, z: 54, c: "top" },
+      { s: 6, z: 62, c: "cap" },
+      { s: 3.2, z: 72, c: "spindle" },
+    ];
+    const discsH = discs.map((d) =>
+      `<div class="t-disc ${d.c}" style="width:${d.s}%;height:${d.s}%;transform:translate(-50%,-50%) translateZ(${d.z}px)"></div>`
+    ).join("");
+    return `<div class="rl-turret" id="rl-turret" aria-hidden="true">
+      ${discsH}
+      <div class="t-handle a"></div>
+      <div class="t-handle b"></div>
+    </div>`;
+  }
+
   function wheelHTML() {
-    const cx = 220, cy = 220, n = WHEEL.length;
+    const cx = WHEEL_CX, cy = WHEEL_CY, n = WHEEL.length;
     const pockets = [];
     const frets = [];
     const numbers = [];
@@ -351,7 +393,6 @@
       const R = 168, r = 114;
       const p0 = p(a0, R), p1 = p(a1, R), i0 = p(a0, r), i1 = p(a1, r);
       pockets.push(`<path d="M${i0[0].toFixed(2)},${i0[1].toFixed(2)} L${p0[0].toFixed(2)},${p0[1].toFixed(2)} A${R},${R} 0 0 1 ${p1[0].toFixed(2)},${p1[1].toFixed(2)} L${i1[0].toFixed(2)},${i1[1].toFixed(2)} A${r},${r} 0 0 0 ${i0[0].toFixed(2)},${i0[1].toFixed(2)}" fill="${fill}"/>`);
-      const f = p(a0, (R + r) / 2);
       frets.push(`<line x1="${i0[0].toFixed(2)}" y1="${i0[1].toFixed(2)}" x2="${p0[0].toFixed(2)}" y2="${p0[1].toFixed(2)}" stroke="url(#rlBrass)" stroke-width="1.6" stroke-linecap="round"/>`);
       const mid = (a0 + a1) / 2;
       const tx = cx + Math.cos(mid) * 147;
@@ -368,69 +409,63 @@
       diamonds.push(`<path transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" d="M${x.toFixed(1)},${(y-6).toFixed(1)} L${(x+4.2).toFixed(1)},${y.toFixed(1)} L${x.toFixed(1)},${(y+6).toFixed(1)} L${(x-4.2).toFixed(1)},${y.toFixed(1)} Z" fill="url(#rlBrass)" stroke="#6b4a14" stroke-width=".4"/>`);
     }
     return `<div class="wheel-scene" id="wheel-scene">
-      <svg viewBox="0 0 440 440" class="rl-wheel-svg" aria-hidden="true">
-        <defs>
-          <radialGradient id="rlWood" cx="50%" cy="40%" r="60%">
-            <stop offset="0%" stop-color="#8a4e1a"/><stop offset="55%" stop-color="#5a2e0c"/><stop offset="100%" stop-color="#2a1406"/>
-          </radialGradient>
-          <linearGradient id="rlBrass" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ffe9a8"/><stop offset="45%" stop-color="#d4a017"/><stop offset="100%" stop-color="#7a4e00"/>
-          </linearGradient>
-          <radialGradient id="rlTrack" cx="50%" cy="50%" r="50%">
-            <stop offset="70%" stop-color="#1a1208"/><stop offset="85%" stop-color="#3a2a14"/><stop offset="100%" stop-color="#0c0804"/>
-          </radialGradient>
-          <radialGradient id="rlRed" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#7f1d1d"/>
-          </radialGradient>
-          <radialGradient id="rlBlack" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="#3f3f46"/><stop offset="100%" stop-color="#09090b"/>
-          </radialGradient>
-          <radialGradient id="rlGreen" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#14532d"/>
-          </radialGradient>
-          <radialGradient id="rlTurret" cx="40%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="#f6cf55"/><stop offset="40%" stop-color="#b9800f"/><stop offset="100%" stop-color="#3a2400"/>
-          </radialGradient>
-          <radialGradient id="rlBall" cx="32%" cy="28%" r="70%">
-            <stop offset="0%" stop-color="#fff"/><stop offset="55%" stop-color="#d4d4d8"/><stop offset="100%" stop-color="#52525b"/>
-          </radialGradient>
-          <filter id="rlSoft" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".55"/>
-          </filter>
-        </defs>
-        <ellipse cx="220" cy="228" rx="210" ry="206" fill="rgba(0,0,0,.35)"/>
-        <circle cx="220" cy="220" r="214" fill="url(#rlWood)" filter="url(#rlSoft)"/>
-        <circle cx="220" cy="220" r="202" fill="none" stroke="url(#rlBrass)" stroke-width="10"/>
-        <circle cx="220" cy="220" r="194" fill="none" stroke="#3a2400" stroke-width="2" opacity=".6"/>
-        <circle cx="220" cy="220" r="186" fill="url(#rlTrack)"/>
-        <circle cx="220" cy="220" r="170" fill="none" stroke="#d4a017" stroke-width="3"/>
-        <g class="deflectors">${diamonds.join("")}</g>
-        <g class="rl-rotor" id="rl-rotor">
-          <circle cx="220" cy="220" r="168" fill="#1a1008"/>
-          ${pockets.join("")}
-          ${frets.join("")}
-          ${numbers.join("")}
-          <circle cx="220" cy="220" r="114" fill="none" stroke="url(#rlBrass)" stroke-width="3"/>
-          <circle cx="220" cy="220" r="108" fill="url(#rlTurret)"/>
-          <circle cx="220" cy="220" r="86" fill="#3a2400"/>
-          <circle cx="220" cy="220" r="78" fill="url(#rlTurret)"/>
-          <circle cx="220" cy="220" r="52" fill="#2a1800"/>
-          <circle cx="220" cy="220" r="44" fill="url(#rlTurret)"/>
-          <g stroke="url(#rlBrass)" stroke-width="7" stroke-linecap="round">
-            <line x1="220" y1="178" x2="220" y2="262"/>
-            <line x1="178" y1="220" x2="262" y2="220"/>
-          </g>
-          <circle cx="220" cy="220" r="16" fill="url(#rlBrass)"/>
-          <circle cx="220" cy="220" r="7" fill="#fff3c4"/>
-        </g>
-        <polygon points="220,14 230,34 210,34" fill="url(#rlBrass)" stroke="#6b4a14" stroke-width=".8"/>
-        <g id="ball-arm" transform="rotate(0 220 220)">
-          <g id="ball-rad" transform="translate(220, 40)">
-            <circle r="7.5" fill="url(#rlBall)" stroke="#888" stroke-width=".4"/>
-            <circle r="2.2" cx="-2" cy="-2.2" fill="#fff" opacity=".85"/>
-          </g>
-        </g>
-      </svg>
+      <div class="wheel-stage" id="wheel-stage">
+        <div class="wheel-table-shadow"></div>
+        ${bowlRingsHTML()}
+        <div class="wheel-face">
+          <svg viewBox="0 0 440 440" class="rl-wheel-svg" aria-hidden="true">
+            <defs>
+              <radialGradient id="rlWood" cx="50%" cy="40%" r="60%">
+                <stop offset="0%" stop-color="#8a4e1a"/><stop offset="55%" stop-color="#5a2e0c"/><stop offset="100%" stop-color="#2a1406"/>
+              </radialGradient>
+              <linearGradient id="rlBrass" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffe9a8"/><stop offset="45%" stop-color="#d4a017"/><stop offset="100%" stop-color="#7a4e00"/>
+              </linearGradient>
+              <radialGradient id="rlTrack" cx="50%" cy="50%" r="50%">
+                <stop offset="70%" stop-color="#1a1208"/><stop offset="85%" stop-color="#3a2a14"/><stop offset="100%" stop-color="#0c0804"/>
+              </radialGradient>
+              <radialGradient id="rlRed" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#7f1d1d"/>
+              </radialGradient>
+              <radialGradient id="rlBlack" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stop-color="#3f3f46"/><stop offset="100%" stop-color="#09090b"/>
+              </radialGradient>
+              <radialGradient id="rlGreen" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#14532d"/>
+              </radialGradient>
+              <radialGradient id="rlTurret" cx="40%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#f6cf55"/><stop offset="40%" stop-color="#b9800f"/><stop offset="100%" stop-color="#3a2400"/>
+              </radialGradient>
+              <radialGradient id="rlBall" cx="32%" cy="28%" r="70%">
+                <stop offset="0%" stop-color="#fff"/><stop offset="55%" stop-color="#d4d4d8"/><stop offset="100%" stop-color="#52525b"/>
+              </radialGradient>
+            </defs>
+            <circle cx="220" cy="220" r="214" fill="url(#rlWood)"/>
+            <circle cx="220" cy="220" r="202" fill="none" stroke="url(#rlBrass)" stroke-width="10"/>
+            <circle cx="220" cy="220" r="194" fill="none" stroke="#3a2400" stroke-width="2" opacity=".6"/>
+            <circle cx="220" cy="220" r="186" fill="url(#rlTrack)"/>
+            <circle cx="220" cy="220" r="170" fill="none" stroke="#d4a017" stroke-width="3"/>
+            <g class="deflectors">${diamonds.join("")}</g>
+            <g class="rl-rotor" id="rl-rotor">
+              <circle cx="220" cy="220" r="168" fill="#1a1008"/>
+              ${pockets.join("")}
+              ${frets.join("")}
+              ${numbers.join("")}
+              <circle cx="220" cy="220" r="114" fill="none" stroke="url(#rlBrass)" stroke-width="3"/>
+              <circle cx="220" cy="220" r="108" fill="#2a1800"/>
+            </g>
+            <g id="ball-arm" transform="rotate(0 220 220)">
+              <g id="ball-rad" transform="translate(220, 40)">
+                <circle r="8" fill="url(#rlBall)" stroke="#888" stroke-width=".4"/>
+                <circle r="2.3" cx="-2" cy="-2.2" fill="#fff" opacity=".85"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+        ${turretHTML()}
+        <div class="rl-pointer" aria-hidden="true"><span class="rl-pointer-fin"></span></div>
+        <div class="wheel-light" aria-hidden="true"></div>
+      </div>
     </div>`;
   }
 
@@ -443,17 +478,18 @@
     const rotor = $("#rl-rotor");
     const arm = $("#ball-arm");
     const rad = $("#ball-rad");
+    const turret = $("#rl-turret");
     // Keep the SVG attribute in [0, 360) so CSS/SVG compositing stays stable.
     if (rotor) rotor.setAttribute("transform", `rotate(${normDeg(wDeg)} 220 220)`);
     if (arm) arm.setAttribute("transform", `rotate(${normDeg(bDeg)} 220 220)`);
     if (rad) rad.setAttribute("transform", `translate(220, ${radius})`);
+    if (turret) turret.style.transform = `rotateZ(${normDeg(wDeg)}deg)`;
     wheelAngle = wDeg;
     ballAngle = bDeg;
   }
 
   function pocketWorldAngle(idx, wheelDeg) {
     const step = 360 / WHEEL.length;
-    // Pocket centre in local degrees (0 at top, clockwise, matching SVG)
     const local = (idx + 0.5) * step;
     return local + wheelDeg;
   }
@@ -466,6 +502,12 @@
       || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
 
+  function winningWheelAngle(result) {
+    const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
+    const step = 360 / WHEEL.length;
+    return LAND_DEG - ((idx + 0.5) * step);
+  }
+
   function showResultBadge(result) {
     const el = $("#rl-result");
     if (!el || !result || result.number == null) return;
@@ -473,47 +515,34 @@
     el.className = "rl-result " + col + " show";
     el.hidden = false;
     el.innerHTML = `<span class="rl-num">${result.number}</span><small>${col.toUpperCase()}</small>`;
+    const stage = $("#wheel-stage");
+    if (stage && !reduceMotion()) stage.classList.add("settled");
   }
 
   function landRouletteImmediate(result) {
-    const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
-    const step = 360 / WHEEL.length;
-    const finalW = -((idx + 0.5) * step);
-    setWheelPose(finalW, 0, 72);
+    setWheelPose(winningWheelAngle(result), LAND_DEG, POCKET_Y);
     showResultBadge(result);
   }
 
   function animateRoulette(result) {
     return new Promise((resolve) => {
-      const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
-      const step = 360 / WHEEL.length;
-      const finalLocal = -((idx + 0.5) * step);
+      const finalLocal = winningWheelAngle(result);
+      const stage = $("#wheel-stage");
+      if (stage) stage.classList.remove("settled");
       if (reduceMotion()) {
-        setWheelPose(finalLocal, 0, 72);
+        setWheelPose(finalLocal, LAND_DEG, POCKET_Y);
         showResultBadge(result);
         resolve();
         return;
       }
       const startW = wheelAngle;
-      // Continue clockwise (positive) several turns, ending at finalLocal (mod 360)
-      const raw = finalLocal - (startW % 360);
-      const deltaW = raw - 360 * 6 + (raw > 0 ? -360 : 0);
-      // Actually we want a clearly spinning wheel: go in the negative (usual CSS) or positive.
-      // Pick the direction that adds ~5–6 turns ending exactly on finalLocal.
       let travel = finalLocal - startW;
       while (travel > -360 * 5) travel -= 360;
       const endW = startW + travel;
       const startB = ballAngle;
-      // Ball opposite (positive if wheel is negative), land at 0 (top, under the pointer)
-      let bTravel = 0 - startB;
+      let bTravel = LAND_DEG - startB;
       while (bTravel < 360 * 7) bTravel += 360;
       const endB = startB + bTravel;
-      const TRACK = 40; // cy offset from top = radius? translate(220, r) with r=40 is near the top rim (220-40=180 wait)
-      // Center is 220,220. translate(220, R) on a group rotated around 220,220 means the ball is at distance |R-220|...
-      // I used `<g id="ball-rad" transform="translate(220, 40)">` — that's a point at (220, 40), distance from center (220,220) is 180. Good for the track.
-      // Pocket radius ~148 means y=220-148=72? Distance = 220 - y if at top. So translate(220, 220-148)=(220, 72) for pocket.
-      const TRACK_Y = 40;   // distance 180
-      const POCKET_Y = 72;  // distance 148
       const dur = 5200;
       const t0 = performance.now();
       if (wheelAnim) cancelAnimationFrame(wheelAnim);
@@ -527,7 +556,6 @@
         let y = TRACK_Y;
         if (t > 0.62) {
           const u = (t - 0.62) / 0.38;
-          // spiral in + damped bounces
           const bounce = t < 0.86 ? Math.sin(u * Math.PI * 5) * (1 - u) * 10 : 0;
           y = TRACK_Y + (POCKET_Y - TRACK_Y) * easeInOut(u) + bounce;
         }
@@ -704,6 +732,7 @@
       rouletteHistory = rouletteHistory.slice(0, 16);
       rouletteBets = [];
       const badge = $("#rl-result"); if (badge) { badge.hidden = true; badge.classList.remove("show"); }
+      const stg = $("#wheel-stage"); if (stg) stg.classList.remove("settled");
       historyMount();
       markFelt(document);
       const msg = $("#side-msg");
