@@ -220,3 +220,14 @@ Free web services also spin down after inactivity, so the first request after a 
 - Engagement: ambient sparkles, near-miss messages and anticipation reels, multiplier bumps, celebrations.
 - RTP (expected value, jackpots at their exact EV; `python server/simulate_rtp.py 1000000 both 1000000`):
   Megaways ~19.5–19.8%, Classic ~20.0–20.3%. Tests: `python server/test_cap.py` (29 tests).
+
+
+## Crystal Casino v5 (Nov 2026): richer animation & engagement
+
+Animation and presentation polish on top of v4. **Server game math is unchanged** (20% per-spin cap, ~20% RTP, pool hidden from players).
+
+- **Reels:** stronger motion blur while spinning, staggered stops with a bounce/overshoot, symbol pop on land, and a longer anticipation slow-down plus gold glow when enough BONUS symbols have landed that more could trigger a feature.
+- **Symbols:** idle sheen/sparkle on premium crystals, a pulsing Crystal Wild, winning symbols scale and glow, traveling highlights on paylines, shatter particles on Megaways tumbles, and new symbols drop with a gravity bounce. Win amounts count up on the WIN meter and a “+amount” chip flies off the board.
+- **Celebrations:** tiered Big / Mega / Epic Win full-screen overlays with rotating light rays, a coin and gem shower, and cabinet shake (heavier on Mega/Epic). The Green Tea Jackpot gets a cinematic zoom of the tea packet, a golden burst and confetti. Tap or press Escape to skip. Free-spin intro and outro banners pop the multiplier; Crystal Pick and Tea Wheel open with a feature sting.
+- **Ambient:** chasing lights around the gold cabinet frame, floating background motes, a breathing SPIN button, and press-flash feedback on buttons. Sound cues are synced to landings, showers, level-ups, the daily chest and streaks. Particle counts drop on small screens, and `prefers-reduced-motion` shortens or disables motion.
+- **Engagement (play money / decorative only):** a level/XP bar that fills as you spin (level-up splash), a win-streak badge, and a once-a-day bonus chest that credits **5 USDT play money** via the existing play-money deposit API (resets at midnight Australia/Perth). None of this changes spin outcomes or the hidden house pool.

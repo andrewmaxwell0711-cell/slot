@@ -13,6 +13,7 @@
 <body>
   <canvas id="sparkle-canvas" aria-hidden="true"></canvas>
   <div class="bg-aurora"></div>
+  <div class="bg-float" id="bg-float" aria-hidden="true"></div>
   <div class="side-crystals left" aria-hidden="true"></div>
   <div class="side-crystals right" aria-hidden="true"></div>
 
@@ -41,6 +42,7 @@
   <main class="layout">
     <section class="cabinet-wrap">
       <div class="cabinet" id="cabinet">
+        <div class="frame-lights" aria-hidden="true"></div>
         <div class="marquee">
           <div class="bulbs" aria-hidden="true"></div>
           <div class="marquee-crystals" id="marquee-crystals" aria-hidden="true"></div>
@@ -103,6 +105,20 @@
             </div>
             <div class="meter classic-only"><small>TOTAL BET</small><strong id="total-bet">A$0.50</strong></div>
             <div class="meter win"><small>WIN</small><strong id="win-meter">A$0.00</strong></div>
+          </div>
+          <div class="console-row engage">
+            <div class="streak" id="streak" hidden>
+              <span class="streak-flame" aria-hidden="true">✦</span>
+              <div><small>STREAK</small><strong id="streak-val">0</strong></div>
+            </div>
+            <div class="xp-bar" id="xp-bar" title="Play-money level — decorative only">
+              <div class="xp-meta"><span id="xp-level">LV 1</span><span id="xp-label">0 / 80</span></div>
+              <div class="xp-track"><div class="xp-fill" id="xp-fill"></div></div>
+            </div>
+            <button class="daily-chest" id="btn-daily" type="button" title="Daily play-money bonus">
+              <span class="chest-icon" aria-hidden="true">🍵</span>
+              <span class="chest-copy"><small>DAILY</small><strong id="daily-label">BONUS</strong></span>
+            </button>
           </div>
           <div class="console-row buttons">
             <button id="btn-info" class="cbtn" type="button">INFO</button>
@@ -273,11 +289,33 @@
 
   <!-- Celebration -->
   <div class="celebrate" id="celebrate" hidden>
+    <div class="celebrate-rays" aria-hidden="true"></div>
+    <div class="celebrate-burst" aria-hidden="true"></div>
     <div class="celebrate-inner">
       <div class="celebrate-title" id="celebrate-title">BIG WIN</div>
       <div class="celebrate-amount" id="celebrate-amount"></div>
       <div class="celebrate-sub" id="celebrate-sub"></div>
       <div class="celebrate-hint">Tap to continue</div>
+    </div>
+  </div>
+
+  <!-- Free-spins / feature sting banners -->
+  <div class="sting" id="sting" hidden>
+    <div class="sting-rays" aria-hidden="true"></div>
+    <div class="sting-inner">
+      <div class="sting-kicker" id="sting-kicker">FEATURE</div>
+      <div class="sting-title" id="sting-title"></div>
+      <div class="sting-mult" id="sting-mult" hidden></div>
+      <div class="sting-sub" id="sting-sub"></div>
+    </div>
+  </div>
+
+  <!-- Level-up -->
+  <div class="level-up" id="level-up" hidden>
+    <div class="level-up-inner">
+      <div class="level-up-label">LEVEL UP</div>
+      <div class="level-up-val" id="level-up-val">2</div>
+      <div class="level-up-sub">Keep spinning, crystal hopper</div>
     </div>
   </div>
 
