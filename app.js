@@ -11,8 +11,8 @@
 
   const REELS = 5;
   const ROWS = 3;
-  const TEA_IMG = "/assets/green-tea-256.webp";
-  const TEA_IMG_BIG = "/assets/green-tea-512.webp";
+  const TEA_IMG = "/assets/symbols/greentea.webp";
+  const TEA_IMG_BIG = "/assets/symbols/greentea-512.webp";
   const BIG_WIN_X = 15, MEGA_WIN_X = 50, EPIC_WIN_X = 150;
   let JACKPOT_MULT = 5000;
   const HISTORY_KEY = "crystal-reels-history-v2";
@@ -2100,8 +2100,16 @@
     if (tok === presentToken && !busy) clearLines();
   }
 
+  function dismissSplash() {
+    const el = document.getElementById("splash");
+    if (!el || el.hidden) return;
+    el.classList.add("is-done");
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => { el.hidden = true; }, reduce ? 0 : 420);
+  }
+
   function decorate() {
-    $("#brand-gem").src = Gems.url("ruby");
+    $("#brand-gem").src = "/assets/ui/logo.webp";
     const purple = Gems.decorCluster(282), blue = Gems.decorCluster(212);
     $("#marquee-crystals").innerHTML = `<img class="side" src="${blue}" alt="" /><img src="${purple}" alt="" /><img class="side" src="${blue}" alt="" />`;
     document.querySelectorAll(".side-crystals").forEach((el, i) => { el.style.backgroundImage = `url("${i ? blue : purple}"), url("${i ? purple : blue}")`; el.style.backgroundSize = "70%, 45%"; el.style.backgroundPosition = "left bottom, right bottom"; });
@@ -2142,6 +2150,7 @@
     claimDaily, claimHourly,
     openShop: () => openModal("shop"),
     openPrizes: () => openModal("prizes"),
+    relayout: () => { layoutBadges(); if (!busy && mwCols) setMwBoard(mwCols); },
     get coins() { return coins; },
     get profile() { return profile; },
     get bonuses() { return bonuses; },
@@ -2166,16 +2175,19 @@
     ready = true;
   }
   async function boot() {
+    const splashWait = REDUCE ? 200 : 1200;
+    setTimeout(dismissSplash, 4000); // safety: never leave the splash stuck
     resizeCanvas(); decorate(); initReels(); renderBadges(); render(); initMw(); renderHistory(); wire(); updateAutoUI();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layoutBadges(); if (mwCols && !busy) setMwBoard(mwCols); });
     if (REDUCE) document.documentElement.classList.add("reduce-motion");
     if (!REDUCE) setInterval(ambient, 420);
     if (!ageAccepted()) {
       ready = false;
-      openModal("age");
+      setTimeout(() => { dismissSplash(); openModal("age"); }, splashWait);
       return;
     }
     await startGame();
+    setTimeout(dismissSplash, splashWait);
   }
   boot();
 })();

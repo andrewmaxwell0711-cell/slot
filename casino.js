@@ -15,15 +15,15 @@
   const SUIT = { hearts: "♥", diamonds: "♦", clubs: "♣", spades: "♠" };
 
   const TILES = [
-    { id: "slots", name: "Crystal Slots", cat: "Slots", tag: "Megaways & 25-line classic · ~95% RTP", glyph: "💎" },
-    { id: "roulette", name: "European Roulette", cat: "Table Games", tag: "Single zero · 2.70% house edge", glyph: "🎡" },
-    { id: "blackjack", name: "Blackjack", cat: "Card Games", tag: "3:2 · stand soft 17 · 6-deck", glyph: "🂡" },
-    { id: "poker", name: "Poker", cat: "Card Games", tag: "Video Poker & Three Card Poker", glyph: "♠" },
-    { id: "war", name: "Casino War", cat: "Card Games", tag: "Higher card wins · war on a tie · 6-deck", glyph: "⚔" },
-    { id: "highcard", name: "High Card", cat: "Card Games", tag: "Higher card 1:1 · tie push or war", glyph: "🃏" },
-    { id: "mines", name: "Crystal Mines", cat: "Instant/Mini", tag: "Cash out anytime · ~4% house edge", glyph: "◆" },
-    { id: "scratch", name: "Dragon Scratch", cat: "Instant/Mini", tag: "Scratch card · ~95% RTP", glyph: "🐉" },
-    { id: "dice", name: "Lucky Dice", cat: "Instant/Mini", tag: "2d6 duel · tie is a push", glyph: "🎲" },
+    { id: "slots", name: "Crystal Slots", cat: "Slots", tag: "Megaways & 25-line classic · ~95% RTP", glyph: "💎", art: "/assets/tiles/slots.webp", artSm: "/assets/tiles/slots-sm.webp", ribbon: "hot", ribbonLabel: "HOT" },
+    { id: "roulette", name: "European Roulette", cat: "Table Games", tag: "Single zero · 2.70% house edge", glyph: "🎡", art: "/assets/tiles/roulette.webp", artSm: "/assets/tiles/roulette-sm.webp" },
+    { id: "blackjack", name: "Blackjack", cat: "Card Games", tag: "3:2 · stand soft 17 · 6-deck", glyph: "🂡", art: "/assets/tiles/blackjack.webp", artSm: "/assets/tiles/blackjack-sm.webp", ribbon: "hot", ribbonLabel: "HOT" },
+    { id: "poker", name: "Poker", cat: "Card Games", tag: "Video Poker & Three Card Poker", glyph: "♠", art: "/assets/tiles/poker.webp", artSm: "/assets/tiles/poker-sm.webp" },
+    { id: "war", name: "Casino War", cat: "Card Games", tag: "Higher card wins · war on a tie · 6-deck", glyph: "⚔", art: "/assets/tiles/war.webp", artSm: "/assets/tiles/war-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
+    { id: "highcard", name: "High Card", cat: "Card Games", tag: "Higher card 1:1 · tie push or war", glyph: "🃏", art: "/assets/tiles/highcard.webp", artSm: "/assets/tiles/highcard-sm.webp" },
+    { id: "mines", name: "Crystal Mines", cat: "Instant/Mini", tag: "Cash out anytime · ~4% house edge", glyph: "◆", art: "/assets/tiles/mines.webp", artSm: "/assets/tiles/mines-sm.webp" },
+    { id: "scratch", name: "Dragon Scratch", cat: "Instant/Mini", tag: "Scratch card · ~95% RTP", glyph: "🐉", art: "/assets/tiles/scratch.webp", artSm: "/assets/tiles/scratch-sm.webp" },
+    { id: "dice", name: "Lucky Dice", cat: "Instant/Mini", tag: "2d6 duel · tie is a push", glyph: "🎲", art: "/assets/tiles/dice.webp", artSm: "/assets/tiles/dice-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
   ];
   const CATS = ["Slots", "Table Games", "Card Games", "Instant/Mini"];
   const FEATURED = ["roulette", "blackjack", "poker", "war"];
@@ -101,12 +101,19 @@
 
     $$(".view-nav button").forEach((b) => {
       const r = b.dataset.route || b.dataset.view;
-      b.classList.toggle("active", (r === "home" && view === "home") || (r === "lobby" && (view === "lobby" || view === "table")));
+      b.classList.toggle("active", (r === "home" && view === "home") || (r === "lobby" && (view === "lobby" || view === "table" || view === "slots")));
+    });
+    $$(".bottom-nav [data-nav]").forEach((b) => {
+      const r = b.dataset.nav;
+      b.classList.toggle("active", (r === "home" && view === "home") || (r === "lobby" && (view === "lobby" || view === "table" || view === "slots")));
     });
 
     if (view === "lobby") renderLobby();
     if (view === "home") renderHomeFeatures();
     if (view === "table") openRoute(path);
+    if (view === "slots" && CC() && CC().relayout) {
+      requestAnimationFrame(() => { try { CC().relayout(); } catch (e) { /* layout only */ } });
+    }
   }
 
   function openRoute(path) {
@@ -137,6 +144,13 @@
       const vipId = (s.profile.vip && s.profile.vip.id) || "bronze";
       const hn = $("#home-nick"); if (hn) hn.textContent = nick;
       const hl = $("#home-level"); if (hl) hl.textContent = "LV " + lvl;
+      const hudLvl = $("#hud-level"); if (hudLvl) hudLvl.textContent = String(lvl);
+      const ring = $("#hud-level-ring");
+      if (ring) {
+        const need = s.profile.xp_needed || 80;
+        const have = s.profile.xp || 0;
+        ring.style.setProperty("--p", String(Math.max(0, Math.min(1, have / Math.max(1, need)))));
+      }
       const hv = $("#home-vip");
       if (hv) { hv.textContent = String(vip).toUpperCase(); hv.className = "vip-badge " + vipId; }
     }
@@ -150,14 +164,23 @@
     }
   }
 
+  function tileArt(g, cls) {
+    const ribbon = g.ribbon ? `<span class="ribbon ${g.ribbon}">${g.ribbonLabel || g.ribbon.toUpperCase()}</span>` : "";
+    const img = g.artSm || g.art
+      ? `<img class="tile-art" src="${g.artSm || g.art}" srcset="${g.artSm ? g.artSm + " 400w, " : ""}${g.art} 800w" sizes="(max-width: 720px) 50vw, 280px" alt="" loading="lazy" decoding="async" />`
+      : `<span class="glyph">${g.glyph}</span>`;
+    return `<a class="${cls}" href="#/${g.id}" data-game="${g.id}">
+        <div class="tile-media">${img}<span class="tile-shine" aria-hidden="true"></span>${ribbon}</div>
+        <div class="tile-copy"><h3>${g.name}</h3><p>${g.tag}</p></div>
+      </a>`;
+  }
+
   function renderHomeFeatures() {
     const row = $("#home-features");
     if (!row) return;
     row.innerHTML = FEATURED.map((id) => {
       const g = TILES.find((t) => t.id === id);
-      return `<a class="feature-tile" href="#/${g.id}" data-game="${g.id}">
-        <span class="glyph">${g.glyph}</span><h3>${g.name}</h3><p>${g.tag}</p>
-      </a>`;
+      return tileArt(g, "feature-tile lobby-tile");
     }).join("");
   }
 
@@ -165,12 +188,8 @@
     const grid = $("#lobby-grid");
     if (!grid) return;
     grid.innerHTML = CATS.map((cat) => {
-      const tiles = TILES.filter((t) => t.cat === cat).map((g) =>
-        `<a class="lobby-card lobby-tile" href="#/${g.id}" data-game="${g.id}">
-          <span class="glyph">${g.glyph}</span><h3>${g.name}</h3><p>${g.tag}</p>
-        </a>`
-      ).join("");
-      return `<div class="lobby-cat"><h3 class="cat-label">${cat}</h3><div class="lobby-grid">${tiles}</div></div>`;
+      const tiles = TILES.filter((t) => t.cat === cat).map((g) => tileArt(g, "lobby-card lobby-tile"));
+      return `<div class="lobby-cat"><h3 class="cat-label">${cat}</h3><div class="lobby-grid">${tiles.join("")}</div></div>`;
     }).join("");
   }
 
@@ -185,11 +204,20 @@
 
   function cardHTML(c, i) {
     if (!c || c.hidden || c.suit === "back") {
-      return `<div class="pcard back" style="animation-delay:${(i||0)*70}ms"><span class="r">✦</span><span class="s">✦</span></div>`;
+      return `<div class="pcard back" style="animation-delay:${(i||0)*70}ms"><img class="card-back-art" src="/assets/cards/back.webp" alt="" /></div>`;
     }
     const red = c.colour === "red" || c.suit === "hearts" || c.suit === "diamonds";
     const suit = SUIT[c.suit] || c.suit;
-    return `<div class="pcard ${red ? "red" : ""}" style="animation-delay:${(i||0)*70}ms"><span class="r">${c.rank}</span><span class="s">${suit}</span></div>`;
+    const rank = String(c.rank);
+    const court = ["J", "Q", "K", "A"].includes(rank);
+    const mid = court
+      ? `<img class="court-art" src="/assets/cards/royal-${rank}.webp" alt="" />`
+      : `<span class="pip">${suit}</span>`;
+    return `<div class="pcard ${red ? "red" : "black"}${court ? " court" : ""}" style="animation-delay:${(i||0)*70}ms">
+      <span class="corner tl"><b class="r">${rank}</b><i class="s">${suit}</i></span>
+      ${mid}
+      <span class="corner br"><b class="r">${rank}</b><i class="s">${suit}</i></span>
+    </div>`;
   }
 
   function chipLabel(n) {
@@ -1155,8 +1183,29 @@
     });
   }
 
+  function startHeroCarousel() {
+    const root = $("#hero-carousel");
+    if (!root) return;
+    const slides = $$(".hero", root);
+    const dots = $$(".hero-dots button", root);
+    if (slides.length < 2) return;
+    let i = 0;
+    const show = (n) => {
+      i = (n + slides.length) % slides.length;
+      slides.forEach((s, k) => s.classList.toggle("is-on", k === i));
+      dots.forEach((d, k) => d.classList.toggle("is-on", k === i));
+    };
+    dots.forEach((d) => d.addEventListener("click", (e) => {
+      e.preventDefault();
+      show(Number(d.dataset.hero) || 0);
+    }));
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce) setInterval(() => show(i + 1), 5600);
+  }
+
   function wireShell() {
     window.addEventListener("hashchange", () => apply());
+    startHeroCarousel();
     $$(".view-nav button").forEach((b) => {
       // app.js also binds setView; that's fine — it calls go().
     });

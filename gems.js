@@ -276,8 +276,13 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     return out;
   }
   const urls = {};
-  function url(id) {
-    if (id === "greentea") return "/assets/green-tea-256.webp";
+  const RASTER = new Set(Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin", "greentea"]));
+  function url(id, size) {
+    if (RASTER.has(id)) {
+      if (size === 512 && id === "greentea") return "/assets/symbols/greentea-512.webp";
+      if (size === 128) return "/assets/symbols/" + id + "-128.webp";
+      return "/assets/symbols/" + id + ".webp";
+    }
     if (!urls[id]) urls[id] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg(id));
     return urls[id];
   }

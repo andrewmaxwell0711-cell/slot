@@ -4,14 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crystal Casino — Social Casino (TEST MODE)</title>
+  <meta name="theme-color" content="#2a0c48" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Crystal Casino is a social casino for entertainment. Virtual coins only — no cash value, no cash-out. 18+." />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="icon" type="image/webp" href="/assets/green-tea-256.webp" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/ui/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/ui/icon-192.png" />
+  <link rel="preload" as="image" href="/assets/ui/logo.webp" />
+  <link rel="preload" as="image" href="/assets/ui/hero-slots-sm.webp" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="v8">
+  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Crystal Casino">
+    <img class="splash-logo" src="/assets/ui/logo-512.webp" width="168" height="168" alt="Crystal Casino" />
+    <h1>Crystal Casino</h1>
+    <p>SOCIAL CASINO · TEST MODE · 18+</p>
+    <div class="splash-bar" aria-hidden="true"><span></span></div>
+  </div>
   <canvas id="sparkle-canvas" aria-hidden="true"></canvas>
+  <div class="bg-cavern" aria-hidden="true"></div>
   <div class="bg-aurora"></div>
   <div class="bg-float" id="bg-float" aria-hidden="true"></div>
   <div class="side-crystals left" aria-hidden="true"></div>
@@ -19,31 +34,41 @@
 
   <header class="top-bar">
     <a class="brand" href="#/home" id="brand-home">
-      <img class="brand-gem" id="brand-gem" alt="" />
-      <div>
+      <img class="brand-gem" id="brand-gem" src="/assets/ui/logo.webp" width="44" height="44" alt="" />
+      <div class="brand-text">
         <h1>Crystal Casino</h1>
         <span class="demo-badge">DEMO · TEST MODE</span>
       </div>
     </a>
     <div class="header-actions">
-      <nav class="view-nav" role="tablist" aria-label="Casino areas">
+      <nav class="view-nav desktop-only" role="tablist" aria-label="Casino areas">
         <button type="button" class="active" data-route="home" id="nav-home">Home</button>
         <button type="button" data-route="lobby" id="nav-lobby">Games</button>
       </nav>
-      <div class="hdr-chip" title="Virtual coins — no cash value">
-        <small>COINS</small><strong id="hdr-credit" data-bind="coins">0</strong>
+      <div class="hud-level" id="hud-level-wrap" title="Level">
+        <div class="level-ring" id="hud-level-ring" style="--p:0">
+          <img class="hud-avatar" src="/assets/ui/avatar.webp" width="32" height="32" alt="" />
+        </div>
+        <span class="hud-lvl" id="hud-level">1</span>
       </div>
-      <div class="hdr-prog" title="Crystal Crown progressive jackpot">
+      <div class="hdr-chip hud-coins" title="Virtual coins — no cash value">
+        <img class="coin-icon" src="/assets/symbols/coin.webp" width="28" height="28" alt="" />
+        <div class="hud-coins-copy">
+          <small>COINS</small>
+          <strong id="hdr-credit" data-bind="coins">0</strong>
+        </div>
+      </div>
+      <div class="hdr-prog plaque-mini" title="Crystal Crown progressive jackpot">
         <small>CROWN</small><strong id="hdr-prog" data-bind="progressive">0</strong>
       </div>
       <div class="vol-wrap">
         <button id="btn-mute" class="icon-btn" type="button" title="Mute sound effects" aria-label="Mute or unmute sound effects">🔊</button>
-        <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Sound effects volume" title="SFX volume" />
-        <button id="btn-music" class="icon-btn" type="button" title="Mute background music" aria-label="Mute or unmute music">🎵</button>
-        <input id="music-vol" class="vol" type="range" min="0" max="100" step="1" value="55" aria-label="Music volume" title="Music volume" />
+        <input id="vol" class="vol desktop-only" type="range" min="0" max="100" step="1" value="70" aria-label="Sound effects volume" title="SFX volume" />
+        <button id="btn-music" class="icon-btn desktop-only" type="button" title="Mute background music" aria-label="Mute or unmute music">🎵</button>
+        <input id="music-vol" class="vol desktop-only" type="range" min="0" max="100" step="1" value="55" aria-label="Music volume" title="Music volume" />
       </div>
-      <button id="btn-prizes" class="btn btn-outline" type="button">Prizes</button>
-      <button id="btn-wallet" class="btn btn-gold" type="button">Buy Coins</button>
+      <button id="btn-prizes" class="btn btn-outline desktop-only" type="button">Prizes</button>
+      <button id="btn-wallet" class="btn btn-gold hud-shop-btn" type="button">Buy Coins</button>
     </div>
   </header>
 
@@ -61,7 +86,7 @@
       <p class="home-kicker">SOCIAL CASINO · TEST MODE · 18+</p>
       <h2 class="home-title">Crystal Casino</h2>
       <p class="home-sub">Virtual coins only. Every game is decided on the server. Nothing here has cash value.</p>
-      <div class="prog-ticker home-ticker" id="home-ticker">
+      <div class="prog-ticker home-ticker jackpot-plaque" id="home-ticker">
         <small>CRYSTAL CROWN PROGRESSIVE</small>
         <strong id="home-prog" data-bind="progressive">0</strong>
       </div>
@@ -90,15 +115,33 @@
         <button type="button" class="btn btn-outline js-prizes">Prizes</button>
       </div>
     </div>
-    <a class="hero" href="#/slots" id="hero-slots">
-      <div class="hero-copy">
-        <span class="hero-tag">FEATURED</span>
-        <h3>Crystal Slots</h3>
-        <p>Megaways up to 117,649 ways, or classic 25-line. Green Tea Jackpot 5,000× · Hold &amp; Spin · Crystal Crown progressive.</p>
-        <span class="btn btn-gold">Play now</span>
+    <div class="hero-carousel" id="hero-carousel">
+      <a class="hero is-on" href="#/slots" id="hero-slots">
+        <img class="hero-bg" src="/assets/ui/hero-slots-sm.webp" srcset="/assets/ui/hero-slots-sm.webp 800w, /assets/ui/hero-slots.webp 1280w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <div class="hero-shade" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <span class="hero-tag">FEATURED</span>
+          <span class="ribbon hot">HOT</span>
+          <h3>Crystal Slots</h3>
+          <p>Megaways up to 117,649 ways, or classic 25-line. Green Tea Jackpot 5,000× · Hold &amp; Spin · Crystal Crown progressive.</p>
+          <span class="btn btn-gold">Play now</span>
+        </div>
+      </a>
+      <a class="hero" href="#/roulette" id="hero-roulette">
+        <img class="hero-bg" src="/assets/tiles/roulette-sm.webp" srcset="/assets/tiles/roulette-sm.webp 400w, /assets/tiles/roulette.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <div class="hero-shade" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <span class="hero-tag">TABLES</span>
+          <h3>European Roulette</h3>
+          <p>Single-zero wheel at the table, honest European odds. Virtual coins only.</p>
+          <span class="btn btn-gold">Play now</span>
+        </div>
+      </a>
+      <div class="hero-dots" role="tablist" aria-label="Featured games">
+        <button type="button" class="is-on" data-hero="0" aria-label="Crystal Slots"></button>
+        <button type="button" class="dot" data-hero="1" aria-label="European Roulette"></button>
       </div>
-      <div class="hero-art" aria-hidden="true">💎</div>
-    </a>
+    </div>
     <div class="home-feature-row" id="home-features"></div>
     <div class="home-browse">
       <a class="btn btn-outline" href="#/lobby">Browse all games</a>
@@ -114,9 +157,9 @@
           <div class="marquee-crystals" id="marquee-crystals" aria-hidden="true"></div>
           <h2 class="marquee-title">Crystal Casino</h2>
           <div class="jackpot-sign" id="jackpot-sign">
-            <img src="/assets/green-tea-256.webp" alt="" />
+            <img src="/assets/symbols/greentea.webp" alt="" />
             <span>GREEN TEA JACKPOT · 5,000×</span>
-            <img src="/assets/green-tea-256.webp" alt="" />
+            <img src="/assets/symbols/greentea.webp" alt="" />
           </div>
           <div class="prog-ticker" id="prog-ticker" aria-live="polite">
             <small>CRYSTAL CROWN</small>
@@ -463,6 +506,21 @@
       <div class="level-up-sub">Keep spinning, crystal hopper</div>
     </div>
   </div>
+
+  <nav class="bottom-nav" aria-label="Main">
+    <a href="#/home" data-nav="home" id="bnav-home">
+      <span class="bnav-ic" aria-hidden="true">⌂</span><span>Home</span>
+    </a>
+    <a href="#/lobby" data-nav="lobby" id="bnav-games">
+      <span class="bnav-ic" aria-hidden="true">◆</span><span>Games</span>
+    </a>
+    <button type="button" class="js-prizes" data-nav="prizes" id="bnav-prizes">
+      <span class="bnav-ic" aria-hidden="true">★</span><span>Prizes</span>
+    </button>
+    <button type="button" class="js-shop" data-nav="shop" id="bnav-shop">
+      <span class="bnav-ic" aria-hidden="true">+</span><span>Shop</span>
+    </button>
+  </nav>
 
   <footer class="site-footer">
     <p id="footer-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>

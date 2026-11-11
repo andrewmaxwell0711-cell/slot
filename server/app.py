@@ -257,6 +257,11 @@ def casino_js():
     return send_from_directory(ROOT, "casino.js")
 
 
+@app.get("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(ROOT, "manifest.webmanifest", max_age=24 * 3600, mimetype="application/manifest+json")
+
+
 ASSETS_DIR = ROOT / "assets"
 
 

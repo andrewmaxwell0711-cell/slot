@@ -30,6 +30,8 @@
   }
 
   function renderGrid() {
+    // v7+ CrystalShell paints the game floor; do not overwrite those tiles.
+    if (window.CrystalShell) return;
     const grid = $("#lobby-grid");
     if (!grid) return;
     grid.innerHTML = GAMES.map((g) =>
