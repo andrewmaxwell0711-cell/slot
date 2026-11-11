@@ -192,9 +192,17 @@
     return `<div class="pcard ${red ? "red" : ""}" style="animation-delay:${(i||0)*70}ms"><span class="r">${c.rank}</span><span class="s">${suit}</span></div>`;
   }
 
+  function chipLabel(n) {
+    if (n >= 1000) return (n / 1000) + "K";
+    return String(n);
+  }
+
   function chipRack(extra) {
     return `<div class="chip-rack" role="group" aria-label="Chip denominations">
-      ${CHIPS.map((n) => `<button type="button" class="chip c${n} ${n === chip ? "on" : ""}" data-chip="${n}">${money(n)}</button>`).join("")}
+      ${CHIPS.map((n) => `<button type="button" class="chip c${n} ${n === chip ? "on" : ""}" data-chip="${n}" aria-label="${n.toLocaleString("en-US")} coins">
+        <span class="chip-edge" aria-hidden="true"></span>
+        <span class="chip-inlay">${chipLabel(n)}</span>
+      </button>`).join("")}
     </div>${extra || ""}`;
   }
 
@@ -204,6 +212,49 @@
       sfx("chip");
       root.querySelectorAll("[data-chip]").forEach((x) => x.classList.toggle("on", Number(x.dataset.chip) === chip));
     }));
+  }
+
+  function infoPanel(id, title, body) {
+    return `<button type="button" class="info-btn" data-open-info="${id}" aria-label="Rules">?</button>
+      <div class="game-info" id="${id}" hidden>
+        <div class="game-info-card">
+          <header><h3>${title}</h3><button type="button" class="icon-btn" data-close-info="${id}" aria-label="Close">✕</button></header>
+          <div class="game-info-body">${body}</div>
+        </div>
+      </div>`;
+  }
+
+  function bindInfo(root) {
+    root.querySelectorAll("[data-open-info]").forEach((b) => b.addEventListener("click", () => {
+      const el = document.getElementById(b.dataset.openInfo);
+      if (el) el.hidden = false;
+    }));
+    root.querySelectorAll("[data-close-info]").forEach((b) => b.addEventListener("click", () => {
+      const el = document.getElementById(b.dataset.closeInfo);
+      if (el) el.hidden = true;
+    }));
+    root.querySelectorAll(".game-info").forEach((el) => el.addEventListener("click", (e) => {
+      if (e.target === el) el.hidden = true;
+    }));
+  }
+
+  function resultBanner(text, kind, sub) {
+    if (!text) return "";
+    return `<div class="result-banner ${kind || ""}" id="result-banner">${text}${sub ? `<small>${sub}</small>` : ""}</div>`;
+  }
+
+  function breakdownTable(rows, net) {
+    const body = rows.map((r) =>
+      `<tr class="${r.status || ""}"><th>${r.name}</th><td class="st">${r.statusLabel}</td><td class="amt">${r.amount}</td></tr>`
+    ).join("");
+    const netCls = net > 0 ? "win" : net < 0 ? "lose" : "push";
+    const netLab = net > 0 ? "+" + money(net) : net < 0 ? "−" + money(-net) : money(0);
+    return `<table class="bet-break"><tbody>${body}</tbody>
+      <tfoot><tr class="${netCls}"><th>Net</th><td></td><td class="amt">${netLab}</td></tr></tfoot></table>`;
+  }
+
+  function statusWord(s) {
+    return ({ win: "Win", lose: "Lose", push: "Push", folded: "Folded", "—": "—" }[s] || s || "—");
   }
 
   // ---- Poker submenu ----
@@ -238,15 +289,22 @@
       .map((a) => `<button type="button" class="btn ${a==="hit"||a==="stand"?"btn-gold":"btn-outline"}" data-act="${a}">${a.replace("_", " ")}</button>`)
       .join("");
     const idle = state.done || !state.hands;
+    const banner = state.done ? resultBanner(
+      (state.payout || 0) > (state.bet || 0) ? "YOU WIN" : (state.payout === (state.bet || 0) ? "PUSH" : "DEALER WINS"),
+      (state.payout || 0) > (state.bet || 0) ? "win" : (state.payout === (state.bet || 0) ? "push" : "lose"),
+      "Payout " + money(state.payout || 0)
+    ) : "";
     const root = stage("Blackjack", `
       <div class="felt-table bj-table">
         <div class="dealer-spot">
-          <div class="hand-meta">Dealer${state.dealer_total != null ? " · " + state.dealer_total : ""}</div>
+          <div class="seat-label">Dealer</div>
+          <div class="hand-meta">${state.dealer_total != null ? "Total " + state.dealer_total : " "}</div>
           <div class="hand" id="dealer-hand">${(state.dealer || []).map((c, n) => cardHTML(c, n)).join("")}</div>
         </div>
-        <div class="player-spot">${hands || `<div class="bj-hand"><div class="hand-meta">You</div><div class="hand"></div></div>`}</div>
+        <div class="player-spot"><div class="seat-label">You</div>${hands || `<div class="bj-hand"><div class="hand-meta"> </div><div class="hand"></div></div>`}</div>
         <div class="bet-circle" id="bj-circle"><span>${money(idle ? chip : (state.bet || lastBJ))}</span><small>ANTE</small></div>
-        <div class="table-msg" id="side-msg">${state.done ? "Payout " + money(state.payout || 0) : (state.hands ? "Your play." : "Place chips, then deal.")}</div>
+        ${banner}
+        <div class="table-msg" id="side-msg">${state.done ? "Payout " + money(state.payout || 0) : (state.hands ? "Hit, stand, or double." : "Place chips, then deal.")}</div>
         ${chipRack(`<div class="actions-row">
           ${idle ? `<button type="button" class="btn btn-gold" id="bj-deal">Deal</button>
                     <button type="button" class="btn btn-outline" id="bj-rebet">Rebet</button>` : acts}
@@ -258,8 +316,6 @@
     const rebet = $("#bj-rebet");
     if (rebet) rebet.addEventListener("click", () => bjAct("deal", lastBJ));
     root.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => bjAct(b.dataset.act)));
-    const circle = $("#bj-circle");
-    if (circle && idle) circle.addEventListener("click", () => { sfx("chip"); /* denomination already selected */ });
   }
 
   async function bjAct(action, betAmt) {
@@ -276,50 +332,243 @@
     finally { busy = false; }
   }
 
-  // ---- Roulette ----
-  function wheelSVG() {
-    const n = WHEEL.length, cx = 160, cy = 160, R = 150, r = 48;
-    let wedges = "";
-    WHEEL.forEach((num, i) => {
+  // ---- Roulette: 3D wheel + responsive felt ----
+  let wheelAngle = 0;
+  let ballAngle = 0;
+  let wheelAnim = 0;
+
+  function wheelHTML() {
+    const cx = 220, cy = 220, n = WHEEL.length;
+    const pockets = [];
+    const frets = [];
+    const numbers = [];
+    for (let i = 0; i < n; i++) {
       const a0 = (i / n) * Math.PI * 2 - Math.PI / 2;
       const a1 = ((i + 1) / n) * Math.PI * 2 - Math.PI / 2;
-      const fill = num === 0 ? "#15803d" : REDS.has(num) ? "#b91c1c" : "#111";
+      const num = WHEEL[i];
+      const fill = num === 0 ? "url(#rlGreen)" : (REDS.has(num) ? "url(#rlRed)" : "url(#rlBlack)");
       const p = (a, rad) => [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad];
+      const R = 168, r = 114;
       const p0 = p(a0, R), p1 = p(a1, R), i0 = p(a0, r), i1 = p(a1, r);
-      const mid = p((a0 + a1) / 2, 102);
-      wedges += `<path d="M${i0[0]},${i0[1]} L${p0[0]},${p0[1]} A${R},${R} 0 0 1 ${p1[0]},${p1[1]} L${i1[0]},${i1[1]} A${r},${r} 0 0 0 ${i0[0]},${i0[1]}" fill="${fill}" stroke="#fbe08a" stroke-width=".5"/>
-        <text x="${mid[0]}" y="${mid[1]}" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="#fff" font-weight="700">${num}</text>`;
+      pockets.push(`<path d="M${i0[0].toFixed(2)},${i0[1].toFixed(2)} L${p0[0].toFixed(2)},${p0[1].toFixed(2)} A${R},${R} 0 0 1 ${p1[0].toFixed(2)},${p1[1].toFixed(2)} L${i1[0].toFixed(2)},${i1[1].toFixed(2)} A${r},${r} 0 0 0 ${i0[0].toFixed(2)},${i0[1].toFixed(2)}" fill="${fill}"/>`);
+      const f = p(a0, (R + r) / 2);
+      frets.push(`<line x1="${i0[0].toFixed(2)}" y1="${i0[1].toFixed(2)}" x2="${p0[0].toFixed(2)}" y2="${p0[1].toFixed(2)}" stroke="url(#rlBrass)" stroke-width="1.6" stroke-linecap="round"/>`);
+      const mid = (a0 + a1) / 2;
+      const tx = cx + Math.cos(mid) * 147;
+      const ty = cy + Math.sin(mid) * 147;
+      const deg = mid * 180 / Math.PI + 90;
+      numbers.push(`<text transform="rotate(${deg.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)})" x="${tx.toFixed(2)}" y="${ty.toFixed(2)}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="800" fill="#fff" font-family="Inter, sans-serif">${num}</text>`);
+    }
+    const diamonds = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(a) * 180;
+      const y = cy + Math.sin(a) * 180;
+      const rot = a * 180 / Math.PI;
+      diamonds.push(`<path transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" d="M${x.toFixed(1)},${(y-6).toFixed(1)} L${(x+4.2).toFixed(1)},${y.toFixed(1)} L${x.toFixed(1)},${(y+6).toFixed(1)} L${(x-4.2).toFixed(1)},${y.toFixed(1)} Z" fill="url(#rlBrass)" stroke="#6b4a14" stroke-width=".4"/>`);
+    }
+    return `<div class="wheel-scene" id="wheel-scene">
+      <svg viewBox="0 0 440 440" class="rl-wheel-svg" aria-hidden="true">
+        <defs>
+          <radialGradient id="rlWood" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#8a4e1a"/><stop offset="55%" stop-color="#5a2e0c"/><stop offset="100%" stop-color="#2a1406"/>
+          </radialGradient>
+          <linearGradient id="rlBrass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ffe9a8"/><stop offset="45%" stop-color="#d4a017"/><stop offset="100%" stop-color="#7a4e00"/>
+          </linearGradient>
+          <radialGradient id="rlTrack" cx="50%" cy="50%" r="50%">
+            <stop offset="70%" stop-color="#1a1208"/><stop offset="85%" stop-color="#3a2a14"/><stop offset="100%" stop-color="#0c0804"/>
+          </radialGradient>
+          <radialGradient id="rlRed" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stop-color="#ef4444"/><stop offset="100%" stop-color="#7f1d1d"/>
+          </radialGradient>
+          <radialGradient id="rlBlack" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stop-color="#3f3f46"/><stop offset="100%" stop-color="#09090b"/>
+          </radialGradient>
+          <radialGradient id="rlGreen" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#14532d"/>
+          </radialGradient>
+          <radialGradient id="rlTurret" cx="40%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#f6cf55"/><stop offset="40%" stop-color="#b9800f"/><stop offset="100%" stop-color="#3a2400"/>
+          </radialGradient>
+          <radialGradient id="rlBall" cx="32%" cy="28%" r="70%">
+            <stop offset="0%" stop-color="#fff"/><stop offset="55%" stop-color="#d4d4d8"/><stop offset="100%" stop-color="#52525b"/>
+          </radialGradient>
+          <filter id="rlSoft" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".55"/>
+          </filter>
+        </defs>
+        <ellipse cx="220" cy="228" rx="210" ry="206" fill="rgba(0,0,0,.35)"/>
+        <circle cx="220" cy="220" r="214" fill="url(#rlWood)" filter="url(#rlSoft)"/>
+        <circle cx="220" cy="220" r="202" fill="none" stroke="url(#rlBrass)" stroke-width="10"/>
+        <circle cx="220" cy="220" r="194" fill="none" stroke="#3a2400" stroke-width="2" opacity=".6"/>
+        <circle cx="220" cy="220" r="186" fill="url(#rlTrack)"/>
+        <circle cx="220" cy="220" r="170" fill="none" stroke="#d4a017" stroke-width="3"/>
+        <g class="deflectors">${diamonds.join("")}</g>
+        <g class="rl-rotor" id="rl-rotor">
+          <circle cx="220" cy="220" r="168" fill="#1a1008"/>
+          ${pockets.join("")}
+          ${frets.join("")}
+          ${numbers.join("")}
+          <circle cx="220" cy="220" r="114" fill="none" stroke="url(#rlBrass)" stroke-width="3"/>
+          <circle cx="220" cy="220" r="108" fill="url(#rlTurret)"/>
+          <circle cx="220" cy="220" r="86" fill="#3a2400"/>
+          <circle cx="220" cy="220" r="78" fill="url(#rlTurret)"/>
+          <circle cx="220" cy="220" r="52" fill="#2a1800"/>
+          <circle cx="220" cy="220" r="44" fill="url(#rlTurret)"/>
+          <g stroke="url(#rlBrass)" stroke-width="7" stroke-linecap="round">
+            <line x1="220" y1="178" x2="220" y2="262"/>
+            <line x1="178" y1="220" x2="262" y2="220"/>
+          </g>
+          <circle cx="220" cy="220" r="16" fill="url(#rlBrass)"/>
+          <circle cx="220" cy="220" r="7" fill="#fff3c4"/>
+        </g>
+        <polygon points="220,14 230,34 210,34" fill="url(#rlBrass)" stroke="#6b4a14" stroke-width=".8"/>
+        <g id="ball-arm" transform="rotate(0 220 220)">
+          <g id="ball-rad" transform="translate(220, 40)">
+            <circle r="7.5" fill="url(#rlBall)" stroke="#888" stroke-width=".4"/>
+            <circle r="2.2" cx="-2" cy="-2.2" fill="#fff" opacity=".85"/>
+          </g>
+        </g>
+      </svg>
+    </div>`;
+  }
+
+  function normDeg(d) {
+    const x = d % 360;
+    return x < 0 ? x + 360 : x;
+  }
+
+  function setWheelPose(wDeg, bDeg, radius) {
+    const rotor = $("#rl-rotor");
+    const arm = $("#ball-arm");
+    const rad = $("#ball-rad");
+    // Keep the SVG attribute in [0, 360) so CSS/SVG compositing stays stable.
+    if (rotor) rotor.setAttribute("transform", `rotate(${normDeg(wDeg)} 220 220)`);
+    if (arm) arm.setAttribute("transform", `rotate(${normDeg(bDeg)} 220 220)`);
+    if (rad) rad.setAttribute("transform", `translate(220, ${radius})`);
+    wheelAngle = wDeg;
+    ballAngle = bDeg;
+  }
+
+  function pocketWorldAngle(idx, wheelDeg) {
+    const step = 360 / WHEEL.length;
+    // Pocket centre in local degrees (0 at top, clockwise, matching SVG)
+    const local = (idx + 0.5) * step;
+    return local + wheelDeg;
+  }
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  function reduceMotion() {
+    return document.documentElement.classList.contains("reduce-motion")
+      || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function showResultBadge(result) {
+    const el = $("#rl-result");
+    if (!el || !result || result.number == null) return;
+    const col = result.colour || (result.number === 0 ? "green" : REDS.has(result.number) ? "red" : "black");
+    el.className = "rl-result " + col + " show";
+    el.hidden = false;
+    el.innerHTML = `<span class="rl-num">${result.number}</span><small>${col.toUpperCase()}</small>`;
+  }
+
+  function landRouletteImmediate(result) {
+    const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
+    const step = 360 / WHEEL.length;
+    const finalW = -((idx + 0.5) * step);
+    setWheelPose(finalW, 0, 72);
+    showResultBadge(result);
+  }
+
+  function animateRoulette(result) {
+    return new Promise((resolve) => {
+      const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
+      const step = 360 / WHEEL.length;
+      const finalLocal = -((idx + 0.5) * step);
+      if (reduceMotion()) {
+        setWheelPose(finalLocal, 0, 72);
+        showResultBadge(result);
+        resolve();
+        return;
+      }
+      const startW = wheelAngle;
+      // Continue clockwise (positive) several turns, ending at finalLocal (mod 360)
+      const raw = finalLocal - (startW % 360);
+      const deltaW = raw - 360 * 6 + (raw > 0 ? -360 : 0);
+      // Actually we want a clearly spinning wheel: go in the negative (usual CSS) or positive.
+      // Pick the direction that adds ~5–6 turns ending exactly on finalLocal.
+      let travel = finalLocal - startW;
+      while (travel > -360 * 5) travel -= 360;
+      const endW = startW + travel;
+      const startB = ballAngle;
+      // Ball opposite (positive if wheel is negative), land at 0 (top, under the pointer)
+      let bTravel = 0 - startB;
+      while (bTravel < 360 * 7) bTravel += 360;
+      const endB = startB + bTravel;
+      const TRACK = 40; // cy offset from top = radius? translate(220, r) with r=40 is near the top rim (220-40=180 wait)
+      // Center is 220,220. translate(220, R) on a group rotated around 220,220 means the ball is at distance |R-220|...
+      // I used `<g id="ball-rad" transform="translate(220, 40)">` — that's a point at (220, 40), distance from center (220,220) is 180. Good for the track.
+      // Pocket radius ~148 means y=220-148=72? Distance = 220 - y if at top. So translate(220, 220-148)=(220, 72) for pocket.
+      const TRACK_Y = 40;   // distance 180
+      const POCKET_Y = 72;  // distance 148
+      const dur = 5200;
+      const t0 = performance.now();
+      if (wheelAnim) cancelAnimationFrame(wheelAnim);
+      sfx("roulette");
+      const tick = (now) => {
+        const t = Math.min(1, (now - t0) / dur);
+        const we = easeOutCubic(t);
+        const be = easeOutCubic(Math.min(1, t * 1.02));
+        const w = startW + (endW - startW) * we;
+        const b = startB + (endB - startB) * be;
+        let y = TRACK_Y;
+        if (t > 0.62) {
+          const u = (t - 0.62) / 0.38;
+          // spiral in + damped bounces
+          const bounce = t < 0.86 ? Math.sin(u * Math.PI * 5) * (1 - u) * 10 : 0;
+          y = TRACK_Y + (POCKET_Y - TRACK_Y) * easeInOut(u) + bounce;
+        }
+        setWheelPose(w, b, y);
+        if (t < 1) wheelAnim = requestAnimationFrame(tick);
+        else {
+          setWheelPose(endW, endB, POCKET_Y);
+          showResultBadge(result);
+          resolve();
+        }
+      };
+      wheelAnim = requestAnimationFrame(tick);
     });
-    return `<svg viewBox="0 0 320 320" class="wheel-svg">
-      <g class="wheel-rotor" id="wheel-rotor">${wedges}<circle cx="160" cy="160" r="44" fill="#1a0d00" stroke="#f3c441" stroke-width="4"/></g>
-      <polygon points="160,8 170,28 150,28" fill="#f3c441"/>
-    </svg><div class="ball-orbit" id="ball-orbit"><span class="ball-dot" id="ball-dot"></span></div>`;
   }
 
   function feltHTML() {
+    // --dc/--dr = desktop column/row; --mc/--mr = mobile (portrait) column/row
     const nums = [];
-    for (let col = 1; col <= 12; col++) {
-      for (let row = 3; row >= 1; row--) {
-        const n = (col - 1) * 3 + row;
-        const cls = REDS.has(n) ? "nr" : "nb";
-        nums.push(`<button type="button" class="${cls}" style="grid-column:${col+1};grid-row:${4-row}" data-kind="straight" data-n="${n}">${n}</button>`);
-      }
+    for (let n = 1; n <= 36; n++) {
+      const colD = 1 + Math.ceil(n / 3);
+      const rowD = 3 - ((n - 1) % 3);
+      const colM = ((n - 1) % 3) + 1;
+      const rowM = 1 + Math.ceil(n / 3);
+      const cls = REDS.has(n) ? "nr" : "nb";
+      nums.push(`<button type="button" class="${cls} felt-num" style="--dc:${colD};--dr:${rowD};--mc:${colM};--mr:${rowM}" data-kind="straight" data-n="${n}">${n}</button>`);
     }
     return `<div class="felt-eu" id="felt">
-      <button type="button" class="n0" data-kind="straight" data-n="0">0</button>
+      <button type="button" class="n0" style="--dc:1;--dr:1;--mc:1;--mr:1" data-kind="straight" data-n="0">0</button>
       ${nums.join("")}
-      <button type="button" class="ncol" style="grid-column:14;grid-row:1" data-kind="column" data-n="3">2:1</button>
-      <button type="button" class="ncol" style="grid-column:14;grid-row:2" data-kind="column" data-n="2">2:1</button>
-      <button type="button" class="ncol" style="grid-column:14;grid-row:3" data-kind="column" data-n="1">2:1</button>
-      <button type="button" class="nout" style="grid-column:2/6;grid-row:4" data-kind="dozen" data-n="1">1st 12</button>
-      <button type="button" class="nout" style="grid-column:6/10;grid-row:4" data-kind="dozen" data-n="2">2nd 12</button>
-      <button type="button" class="nout" style="grid-column:10/14;grid-row:4" data-kind="dozen" data-n="3">3rd 12</button>
-      <button type="button" class="nout" style="grid-column:2/4;grid-row:5" data-kind="low">1–18</button>
-      <button type="button" class="nout" style="grid-column:4/6;grid-row:5" data-kind="even">Even</button>
-      <button type="button" class="nout nr" style="grid-column:6/8;grid-row:5" data-kind="red">Red</button>
-      <button type="button" class="nout nb" style="grid-column:8/10;grid-row:5" data-kind="black">Black</button>
-      <button type="button" class="nout" style="grid-column:10/12;grid-row:5" data-kind="odd">Odd</button>
-      <button type="button" class="nout" style="grid-column:12/14;grid-row:5" data-kind="high">19–36</button>
+      <button type="button" class="ncol c3" style="--dc:14;--dr:1;--mc:1;--mr:14" data-kind="column" data-n="3" data-label="col3">2:1<span class="col-hint">3–36</span></button>
+      <button type="button" class="ncol c2" style="--dc:14;--dr:2;--mc:2;--mr:14" data-kind="column" data-n="2">2:1<span class="col-hint">2–35</span></button>
+      <button type="button" class="ncol c1" style="--dc:14;--dr:3;--mc:3;--mr:14" data-kind="column" data-n="1">2:1<span class="col-hint">1–34</span></button>
+      <button type="button" class="nout d1" style="--dc:2;--dr:4;--mc:1;--mr:15" data-kind="dozen" data-n="1">1st 12<span class="col-hint">1–12</span></button>
+      <button type="button" class="nout d2" style="--dc:6;--dr:4;--mc:2;--mr:15" data-kind="dozen" data-n="2">2nd 12<span class="col-hint">13–24</span></button>
+      <button type="button" class="nout d3" style="--dc:10;--dr:4;--mc:3;--mr:15" data-kind="dozen" data-n="3">3rd 12<span class="col-hint">25–36</span></button>
+      <button type="button" class="nout ev" style="--dc:2;--dr:5;--mc:1;--mr:16" data-kind="low">1–18</button>
+      <button type="button" class="nout ev" style="--dc:4;--dr:5;--mc:2;--mr:16" data-kind="even">Even</button>
+      <button type="button" class="nout ev nr" style="--dc:6;--dr:5;--mc:3;--mr:16" data-kind="red">Red</button>
+      <button type="button" class="nout ev nb" style="--dc:8;--dr:5;--mc:1;--mr:17" data-kind="black">Black</button>
+      <button type="button" class="nout ev" style="--dc:10;--dr:5;--mc:2;--mr:17" data-kind="odd">Odd</button>
+      <button type="button" class="nout ev" style="--dc:12;--dr:5;--mc:3;--mr:17" data-kind="high">19–36</button>
     </div>`;
   }
 
@@ -330,12 +579,14 @@
     ).join("")}</div>`;
   }
 
-  function betKey(b) {
-    return [b.kind, b.number, b.dozen, b.column, b.n].join(":");
+  function dozenNumbers(d) {
+    const lo = (d - 1) * 12 + 1;
+    return Array.from({ length: 12 }, (_, i) => lo + i);
   }
 
   function markFelt(root) {
-    root.querySelectorAll("#felt button").forEach((btn) => {
+    const scope = root || document;
+    scope.querySelectorAll("#felt button").forEach((btn) => {
       const kind = btn.dataset.kind;
       const n = btn.dataset.n != null ? Number(btn.dataset.n) : null;
       const total = rouletteBets.filter((b) => {
@@ -349,25 +600,44 @@
       let badge = btn.querySelector(".chip-badge");
       if (total > 0) {
         if (!badge) { badge = document.createElement("span"); badge.className = "chip-badge"; btn.appendChild(badge); }
-        badge.textContent = money(total);
+        badge.textContent = chipLabel(total) === String(total) ? String(total) : chipLabel(total);
       } else if (badge) badge.remove();
     });
   }
 
-  function paintRoulette(result) {
+  function buildRouletteBet(btn) {
+    const kind = btn.dataset.kind;
+    const n = btn.dataset.n != null ? Number(btn.dataset.n) : undefined;
+    const bet = { kind, amount: chip };
+    if (kind === "straight") bet.number = n;
+    if (kind === "dozen") { bet.dozen = n; bet.numbers = dozenNumbers(n); }
+    if (kind === "column") bet.column = n;
+    return bet;
+  }
+
+  function paintRoulette(result, opts) {
+    const keepWheel = opts && opts.keepWheel;
     const stake = rouletteBets.reduce((s, b) => s + b.amount, 0);
+    const msg = result && result.number != null
+      ? "Winning number " + result.number + " · payout " + money(result.payout || 0)
+      : (stake ? money(stake) + " on the table" : "Place chips, then spin.");
+    if (keepWheel && $("#rl-rotor")) {
+      const m = $("#side-msg"); if (m) m.textContent = msg;
+      markFelt(document);
+      historyMount();
+      if (result && result.number != null && !opts.animating) showResultBadge(result);
+      return $("#stage-body");
+    }
     const root = stage("European Roulette", `
       <div class="felt-table rl-table">
         ${historyHTML()}
         <div class="roulette-wrap">
-          <div class="wheel-box">${wheelSVG()}</div>
+          <div class="wheel-box">${wheelHTML()}
+            <div class="rl-result" id="rl-result" hidden></div>
+          </div>
           <div class="felt-col">
             ${feltHTML()}
-            <div class="table-msg" id="side-msg">${
-              result && result.number != null
-                ? "Winning number " + result.number + " · payout " + money(result.payout || 0)
-                : (stake ? money(stake) + " on the table" : "Place chips, then spin.")
-            }</div>
+            <div class="table-msg" id="side-msg">${msg}</div>
           </div>
         </div>
         ${chipRack(`<div class="actions-row">
@@ -378,21 +648,40 @@
         </div>`)}
       </div>`);
     bindChips(root);
+    bindFelt(root);
     markFelt(root);
+    if (result && result.number != null) landRouletteImmediate(result);
+    else setWheelPose(wheelAngle, ballAngle, 40);
+    return root;
+  }
+
+  function historyMount() {
+    const old = document.querySelector(".rl-history");
+    if (!old) return;
+    const wrap = document.createElement("div");
+    wrap.innerHTML = historyHTML();
+    old.replaceWith(wrap.firstElementChild);
+  }
+
+  function bindFelt(root) {
     root.querySelectorAll("#felt button").forEach((btn) => btn.addEventListener("click", () => {
-      const kind = btn.dataset.kind;
-      const n = btn.dataset.n != null ? Number(btn.dataset.n) : undefined;
-      const bet = { kind, amount: chip };
-      if (kind === "straight") bet.number = n;
-      if (kind === "dozen") bet.dozen = n;
-      if (kind === "column") bet.column = n;
-      rouletteBets.push(bet);
+      rouletteBets.push(buildRouletteBet(btn));
       sfx("chip");
       markFelt(root);
-      $("#side-msg").textContent = money(rouletteBets.reduce((s, b) => s + b.amount, 0)) + " on the table";
+      const msg = $("#side-msg");
+      if (msg) msg.textContent = money(rouletteBets.reduce((s, b) => s + b.amount, 0)) + " on the table";
     }));
-    $("#rl-undo").addEventListener("click", () => { rouletteBets.pop(); markFelt(root); });
-    $("#rl-clear").addEventListener("click", () => { rouletteBets = []; markFelt(root); $("#side-msg").textContent = "Bets cleared."; });
+    $("#rl-undo").addEventListener("click", () => {
+      rouletteBets.pop();
+      markFelt(root);
+      const msg = $("#side-msg");
+      if (msg) msg.textContent = rouletteBets.length ? money(rouletteBets.reduce((s, b) => s + b.amount, 0)) + " on the table" : "Bets cleared.";
+    });
+    $("#rl-clear").addEventListener("click", () => {
+      rouletteBets = [];
+      markFelt(root);
+      $("#side-msg").textContent = "Bets cleared.";
+    });
     $("#rl-rebet").addEventListener("click", () => {
       if (!lastRoulette.length) { toast("No previous bets", true); return; }
       rouletteBets = lastRoulette.map((b) => ({ ...b }));
@@ -400,23 +689,6 @@
       markFelt(root);
     });
     $("#rl-spin").addEventListener("click", spinRoulette);
-    if (result && result.number != null) landRoulette(result);
-  }
-
-  function landRoulette(result) {
-    const idx = result.pocket != null ? result.pocket : WHEEL.indexOf(result.number);
-    const rotor = $("#wheel-rotor");
-    const orbit = $("#ball-orbit");
-    if (!rotor) return;
-    const n = WHEEL.length;
-    const deg = 360 * 6 + (360 - (idx + 0.5) * (360 / n));
-    rotor.style.transition = "transform 4.2s cubic-bezier(.15,.7,.05,1)";
-    rotor.style.transform = `rotate(${deg}deg)`;
-    if (orbit) {
-      orbit.style.transition = "transform 4.2s cubic-bezier(.05,.6,.05,1)";
-      orbit.style.transform = `rotate(${-(deg + 18)}deg)`;
-    }
-    sfx("roulette");
   }
 
   async function spinRoulette() {
@@ -431,17 +703,38 @@
       rouletteHistory.unshift({ number: st.number, colour: st.colour || (st.number === 0 ? "green" : REDS.has(st.number) ? "red" : "black") });
       rouletteHistory = rouletteHistory.slice(0, 16);
       rouletteBets = [];
-      paintRoulette(st);
+      const badge = $("#rl-result"); if (badge) { badge.hidden = true; badge.classList.remove("show"); }
+      historyMount();
+      markFelt(document);
+      const msg = $("#side-msg");
+      if (msg) msg.textContent = "Spinning…";
+      await animateRoulette(st);
+      if (msg) msg.textContent = "Winning number " + st.number + " · payout " + money(st.payout || 0);
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
+
+  function getRouletteBets() { return rouletteBets.slice(); }
 
   // ---- Video poker ----
   function paintVP(st) {
     const cards = (st && (st.cards || st.dealt)) || [null, null, null, null, null];
     const canDraw = st && !st.done && st.cards;
+    const label = (st && (st.hand_label || (st.hand || "").replace(/_/g, " "))) || "";
+    const banner = st && st.done ? resultBanner(
+      st.result_banner || (st.result === "win" ? "YOU WIN" : st.result === "push" ? "PUSH" : "NO WIN"),
+      st.result === "win" ? "win" : st.result === "push" ? "push" : "lose",
+      (label ? label + " · " : "") + money(st.payout || 0)
+    ) : "";
+    const breakRows = st && st.done ? breakdownTable([
+      { name: "Bet", status: "", statusLabel: "", amount: money(st.bet) },
+      { name: "Returned", status: st.result, statusLabel: (st.hand_label || label || "—") + (st.mult ? " · " + st.mult + "×" : ""), amount: money(st.payout || 0) },
+    ], (st.net != null ? st.net : (st.payout || 0) - (st.bet || 0))) : "";
     const root = stage("Video Poker — Jacks or Better", `
       <div class="felt-table vp-table">
+        ${infoPanel("vp-info", "Jacks or Better · 9/6",
+          `<p>Five-card draw. Hold any cards, then draw replacements. Jacks or better (a pair of Jacks, Queens, Kings or Aces) is the lowest paying hand. Pays are multiples of your bet returned, including the stake (Jacks or better pays 1× — a push).</p>
+           <table class="pay-mini">${JOB_PAYS.map(([n, p]) => `<tr><th>${n}</th><td>${p}</td></tr>`).join("")}</table>`)}
         <div class="vp-layout">
           <ol class="vp-pays">${JOB_PAYS.map(([n, p]) =>
             `<li class="${st && st.hand === n.toLowerCase().replace(/ /g, "_") ? "hit" : ""}"><span>${n}</span><b>${p}</b></li>`
@@ -453,9 +746,12 @@
                 <span class="hold-tag">${vpHolds[i] ? "HOLD" : "HOLD?"}</span>
               </button>`).join("")}
             </div>
-            <div class="table-msg" id="side-msg">${
-              st && st.done ? ((st.hand || "nothing").replace(/_/g, " ") + " · " + money(st.payout || 0))
-              : (canDraw ? "Tap cards to hold, then draw." : "Choose a bet and deal.")
+            <div class="hand-name">${st && !st.done && label ? label : ""}</div>
+            ${banner}
+            ${breakRows}
+            <div class="table-msg step-prompt" id="side-msg">${
+              st && st.done ? ""
+              : (canDraw ? "Tap cards to hold, then Draw." : "Choose a bet and Deal.")
             }</div>
             ${chipRack(`<div class="actions-row">
               ${canDraw
@@ -466,6 +762,7 @@
         </div>
       </div>`, "#/poker");
     bindChips(root);
+    bindInfo(root);
     root.querySelectorAll(".vp-card").forEach((b) => b.addEventListener("click", () => {
       if (!canDraw) return;
       const i = Number(b.dataset.i);
@@ -506,25 +803,57 @@
   // ---- Three Card Poker ----
   function paintTCP(st) {
     const waiting = st && !st.done && st.player;
+    const done = st && st.done;
+    const pLabel = st && (st.player_hand_label || (st.player_hand || "").replace(/_/g, " "));
+    const dLabel = done && (st.dealer_hand_label || (st.dealer_hand || "").replace(/_/g, " "));
+    let prompt = "Place Ante (and optional Pair Plus), then Deal.";
+    if (waiting) prompt = "Play (match Ante) or Fold?";
+    if (done) prompt = "";
+    const hint = waiting
+      ? (st.hint_play
+        ? "Hint: this hand meets Q-6-4 — typically Play."
+        : "Hint: below Q-6-4 — typically Fold.")
+      : (!st ? "Optional hint: play with Queen-6-4 or better." : "");
+    const qual = done ? `<div class="qual-badge ${st.dealer_qualifies ? "yes" : "no"}">
+        ${st.dealer_qualifies ? "QUALIFIES" : "DOES NOT QUALIFY"}
+        <small>Dealer qualifies with Queen high</small>
+      </div>` : `<div class="qual-badge idle"><small>Dealer qualifies with Queen high</small></div>`;
+    const kind = st && st.result === "lose" ? "lose" : st && st.result === "tie" ? "push" : st && st.result === "fold" ? "fold" : "win";
+    const banner = done ? resultBanner(st.result_banner || "RESULT", kind, done && pLabel && dLabel ? `You: ${pLabel} · Dealer: ${dLabel}` : "") : "";
+    const rows = done ? breakdownTable([
+      { name: "Ante", status: st.ante_status, statusLabel: statusWord(st.ante_status), amount: st.ante_payout != null ? money(st.ante_payout) : "—" },
+      { name: "Play", status: st.play_status, statusLabel: statusWord(st.play_status), amount: st.played ? money(st.play_payout || 0) : "—" },
+      { name: "Pair Plus", status: st.pair_plus_status, statusLabel: statusWord(st.pair_plus_status), amount: st.pair_plus ? money(st.pair_plus_payout || 0) : "—" },
+      { name: "Ante bonus", status: st.ante_bonus ? "win" : "", statusLabel: st.ante_bonus ? "Win" : "—", amount: money(st.ante_bonus || 0) },
+    ], st.net != null ? st.net : (st.payout || 0) - (st.ante || 0) - (st.pair_plus || 0) - (st.play || 0)) : "";
     const root = stage("Three Card Poker", `
       <div class="felt-table tcp-table">
-        <div class="dealer-spot">
-          <div class="hand-meta">Dealer${st && st.done && st.dealer_hand ? " · " + st.dealer_hand.replace(/_/g, " ") : ""}${st && st.done && !st.dealer_qualifies ? " · does not qualify" : ""}</div>
+        ${infoPanel("tcp-info", "Three Card Poker",
+          `<p>Place an Ante (and an optional Pair Plus). You get three cards, then Play (match the Ante) or Fold (lose the Ante; Pair Plus can still pay).</p>
+           <p>The dealer qualifies with Queen high or better. If the dealer does not qualify, Ante pays 1:1 and Play pushes. If the dealer qualifies, the better hand wins Ante and Play at 1:1. Ties push.</p>
+           <p>Ante bonus (if you Play): Straight flush 5:1, Three of a kind 4:1, Straight 1:1 — paid even if the dealer wins.</p>
+           <p>Pair Plus pays independently: Pair 1:1, Flush 4:1, Straight 6:1, Three of a kind 30:1, Straight flush 40:1.</p>
+           <p>Strategy hint: Play with Q-6-4 or better; otherwise Fold.</p>`)}
+        <div class="seat dealer-spot">
+          <div class="seat-label">Dealer</div>
+          ${qual}
           <div class="hand">${((st && st.dealer) || []).map((c, i) => cardHTML(c, i)).join("")}</div>
+          <div class="hand-name">${dLabel || (waiting ? "Waiting…" : "")}</div>
         </div>
-        <div class="player-spot">
-          <div class="hand-meta">You${st && st.player_hand ? " · " + String(st.player_hand).replace(/_/g, " ") : ""}</div>
+        ${banner}
+        <div class="seat player-spot">
+          <div class="seat-label">You</div>
           <div class="hand">${((st && st.player) || []).map((c, i) => cardHTML(c, i)).join("")}</div>
+          <div class="hand-name">${pLabel || ""}</div>
         </div>
         <div class="tcp-spots">
           <div class="bet-circle ${tcpPP ? "on" : ""}" id="tcp-pp"><span>${money(tcpPP)}</span><small>PAIR PLUS</small></div>
           <div class="bet-circle on" id="tcp-ante"><span>${money(tcpAnte)}</span><small>ANTE</small></div>
-          <div class="bet-circle" id="tcp-play"><span>${st && st.play ? money(st.play) : "—"}</span><small>PLAY</small></div>
+          <div class="bet-circle ${st && st.play ? "on" : ""}" id="tcp-play"><span>${st && st.play ? money(st.play) : "—"}</span><small>PLAY</small></div>
         </div>
-        <div class="table-msg" id="side-msg">${
-          st && st.done ? (String(st.result || "").replace(/_/g, " ") + " · payout " + money(st.payout || 0))
-          : (waiting ? "Play (match the ante) or fold." : "Set Ante and optional Pair Plus, then deal. Dealer qualifies Queen-high.")
-        }</div>
+        ${rows}
+        <div class="table-msg step-prompt" id="side-msg">${prompt}</div>
+        ${hint ? `<p class="strategy-hint">${hint}</p>` : ""}
         ${chipRack(`<div class="actions-row">
           ${waiting
             ? `<button type="button" class="btn btn-gold" id="tcp-play-btn">Play</button>
@@ -534,10 +863,11 @@
         </div>`)}
       </div>`, "#/poker");
     bindChips(root);
+    bindInfo(root);
     const ante = $("#tcp-ante");
-    if (ante && !waiting) ante.addEventListener("click", () => { tcpAnte = chip; sfx("chip"); paintTCP(st); });
+    if (ante && !waiting && !done) ante.addEventListener("click", () => { tcpAnte = chip; sfx("chip"); paintTCP(st); });
     const pp = $("#tcp-pp");
-    if (pp && !waiting) pp.addEventListener("click", () => { tcpPP = tcpPP ? 0 : chip; sfx("chip"); paintTCP(st); });
+    if (pp && !waiting && !done) pp.addEventListener("click", () => { tcpPP = tcpPP ? 0 : chip; sfx("chip"); paintTCP(st); });
     const tog = $("#tcp-pp-toggle");
     if (tog) tog.addEventListener("click", () => { tcpPP = tcpPP ? 0 : chip; sfx("chip"); paintTCP(st); });
     const deal = $("#tcp-deal");
@@ -555,26 +885,88 @@
       const body = action === "deal" ? { action: "deal", ante: tcpAnte, pair_plus: tcpPP } : { action };
       const res = await api("/api/side/threecard", body);
       applyCoins(res);
-      paintTCP(res.result || res);
+      const st = res.result || res;
+      paintTCP(st);
+      if (st.done) {
+        document.querySelectorAll(".tcp-table .dealer-spot .pcard:not(.back)").forEach((el, i) => {
+          el.classList.add("flip");
+          el.style.animationDelay = (i * 90) + "ms";
+        });
+      }
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
 
   // ---- Casino War ----
+  function warBanner(st) {
+    if (!st) return "";
+    if (st.awaiting_war) return resultBanner("TIE", "push", "Surrender half, or go to war (match the ante).");
+    const map = {
+      win: ["YOU WIN", "win"],
+      lose: ["DEALER WINS", "lose"],
+      war_win: ["YOU WIN THE WAR", "win"],
+      war_lose: ["DEALER WINS THE WAR", "lose"],
+      war_tie: ["PUSH", "push"],
+      surrender: ["SURRENDERED", "fold"],
+    };
+    const pair = map[st.result] || [String(st.result || "").replace(/_/g, " ").toUpperCase(), ""];
+    return resultBanner(pair[0], pair[1], money(st.payout || 0) + " returned");
+  }
+
+  function warBreakdown(st) {
+    if (!st || (!st.done && !st.awaiting_war)) return "";
+    const ante = st.bet || 0;
+    const raise = st.raise || (st.war ? ante : 0);
+    if (st.awaiting_war) {
+      return breakdownTable([
+        { name: "Ante", status: "push", statusLabel: "Tie", amount: money(ante) + " at risk" },
+      ], 0);
+    }
+    const rows = [];
+    if (st.result === "win") rows.push({ name: "Ante", status: "win", statusLabel: "Win 1:1", amount: money(ante * 2) });
+    else if (st.result === "lose") rows.push({ name: "Ante", status: "lose", statusLabel: "Lose", amount: money(0) });
+    else if (st.result === "surrender") rows.push({ name: "Ante", status: "lose", statusLabel: "Half back", amount: money(st.payout || 0) });
+    else if (st.result === "war_win") {
+      rows.push({ name: "Ante", status: "push", statusLabel: "Push", amount: money(ante) });
+      rows.push({ name: "War raise", status: "win", statusLabel: "Win 1:1", amount: money(raise * 2) });
+    } else if (st.result === "war_lose") {
+      rows.push({ name: "Ante", status: "lose", statusLabel: "Lose", amount: money(0) });
+      rows.push({ name: "War raise", status: "lose", statusLabel: "Lose", amount: money(0) });
+    } else if (st.result === "war_tie") {
+      rows.push({ name: "Ante", status: "push", statusLabel: "Push", amount: money(ante) });
+      rows.push({ name: "War raise", status: "push", statusLabel: "Push", amount: money(raise) });
+    }
+    const spent = ante + (st.war ? raise : 0);
+    const net = (st.payout || 0) - spent;
+    return breakdownTable(rows, net);
+  }
+
   function paintWar(st) {
     const root = stage("Casino War", `
       <div class="felt-table war-table">
+        ${infoPanel("war-info", "Casino War",
+          `<p>You and the dealer each get one card from a 6-deck shoe. Higher card wins 1:1 (Ace is high).</p>
+           <p>On a tie, Surrender (half the ante is returned) or Go to war (match the ante). Three cards are burned, then one more card each. A war win pays 1:1 on the raise; the original ante pushes. A tie on war pushes both bets.</p>`)}
         <div class="war-row">
-          <div class="war-spot"><div class="hand-meta">You</div><div class="hand">${st && st.player ? cardHTML(st.player, 0) : ""}</div>
-            ${st && st.player_war ? `<div class="hand-meta">War</div><div class="hand">${cardHTML(st.player_war, 1)}</div>` : ""}</div>
-          <div class="war-spot"><div class="hand-meta">Dealer</div><div class="hand">${st && st.dealer ? cardHTML(st.dealer, 0) : ""}</div>
-            ${st && st.dealer_war ? `<div class="hand-meta">War</div><div class="hand">${cardHTML(st.dealer_war, 1)}</div>` : ""}</div>
+          <div class="war-spot seat">
+            <div class="seat-label">You</div>
+            <div class="hand">${st && st.player ? cardHTML(st.player, 0) : ""}</div>
+            <div class="hand-name">${st && st.player ? st.player.rank : ""}</div>
+            ${st && st.player_war ? `<div class="hand-meta">War</div><div class="hand">${cardHTML(st.player_war, 1)}</div><div class="hand-name">${st.player_war.rank}</div>` : ""}
+          </div>
+          <div class="war-spot seat">
+            <div class="seat-label">Dealer</div>
+            <div class="hand">${st && st.dealer ? cardHTML(st.dealer, 0) : ""}</div>
+            <div class="hand-name">${st && st.dealer ? st.dealer.rank : ""}</div>
+            ${st && st.dealer_war ? `<div class="hand-meta">War</div><div class="hand">${cardHTML(st.dealer_war, 1)}</div><div class="hand-name">${st.dealer_war.rank}</div>` : ""}
+          </div>
         </div>
         <div class="bet-circle on"><span>${money(st && st.bet ? st.bet : chip)}</span><small>ANTE</small></div>
-        <div class="table-msg" id="side-msg">${
-          st && st.awaiting_war ? "Tie — surrender half, or go to war (match the bet). A war win pays 1:1 on the raise; the original ante pushes."
-          : (st ? (String(st.result || "").replace(/_/g, " ") + " · " + money(st.payout || 0))
-                : "Higher card wins even money. Ties: surrender half or go to war.")
+        ${warBanner(st)}
+        ${warBreakdown(st)}
+        <div class="table-msg step-prompt" id="side-msg">${
+          st && st.awaiting_war ? "Tie — Surrender half, or Go to war (match the bet)."
+          : (st && st.done ? "" : "Place a bet and Deal. Higher card wins even money.")
         }</div>
         ${chipRack(`<div class="actions-row">
           ${st && st.awaiting_war
@@ -584,6 +976,7 @@
         </div>`)}
       </div>`);
     bindChips(root);
+    bindInfo(root);
     const deal = $("#war-deal");
     if (deal) deal.addEventListener("click", () => warAct("deal"));
     const goBtn = $("#war-go");
@@ -604,7 +997,8 @@
     finally { busy = false; }
   }
 
-  // ---- High card / mines / scratch / dice (full-stage versions) ----
+
+    // ---- High card / mines / scratch / dice (full-stage versions) ----
   function paintHigh(st) {
     const root = stage("High Card", `
       <div class="felt-table">
@@ -749,7 +1143,7 @@
     });
   }
 
-  window.CrystalShell = { go, apply, start, refreshHud, renderLobby };
+  window.CrystalShell = { go, apply, start, refreshHud, renderLobby, getRouletteBets, buildRouletteBet };
   wireShell();
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { /* start() is called from app.js after ledger load */ });
 })();

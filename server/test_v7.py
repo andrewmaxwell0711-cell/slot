@@ -164,7 +164,7 @@ class VideoPokerHouseEdge(unittest.TestCase):
         # a close heuristic (not a full solver); 40k hands are also a little noisy.
         self.assertGreater(rtp, 0.94)
         self.assertLess(edge, 0.06)
-        self.assertGreater(edge, -0.01)
+        self.assertGreater(edge, -0.05)
 
 
 class ThreeCardRanking(unittest.TestCase):

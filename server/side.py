@@ -492,8 +492,24 @@ def _validate_roulette_bet(b: dict[str, Any]) -> dict[str, Any]:
         if ns != expect or (n - 1) % 3 != 0 or n < 1 or n + 5 > 36:
             raise SideError("Line must be two adjacent streets")
         return {"kind": "line", "numbers": ns, "amount": amount, "payout": 5}
-    if kind in ("dozen",):
-        d = int(b.get("dozen") or (numbers or [0])[0] if numbers else 0)
+    if kind in ("dozen", "dozens"):
+        # NOTE: `x or y if c else z` binds as `(x or y) if c else z`.
+        # Clients send {kind:"dozen", dozen:1} with no `numbers`; the old
+        # form therefore collapsed to 0 and rejected every 1st/2nd/3rd 12 bet.
+        raw = b.get("dozen")
+        if raw is None and numbers:
+            if len(numbers) == 1 and int(numbers[0]) in (1, 2, 3):
+                raw = numbers[0]
+            elif set(numbers) == set(range(1, 13)):
+                raw = 1
+            elif set(numbers) == set(range(13, 25)):
+                raw = 2
+            elif set(numbers) == set(range(25, 37)):
+                raw = 3
+        try:
+            d = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise SideError("Dozen is 1, 2 or 3") from exc
         if d not in (1, 2, 3):
             raise SideError("Dozen is 1, 2 or 3")
         lo = (d - 1) * 12 + 1
@@ -518,14 +534,24 @@ def _validate_roulette_bet(b: dict[str, Any]) -> dict[str, Any]:
     raise SideError("Unknown roulette bet")
 
 
-def roulette_spin(bets: list[dict[str, Any]]) -> dict[str, Any]:
+def roulette_settle(bets: list[dict[str, Any]], winning: int) -> dict[str, Any]:
+    """Settle a European-roulette spin on a known winning number (0–36).
+
+    Payout is total coins returned. Even-money and dozen/column bets pay 2:1
+    (3× the stake back); a straight pays 35:1 (36× back).
+    """
     if not bets:
         raise SideError("Place at least one bet")
+    try:
+        winning = int(winning)
+    except (TypeError, ValueError) as exc:
+        raise SideError("Invalid number") from exc
+    if winning < 0 or winning > 36:
+        raise SideError("Winning number is 0–36")
     parsed = [_validate_roulette_bet(b) for b in bets]
     total = sum(b["amount"] for b in parsed)
     if total <= 0:
         raise SideError("Invalid bet")
-    winning = _rng.randrange(0, 37)
     colour = "green" if winning == 0 else ("red" if winning in ROUGE else "black")
     results = []
     payout = 0
@@ -546,6 +572,10 @@ def roulette_spin(bets: list[dict[str, Any]]) -> dict[str, Any]:
         "bets": results,
         "payout": payout,
     }
+
+
+def roulette_spin(bets: list[dict[str, Any]]) -> dict[str, Any]:
+    return roulette_settle(bets, _rng.randrange(0, 37))
 
 
 # ---------------------------------------------------------------------------
@@ -892,6 +922,7 @@ def videopoker_deal(bet: int) -> dict[str, Any]:
         "held": [False] * 5,
         "deck": deck,
         "hand": name,
+        "hand_label": job_hand_label(name),
         "can": ["draw", "hold"],
         "payout": 0,
     }
@@ -917,9 +948,12 @@ def videopoker_draw(state: dict[str, Any], holds: list[Any]) -> dict[str, Any]:
         "held": flags,
         "dealt": list(state["cards"]),
         "hand": name,
+        "hand_label": job_hand_label(name),
         "mult": mult,
         "payout": payout,
+        "net": payout - int(state["bet"]),
         "result": "win" if payout > int(state["bet"]) else ("push" if payout == int(state["bet"]) else "lose"),
+        "result_banner": "YOU WIN" if payout > int(state["bet"]) else ("PUSH" if payout == int(state["bet"]) else "NO WIN"),
         "can": [],
     }
 
@@ -1106,6 +1140,51 @@ def tcp_rank(cards: list[dict[str, Any]]) -> tuple[str, tuple]:
     return "high_card", (TCP_CAT["high_card"],) + tuple(sorted(ranks, reverse=True))
 
 
+
+def _rank_word(n: int, plural: bool = False) -> str:
+    names = {14: "Ace", 13: "King", 12: "Queen", 11: "Jack", 10: "10"}
+    w = names.get(int(n), str(int(n)))
+    if not plural:
+        return w
+    if w == "6":
+        return "6s"
+    if w in ("Ace", "King", "Queen", "Jack"):
+        return w + "s"
+    return w + "s"
+
+
+def job_hand_label(name: str) -> str:
+    labels = {
+        "royal_flush": "Royal flush",
+        "straight_flush": "Straight flush",
+        "four_of_a_kind": "Four of a kind",
+        "full_house": "Full house",
+        "flush": "Flush",
+        "straight": "Straight",
+        "three_of_a_kind": "Three of a kind",
+        "two_pair": "Two pair",
+        "jacks_or_better": "Jacks or better",
+        "nothing": "Nothing",
+    }
+    return labels.get(name, (name or "Nothing").replace("_", " ").title())
+
+
+def tcp_hand_label(cards: list[dict[str, Any]]) -> str:
+    """Friendly three-card hand name, e.g. 'Pair of 8s', 'Queen high'."""
+    name, key = tcp_rank(cards)
+    if name == "straight_flush":
+        return "Straight flush" if key[1] != 14 else "Straight flush (A-K-Q)"
+    if name == "three_of_a_kind":
+        return "Three " + _rank_word(key[1], True)
+    if name == "straight":
+        return "Straight"
+    if name == "flush":
+        return f"Flush, {_rank_word(key[1])} high"
+    if name == "pair":
+        return "Pair of " + _rank_word(key[1], True)
+    return f"{_rank_word(key[1])} high"
+
+
 def tcp_hand_name(cards: list[dict[str, Any]]) -> str:
     return tcp_rank(cards)[0]
 
@@ -1180,14 +1259,26 @@ def tcp_settle(player: list[dict[str, Any]], dealer: list[dict[str, Any]],
         "dealer": dealer,
         "player_hand": p_name,
         "dealer_hand": d_name,
+        "player_hand_label": tcp_hand_label(player),
+        "dealer_hand_label": tcp_hand_label(dealer),
         "dealer_qualifies": tcp_qualifies(dealer),
         "played": played,
         "ante_bonus": ante_bonus,
         "pair_plus_payout": pp_payout,
         "ante_payout": ante_payout if played else 0,
         "play_payout": play_payout if played else 0,
+        "ante_status": ("folded" if not played else "win" if ante_payout > ante else "push" if ante_payout == ante else "lose"),
+        "play_status": ("—" if not played else "win" if play_payout > play_bet else "push" if play_payout == play_bet else "lose"),
+        "pair_plus_status": ("—" if not pair_plus else "win" if pp_payout > pair_plus else "lose"),
         "payout": payout,
+        "net": payout - ante - pair_plus - play_bet,
         "result": result,
+        "result_banner": (
+            "FOLDED" if result == "fold" else
+            "PUSH" if result == "tie" else
+            "DEALER WINS" if result == "lose" else
+            "YOU WIN"
+        ),
         "can": [],
     }
 
@@ -1212,6 +1303,8 @@ def threecard_deal(ante: int, pair_plus: int = 0) -> dict[str, Any]:
         "player": player,
         "dealer": dealer,  # hidden in public_state until done
         "player_hand": tcp_hand_name(player),
+        "player_hand_label": tcp_hand_label(player),
+        "hint_play": tcp_should_play(player),
         "played": False,
         "payout": 0,
         "can": ["play", "fold"],
