@@ -1,7 +1,7 @@
 /**
  * Crystal Casino v5 — Demo / TEST MODE slot machine (Megaways + 25-line Classic).
  * Every outcome (reel heights, symbols, cascades, line/ways wins, free spins,
- * mini-game prizes, Tea Wheel stop, jackpot, gamble card, payout limits) is
+ * mini-game prizes, Tea Wheel stop, jackpot, gamble card) is
  * decided on the server. This file only animates the result it is sent.
  * Social casino: virtual coins only. Coin packs use Stripe Checkout in TEST
  * mode. Coins have no cash value and cannot be withdrawn or redeemed.
@@ -14,6 +14,7 @@
   const TEA_IMG = "/assets/green-tea-256.webp";
   const TEA_IMG_BIG = "/assets/green-tea-512.webp";
   const BIG_WIN_X = 15, MEGA_WIN_X = 50, EPIC_WIN_X = 150;
+  let JACKPOT_MULT = 5000;
   const HISTORY_KEY = "crystal-reels-history-v2";
   const PREFS_KEY = "crystal-reels-prefs-v3";
   const Gems = window.CrystalGems;
@@ -194,6 +195,7 @@
     if (Array.isArray(cfg.packs)) PACKS = cfg.packs;
     if (cfg.legal) LEGAL = cfg.legal;
     if (cfg.responsible_play) RESPONSIBLE = cfg.responsible_play;
+    if (cfg.jackpot_mult) JACKPOT_MULT = cfg.jackpot_mult;
     if (cfg.prize_legal) prizeLegal = cfg.prize_legal;
     if (cfg.prizes && cfg.prizes.legal) prizeLegal = cfg.prizes.legal;
     renderShop();
@@ -1252,7 +1254,7 @@
     const paid = winOf(g) + jackpotOf(g);
     miniModal.classList.add("summary");
     if (g.jackpot) {
-      $("#mini-title").textContent = "GREEN TEA JACKPOT!"; $("#mini-sub").textContent = "The wheel stopped on the jackpot — table maximum!";
+      $("#mini-title").textContent = "GREEN TEA JACKPOT!"; $("#mini-sub").textContent = `The wheel stopped on the jackpot — ${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet!`;
       sfx.jackpot(); rain(200, ["#8ff06b", "#eaffd0", "#fff3b0", "#f3c441"]);
     } else if (w.type === "free_spins") {
       $("#mini-title").textContent = `${g.free_spins} FREE SPINS!`; $("#mini-sub").textContent = mode === "megaways" ? "Free spins with a multiplier that grows on every tumble" : `Free spins with every win ×${FEATURES.free_spin_mult}`;
@@ -1264,7 +1266,7 @@
     await miniRoll(0, paid, paid > 0 ? 900 : 1);
     await miniWait(w.type === "free_spins" && !g.jackpot ? "PLAY FREE SPINS" : "COLLECT", 2200);
     stopMusic(); miniModal.hidden = true; miniModal.classList.remove("summary");
-    if (g.jackpot) await celebrate({ kind: "jackpot", title: "GREEN TEA JACKPOT!", amountAud: jackpotOf(g), sub: "Tea Wheel jackpot — the table maximum!", hold: 4500 });
+    if (g.jackpot) await celebrate({ kind: "jackpot", title: "GREEN TEA JACKPOT!", amountAud: jackpotOf(g), sub: `Tea Wheel jackpot — ${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet!`, hold: 4500 });
     return paid;
   }
 
@@ -1337,7 +1339,7 @@
 
     if (jackpotOf(base) > 0) {
       const sign = $("#jackpot-sign"); sign.classList.remove("hit"); void sign.offsetWidth; sign.classList.add("hit");
-      await celebrate({ kind: "jackpot", title: "GREEN TEA JACKPOT!", amountAud: jackpotOf(base), sub: "You hit the Green Tea Jackpot — the table maximum!", hold: 4800 });
+      await celebrate({ kind: "jackpot", title: "GREEN TEA JACKPOT!", amountAud: jackpotOf(base), sub: `You hit the Green Tea Jackpot — ${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet!`, hold: 4800 });
       await rollUp(shown, shown + jackpotOf(base), 600);
       shown += jackpotOf(base); ctx.onShown(shown);
     }
@@ -1581,13 +1583,13 @@
       }).join("");
     }
     $("#features").innerHTML = `
-      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Green Tea Jackpot.</b> Can drop on any paid spin in either mode — bigger bets have better odds — and can also land on the Tea Wheel. When it hits, it pays the table maximum.</div></div>
+      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Green Tea Jackpot.</b> Can drop on any paid spin in either mode, and can also land on the Tea Wheel. When it hits, it pays <b>${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet</b>.</div></div>
       ${isMw ? `<div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Crystal Wild</b> lands on reels 2–5 (including the top reel) and substitutes for every gem except the BONUS scatter.</div></div>
       <div class="feat"><img src="${Gems.url("scatter")}" alt="" /><div><b>BONUS scatter</b> on the main reels: ${Object.keys(msp).map((k) => `${k}${k === "6" ? "+" : ""} pay ${msp[k].pay}× + ${msp[k].free_spins} free spins`).join(" · ")}. In free spins the <b>win multiplier starts at ×1 and rises by +1 on every tumble — with no upper limit</b> — and it never resets during the bonus. 3+ BONUS retrigger extra spins (max ${FEATURES.max_free_spins}).</div></div>`
         : `<div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Crystal Wild</b> lands on reels 2–4, substitutes for every gem except the Prism Scatter, and <b>doubles</b> any line win it completes.</div></div>
       <div class="feat"><img src="${Gems.url("scatter")}" alt="" /><div><b>Prism Scatter</b> pays anywhere: 3/4/5 pay ${Object.keys(sp).map((k) => sp[k].pay + "×").join(" / ")} total bet and award <b>${Object.keys(sp).map((k) => sp[k].free_spins).join(" / ")} free spins</b> with every win ×${FEATURES.free_spin_mult}. Free spins can retrigger (max ${FEATURES.max_free_spins}).</div></div>`}
       <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Gamble / Double up.</b> After any win, pick red or black. Guess right to double, wrong and the win is lost. Up to ${FEATURES.gamble_max_rounds} times in a row. The card is drawn on the server.</div></div>
-      <div class="feat"><img src="${Gems.url("shard")}" alt="" /><div><b>Table limit.</b> Each spin (with all its tumbles), each mini game and each free spin is limited to the table maximum. Malfunction voids all pays and plays. Social casino · TEST MODE only.</div></div>`;
+      <div class="feat"><img src="${Gems.url("shard")}" alt="" /><div><b>Social casino · TEST MODE.</b> Malfunction voids all pays and plays. Coins have no cash value and cannot be redeemed for money or prizes.</div></div>`;
     const wedges = MINIS.wheel_wedges || [];
     $("#minis-info").innerHTML = `
       <div class="feat"><img src="${Gems.url("amethyst")}" alt="" /><div><b>Crystal Pick</b> — a <b>mystery bonus</b> that can start after any paid spin. Pick crystals from a grid of ${MINIS.pick_tiles}: each one reveals a coin prize (${(MINIS.pick_prizes || []).map((p) => p + "×").join(", ")} total bet) until you find a COLLECT crystal.</div></div>

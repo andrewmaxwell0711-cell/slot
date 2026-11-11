@@ -1,8 +1,8 @@
 """Shared slot rules: symbols, demo FX rates, RNG, payline + feature evaluation.
 
 Every outcome is decided here on the server with secrets.SystemRandom; the
-browser only animates the result it is sent. Raw wins computed here are
-later clamped by the ledger to the house-pool cap (see ledger.py).
+browser only animates the result it is sent. Wins are paid in full; the
+house pool is an internal stat and does not cap payouts.
 """
 
 from __future__ import annotations
@@ -13,28 +13,27 @@ from typing import Any
 REEL_COUNT = 5
 VISIBLE_ROWS = 3
 
-# Crystal theme. The line paytable (× bet) is the same as the 20% RTP build,
-# mapped onto gems (cherry->rose quartz ... diamond->Green Tea, the top symbol). Feature
-# symbols: Crystal WILD, Prism SCATTER (free spins) and a non-paying Ice
-# Shard. Weights were tuned with simulate_rtp.py so the total long-run
-# return, including free spins and the progressive jackpot, stays ~20%.
+# Crystal theme. Feature symbols: Crystal WILD, Prism SCATTER (free spins)
+# and a non-paying Ice Shard. Weights and pays are tuned with simulate_rtp.py
+# for a long-run return of ~95%, including free spins, mini games and the
+# Green Tea Jackpot (a fixed multiple of total bet).
 SYMBOLS = [
-    {"id": "quartz", "name": "Rose Quartz", "emoji": "🩷", "weight": 22, "pays": {3: 4, 4: 10, 5: 20}},
-    {"id": "citrine", "name": "Citrine", "emoji": "💛", "weight": 20, "pays": {3: 4, 4: 10, 5: 20}},
-    {"id": "topaz", "name": "Topaz", "emoji": "🧡", "weight": 18, "pays": {3: 6, 4: 16, 5: 40}},
-    {"id": "amethyst", "name": "Amethyst", "emoji": "💜", "weight": 16, "pays": {3: 6, 4: 16, 5: 50}},
-    {"id": "emerald", "name": "Emerald", "emoji": "💚", "weight": 12, "pays": {3: 10, 4: 30, 5: 80}},
-    {"id": "sapphire", "name": "Sapphire", "emoji": "💙", "weight": 8, "pays": {3: 15, 4: 50, 5: 100}},
-    {"id": "ruby", "name": "Ruby", "emoji": "❤️", "weight": 5, "pays": {3: 25, 4: 80, 5: 200}},
+    {"id": "quartz", "name": "Rose Quartz", "emoji": "🩷", "weight": 22, "pays": {3: 18, 4: 46, 5: 92}},
+    {"id": "citrine", "name": "Citrine", "emoji": "💛", "weight": 20, "pays": {3: 18, 4: 46, 5: 92}},
+    {"id": "topaz", "name": "Topaz", "emoji": "🧡", "weight": 18, "pays": {3: 28, 4: 74, 5: 184}},
+    {"id": "amethyst", "name": "Amethyst", "emoji": "💜", "weight": 16, "pays": {3: 28, 4: 74, 5: 230}},
+    {"id": "emerald", "name": "Emerald", "emoji": "💚", "weight": 12, "pays": {3: 46, 4: 138, 5: 368}},
+    {"id": "sapphire", "name": "Sapphire", "emoji": "💙", "weight": 8, "pays": {3: 69, 4: 230, 5: 460}},
+    {"id": "ruby", "name": "Ruby", "emoji": "❤️", "weight": 5, "pays": {3: 115, 4: 368, 5: 920}},
     # Top symbol: glowing Green Tea crystal cup (takes the old diamond slot/pays).
-    {"id": "greentea", "name": "Green Tea", "emoji": "🍵", "weight": 3, "pays": {3: 50, 4: 150, 5: 500}},
+    {"id": "greentea", "name": "Green Tea", "emoji": "🍵", "weight": 3, "pays": {3: 230, 4: 690, 5: 2300}},
     # Crystal WILD: reels 2-4 only, substitutes on the payline, doubles the line win.
-    {"id": "wild", "name": "Crystal Wild", "emoji": "🔮", "weight": 1, "pays": {3: 50, 4: 150, 5: 1000},
+    {"id": "wild", "name": "Crystal Wild", "emoji": "🔮", "weight": 1, "pays": {3: 230, 4: 690, 5: 4600},
      "wild": True, "reels": (1, 2, 3)},
     # Prism SCATTER: 3+ anywhere pays and triggers free spins.
     {"id": "scatter", "name": "Prism Scatter", "emoji": "🌈", "weight": 3, "pays": {}, "scatter": True},
-    # Non-paying ice shard (like a classic blank) that keeps the total RTP at ~20%.
-    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 25, "pays": {}, "blank": True},
+    # Non-paying ice shard (classic blank). Weight is tuned for hit frequency and ~95% RTP.
+    {"id": "shard", "name": "Ice Shard", "emoji": "❄️", "weight": 12, "pays": {}, "blank": True},
 ]
 
 WILD_ID = "wild"
@@ -42,17 +41,20 @@ SCATTER_ID = "scatter"
 WILD_MULT = 2  # any line win that uses a wild is doubled
 
 # Scatter count anywhere on the 5×3 grid -> (pay × bet, free spins awarded)
-SCATTER_PAYS = {3: (2, 8), 4: (5, 12), 5: (20, 20)}
+SCATTER_PAYS = {3: (9, 8), 4: (25, 12), 5: (100, 20)}
 FREE_SPIN_MULT = 2  # every win during free spins is doubled
 MAX_FREE_SPINS = 50  # retrigger ceiling per bonus round
 
-# Green Tea Jackpot: when it hits, the spin pays the full cap (20% of the
-# house pool at that moment). To keep long-run RTP fixed however big the
-# pool grows, hit chance = JACKPOT_C * total_bet / pool, so the expected
-# jackpot return per A$1 staked is JACKPOT_C * 0.20 (~4%). The chance is
-# capped at JACKPOT_MAX_P so a tiny pool can't make it near-certain.
-JACKPOT_C = 0.20
-JACKPOT_MAX_P = 1 / 1_000
+# Green Tea Jackpot: a fixed prize of JACKPOT_MULT × total bet, on a paid
+# spin or the Tea Wheel jackpot wedge. Hit chance is constant, so expected
+# jackpot return is JACKPOT_P * JACKPOT_MULT of stakes (~2%). The Tea Wheel
+# wedge awards the same prize with chance WHEEL_JP_P (else a near-miss 2×).
+JACKPOT_MULT = 5000
+JACKPOT_P = 0.02 / JACKPOT_MULT  # 2% RTP from the random jackpot
+# Legacy names kept so older comments/imports do not break; they are unused
+# for probability now that the prize is a fixed multiple, not a pool cap.
+JACKPOT_C = JACKPOT_P
+JACKPOT_MAX_P = JACKPOT_P
 
 # 25 standard casino paylines over the 5x3 grid (row per reel: 0 top, 1 mid, 2 bottom).
 PAYLINES = [
@@ -70,12 +72,12 @@ GAMBLE_MAX_ROUNDS = 5
 SUITS = (("hearts", "red"), ("diamonds", "red"), ("clubs", "black"), ("spades", "black"))
 RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 
-# No single spin may pay more than this fraction of the house pool.
-POOL_CAP_FRACTION = 0.20
+# Deprecated leftover: payouts are no longer capped by the house pool.
+POOL_CAP_FRACTION = 0.0
 
 # Social-casino virtual currency. 1 internal game unit = 1,000 coins.
-# Internal math (bets, pool, cap, RTP) stays in the original units so the
-# 20% cap and ~20% RTP are unchanged. Players only ever see integer coins.
+# Internal math (bets, pays, jackpot) stays in the original game units.
+# Players only ever see integer coins (1 unit = 1,000 coins).
 COIN_SCALE = 1000
 COIN_ASSET = "COIN"
 STARTING_COINS = 25_000
@@ -245,7 +247,7 @@ def scatter_positions(grid: list[list[str]]) -> list[list[int]]:
 
 
 def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, Any]:
-    """One spin's grid and RAW (uncapped) win, before the pool cap is applied."""
+    """One spin's grid and raw win (no payout cap)."""
     grid = spin_grid()
     total_bet = bet_per_line * lines
     line_wins = evaluate_lines(grid, bet_per_line, lines)
@@ -267,13 +269,21 @@ def play_one(bet_per_line: float, lines: int, multiplier: int = 1) -> dict[str, 
     }
 
 
-def jackpot_probability(total_bet: float, pool_aud: float) -> float:
-    if pool_aud <= 0 or total_bet <= 0:
+def jackpot_amount(total_bet: float) -> float:
+    """Green Tea Jackpot prize in game units: JACKPOT_MULT × total bet."""
+    if total_bet <= 0:
         return 0.0
-    return min(JACKPOT_MAX_P, JACKPOT_C * total_bet / pool_aud)
+    return round(float(total_bet) * JACKPOT_MULT, 2)
 
 
-def jackpot_roll(total_bet: float, pool_aud: float) -> bool:
+def jackpot_probability(total_bet: float, pool_aud: float = 0.0) -> float:
+    """Fixed per-spin chance. `pool_aud` is ignored (kept for call-site compatibility)."""
+    if total_bet <= 0:
+        return 0.0
+    return JACKPOT_P
+
+
+def jackpot_roll(total_bet: float, pool_aud: float = 0.0) -> bool:
     return _rng.random() < jackpot_probability(total_bet, pool_aud)
 
 
@@ -283,10 +293,8 @@ def draw_card() -> dict[str, str]:
 
 
 def cap_for_pool(pool_aud: float) -> float:
-    """Max single-spin payout for a pool, rounded down to the cent, never < 0."""
-    if pool_aud <= 0:
-        return 0.0
-    return int(pool_aud * POOL_CAP_FRACTION * 100 + 1e-9) / 100.0
+    """Deprecated: there is no payout cap. Always returns 0."""
+    return 0.0
 
 
 # ===========================================================================
@@ -324,7 +332,7 @@ MW_PAYS = {
     "ruby": {3: 0.50, 4: 1.0, 5: 2.5, 6: 10.0},
     "greentea": {3: 1.0, 4: 2.5, 5: 10.0, 6: 50.0},
 }
-MW_PAY_SCALE = 0.22
+MW_PAY_SCALE = 1.525
 # Scatters on the final board -> (pay × stake, free spins)
 MW_SCATTER_PAYS = {4: (1, 10), 5: (5, 15), 6: (25, 20)}
 MW_RETRIGGER = {3: 5, 4: 5, 5: 10, 6: 15}  # during free spins
@@ -490,9 +498,12 @@ WHEEL_WEDGES = [
     {"type": "mult", "value": 6}, {"type": "mult", "value": 2}, {"type": "jackpot", "value": 0},
 ]
 WHEEL_JACKPOT_INDEX = 11
-# Landing on the jackpot wedge wins the Green Tea Jackpot with chance
-# min(1, WHEEL_JP_K * bet / pool); otherwise the wheel ticks on to a neighbouring 2×.
-WHEEL_JP_K = 30.0
+# Landing on the jackpot wedge wins the Green Tea Jackpot (JACKPOT_MULT × bet)
+# with chance WHEEL_JP_P; otherwise the wheel ticks on to a neighbouring 2×.
+# ~1% RTP is allocated here once typical wheel frequency is taken into account;
+# WHEEL_JP_P is set so EV ≈ 0.01 * stake (see simulate_rtp.py).
+WHEEL_JP_P = 0.0084
+WHEEL_JP_K = WHEEL_JP_P  # legacy alias
 WHEEL_PRIZE_SCALE = 1.0
 WHEEL_MIN_SCATTERS = {"classic": 2, "megaways": 3}  # + a WILD, below the free-spins trigger
 
@@ -522,10 +533,10 @@ def play_pick(stake: float) -> dict[str, Any]:
     return {"kind": "pick", "picks": picks, "decoys": decoys, "tiles": PICK_TILES, "raw_win_aud": round(raw, 8)}
 
 
-def wheel_jackpot_probability(stake: float, pool_aud: float) -> float:
-    if pool_aud <= 0 or stake <= 0:
+def wheel_jackpot_probability(stake: float, pool_aud: float = 0.0) -> float:
+    if stake <= 0:
         return 0.0
-    return min(1.0, WHEEL_JP_K * stake / pool_aud)
+    return WHEEL_JP_P
 
 
 def play_wheel(stake: float) -> dict[str, Any]:
@@ -534,7 +545,7 @@ def play_wheel(stake: float) -> dict[str, Any]:
     out: dict[str, Any] = {"kind": "wheel", "wedges": WHEEL_WEDGES, "index": idx, "free_spins": 0,
                            "jackpot_pending": False, "raw_win_aud": 0.0, "prize_mult": 0}
     if wedge["type"] == "jackpot":
-        # Resolved against the live pool at settlement; fallback = neighbouring 2× wedge.
+        # Resolved at settlement; fallback = neighbouring 2× wedge on a near miss.
         fb = _rng.choice((WHEEL_JACKPOT_INDEX - 1, (WHEEL_JACKPOT_INDEX + 1) % len(WHEEL_WEDGES)))
         out.update(jackpot_pending=True, fallback_index=fb, prize_mult=WHEEL_WEDGES[fb]["value"],
                    raw_win_aud=round(stake * WHEEL_WEDGES[fb]["value"] * WHEEL_PRIZE_SCALE, 8))
@@ -615,18 +626,17 @@ def settle_steps(
 ) -> dict[str, Any]:
     """Pure settlement shared by the ledger and the simulator.
 
-    `pool` already includes this round's stake. Every step (the paid spin with
-    all its cascades, each mini game, each free spin) is clamped to 20% of the
-    pool at that moment and the pool is reduced before the next step, so the
-    pool can never go negative. A Green Tea Jackpot tops its step up to exactly
-    the cap.
+    `pool` already includes this round's stake and is updated as an internal
+    stat only — it never limits a payout and is floored at 0. A Green Tea
+    Jackpot pays the fixed JACKPOT_MULT × stake on the base spin or a winning
+    Tea Wheel jackpot wedge, added to that step's other wins (wheel jackpot
+    replaces the fallback 2×).
     """
     roll = wheel_roll or (lambda s, p: _rng.random() < wheel_jackpot_probability(s, p))
     results = []
     total_paid = jackpot_paid = 0.0
-    any_capped = False
+    jp_prize = jackpot_amount(stake)
     for i, step in enumerate(round_steps(rnd)):
-        cap = cap_for_pool(pool)
         raw = round(step["raw_win_aud"], 2)
         jp_step = i == 0 and jackpot_hit
         wheel_index = None
@@ -637,19 +647,24 @@ def settle_steps(
                     jp_step, raw = True, 0.0
                 else:
                     wheel_index = step["fallback_index"]
-        paid = round(min(raw, cap), 2)
-        capped = paid < raw - 1e-9
-        jp = round(max(0.0, cap - paid), 2) if jp_step else 0.0
+        paid = raw
+        jp = jp_prize if jp_step else 0.0
         step_total = round(paid + jp, 2)
-        pool = max(0.0, pool - step_total)
+        pool = max(0.0, round(pool - step_total, 6))
         total_paid += step_total
         jackpot_paid += jp
-        any_capped = any_capped or capped
-        res = {"kind": step.get("kind", "spin"), "raw_win_aud": raw, "paid_aud": paid, "capped": capped,
-               "jackpot_aud": jp, "cap_aud": cap}
+        res = {"kind": step.get("kind", "spin"), "raw_win_aud": raw, "paid_aud": paid,
+               "capped": False, "jackpot_aud": jp}
         if wheel_index is not None:
             res["wheel_index"] = wheel_index
             res["wheel_jackpot"] = jp_step
         results.append(res)
     return {"steps": results, "total_paid_aud": round(total_paid, 2), "jackpot_paid_aud": round(jackpot_paid, 2),
-            "any_capped": any_capped, "pool_after": pool}
+            "any_capped": False, "pool_after": pool}
+
+
+def rebuild_tables() -> None:
+    """Rebuild classic and Megaways reel tables after weights change."""
+    global _REEL_TABLES
+    _REEL_TABLES = [_reel_table(r) for r in range(REEL_COUNT)]
+    rebuild_mw_tables()

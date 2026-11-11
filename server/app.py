@@ -151,6 +151,7 @@ def _config_payload() -> dict:
         "responsible_play": game.RESPONSIBLE_PLAY,
         "coin_scale": game.COIN_SCALE,
         "starting_coins": game.STARTING_COINS,
+        "jackpot_mult": game.JACKPOT_MULT,
         "prizes": prizes.catalogue(),
         "prize_legal": prizes.PRIZE_LEGAL,
         "packs": [
@@ -568,7 +569,6 @@ def _spin_payload(step: dict, settled: dict) -> dict:
         "raw_win_aud": settled["raw_win_aud"],
         "win_aud": settled["paid_aud"],
         "jackpot_aud": settled["jackpot_aud"],
-        "limited": settled["capped"],
     }
     kind = out["kind"]
     if kind == "pick":
@@ -643,7 +643,6 @@ def api_spin():
             "jackpot_hit": snap["jackpot_hit"],
             "jackpot_paid": game.to_coins(snap["jackpot_paid_aud"]),
             "win": game.to_coins(snap["total_paid_aud"]),
-            "limited": snap["any_capped"],
             **pub,
         }
     )

@@ -24,7 +24,6 @@ from game import (
     HOURLY_COINS,
     HOURLY_SECONDS,
     STARTING_COINS,
-    cap_for_pool,
     clean_amount,
     from_coins,
     pack_by_id,
@@ -102,7 +101,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         );
 
         -- Single-row house pool: every stake goes in, every payout comes out.
-        -- jackpot_aud is legacy (unused): the jackpot now pays the 20% cap.
+        -- jackpot_aud is legacy (unused): the jackpot now pays a fixed multiple of bet.
         CREATE TABLE IF NOT EXISTS house (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             pool_aud REAL NOT NULL DEFAULT 0 CHECK (pool_aud >= 0),
@@ -432,7 +431,7 @@ def claim_hourly(player_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# House pool and payout cap (internal only — never sent to players)
+# House pool (internal stat only — never sent to players, does not limit wins)
 # ---------------------------------------------------------------------------
 
 
@@ -464,7 +463,6 @@ def pool_status() -> dict[str, Any]:
     pool = max(0.0, h["pool_aud"])
     return {
         "pool_aud": round(pool, 2),
-        "max_win_aud": cap_for_pool(pool),
         "total_staked_aud": round(h["total_staked_aud"], 2),
         "total_paid_aud": round(h["total_paid_aud"], 2),
         "biggest_win_aud": round(h["biggest_win_aud"], 2),
@@ -506,10 +504,10 @@ def settle_round(
     jackpot_roll: Callable[[float, float], bool] | None = None,
     wheel_roll: Callable[[float, float], bool] | None = None,
 ) -> dict[str, Any]:
-    """Atomically: take the stake, add it to the pool, roll the Green Tea
-    Jackpot against the live pool, then pay each spin of the round clamped to
-    20% of the pool at that moment. A jackpot tops the base spin up to exactly
-    the cap. The pool can never go negative.
+    """Atomically: take the stake, add it to the internal house pool, roll the
+    Green Tea Jackpot (fixed multiple of the bet), and pay each step of the
+    round in full. The pool is an internal stat only — it never limits wins
+    and is floored at 0.
     """
     if total_bet_aud <= 0:
         raise ValueError("Invalid bet")
@@ -529,7 +527,7 @@ def settle_round(
         pool = settled["pool_after"]
         total_paid = round(total_paid, 2)
         _pay(conn, player_id, total_paid, "spin_win",
-             f"win {to_coins(total_paid)} coins" + (" (jackpot)" if jackpot_paid else "") + (" (capped)" if any_capped else ""))
+             f"win {to_coins(total_paid)} coins" + (" (jackpot)" if jackpot_paid else ""))
         now = _utc_now()
         conn.execute(
             """
@@ -563,10 +561,10 @@ def settle_round(
 
 
 def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> dict[str, Any]:
-    """Double-up: stake the last win on red/black. 50/50, decided server-side.
+    """Double-up: stake the last win on red/black. Fair 50/50, decided server-side.
 
-    The gamble is a fresh bet of S = current gamble amount. A win pays 2S,
-    which must fit under 20% of the pool (S included); otherwise it's refused.
+    The gamble is a fresh bet of S = current gamble amount. A win pays 2S.
+    There is no pool cap; the only limit is GAMBLE_MAX_ROUNDS in a row.
     """
     if choice not in ("red", "black"):
         raise ValueError("Pick red or black")
@@ -581,31 +579,24 @@ def gamble(player_id: str, choice: str, draw: Callable[[], dict[str, str]]) -> d
             raise ValueError("Gamble limit reached — win collected")
         h = _house_row(conn)
         pool_with_stake = h["pool_aud"] + stake
-        limited = 2 * stake > cap_for_pool(pool_with_stake) + 1e-9
-        if limited:
-            # Double would break the 20% cap: auto-collect (commit), then report.
-            conn.execute("UPDATE players SET gamble_aud = 0, gamble_rounds = 0 WHERE id = ?", (player_id,))
-        else:
-            _take_stake(conn, player_id, stake, "gamble_bet", f"gamble {to_coins(stake)} coins on {choice}")
-            card = draw()
-            won = card["colour"] == choice
-            payout = round(2 * stake, 2) if won else 0.0
-            _pay(conn, player_id, payout, "gamble_win", f"gamble win {to_coins(payout)} coins")
-            pool = max(0.0, pool_with_stake - payout)
-            new_stake = payout if won and rounds + 1 < GAMBLE_MAX_ROUNDS else 0.0
-            conn.execute(
-                """
-                UPDATE house SET pool_aud = ?, total_staked_aud = total_staked_aud + ?,
-                    total_paid_aud = total_paid_aud + ?, updated_at = ? WHERE id = 1
-                """,
-                (round(pool, 6), stake, payout, _utc_now()),
-            )
-            conn.execute(
-                "UPDATE players SET gamble_aud = ?, gamble_rounds = ?, last_win_aud = ? WHERE id = ?",
-                (new_stake, rounds + 1 if new_stake else 0, payout, player_id),
-            )
-    if limited:
-        raise GambleUnavailable("Gamble limit reached — win collected")
+        _take_stake(conn, player_id, stake, "gamble_bet", f"gamble {to_coins(stake)} coins on {choice}")
+        card = draw()
+        won = card["colour"] == choice
+        payout = round(2 * stake, 2) if won else 0.0
+        _pay(conn, player_id, payout, "gamble_win", f"gamble win {to_coins(payout)} coins")
+        pool = max(0.0, pool_with_stake - payout)
+        new_stake = payout if won and rounds + 1 < GAMBLE_MAX_ROUNDS else 0.0
+        conn.execute(
+            """
+            UPDATE house SET pool_aud = ?, total_staked_aud = total_staked_aud + ?,
+                total_paid_aud = total_paid_aud + ?, updated_at = ? WHERE id = 1
+            """,
+            (round(pool, 6), stake, payout, _utc_now()),
+        )
+        conn.execute(
+            "UPDATE players SET gamble_aud = ?, gamble_rounds = ?, last_win_aud = ? WHERE id = ?",
+            (new_stake, rounds + 1 if new_stake else 0, payout, player_id),
+        )
     snap = snapshot(player_id)
     snap["card"] = card
     snap["won"] = won

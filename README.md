@@ -12,7 +12,7 @@ This is **not** real-money gambling.
 
 ## Coin economy
 
-Internal game math still uses the original game units (so paytables, the hidden 20% cap, and RTP are unchanged). The public API and UI speak **integer coins** at `COIN_SCALE = 1000` (1 game unit = 1,000 coins).
+Internal game math still uses the original game units. The public API and UI speak **integer coins** at `COIN_SCALE = 1000` (1 game unit = 1,000 coins).
 
 | Grant / pack | Coins | Price (AUD, Stripe test charge only) |
 |--------------|------:|--------------------------------------|
@@ -38,7 +38,7 @@ All prizes are cosmetic or virtual coins. They have **no cash or real-world valu
 - **Missions**: three daily rotating missions (Australia/Perth), tracked on the server, with a progress bar and a one-time claim for bonus coins or a cosmetic badge.
 - **Leaderboards**: daily and weekly (Perth time) top players by biggest win and total won, computed from real spin records. Players set a nickname (2–16 characters, sanitised, basic profanity filter). When a period ends, top 3 receive promotional coins and an exclusive badge.
 
-XP and level are server-authoritative. Mission and leaderboard coin grants are promotional house grants, like the daily chest — they do not change RTP or the hidden 20% cap.
+XP and level are server-authoritative. Mission and leaderboard coin grants are promotional house grants, like the daily chest — they do not change RTP.
 
 New routes: `POST /api/profile`, `POST /api/theme`, `GET /api/leaderboard`, `POST /api/missions/claim`.
 
@@ -52,9 +52,9 @@ New routes: `POST /api/profile`, `POST /api/theme`, `GET /api/leaderboard`, `POS
 - Spin outcomes and payouts computed on the server (`POST /api/spin`)
 - Dark casino UI, mobile-friendly, 18+ age gate, legal footer
 
-The house pool and 20% per-spin cap still exist **server-side only**, now measured in the same hidden game units / coin scale. `/api/pool` stays 404. Cap and max-win fields are never sent to players.
+The house pool remains an **internal stat only** — it does not limit wins. `/api/pool` stays 404. Cap and max-win fields are never sent to players.
 
-The paytable is tuned for a long-run **return to player of ~20%**. Every spin is an independent fair RNG outcome computed on the server. Game math was not changed for the social-casino conversion, so `simulate_rtp.py` does not need a re-run unless weights or settle logic are edited:
+The paytable is tuned for a long-run **return to player of ~95%** in both Megaways and Classic, including tumbles, free spins, mini games and the Green Tea Jackpot (a published **5,000× total bet** prize). There is no per-spin payout cap. Confirm with:
 
 ```bash
 .venv/bin/python server/simulate_rtp.py
@@ -165,7 +165,7 @@ Removed (return 404): `/api/withdraw`, `/api/deposit/checkout`, `/api/deposit/pl
 .venv/bin/python server/test_cap.py
 ```
 
-Coverage includes the hidden 20% cap, jackpot = cap, multi-line and Megaways evaluation, gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, and **themes locked until level**.
+Coverage includes uncapped payouts, the fixed Green Tea Jackpot (5,000× bet), multi-line and Megaways evaluation, fair 50/50 gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, and **themes locked until level**.
 
 ## Deploy on Render
 
@@ -196,7 +196,7 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 - The ledger lives in `server/ledger.db`. A browser cookie identifies the player. Mute / bet size still persist in `localStorage` as UI prefs only. The 18+ gate is stored in `localStorage` (`crystal-casino-age-ok-v1`).
 - On Render's free tier, that SQLite file is wiped on redeploy (see above).
 - Sound uses the Web Audio API; use the mute button to silence.
-- This ~20% RTP is social-casino / demo math only. Licensed real-money slots are typically required to return around 85–95%.
+- This ~95% RTP is social-casino / demo math. Coins have no cash value.
 
 ## Files
 
@@ -208,9 +208,9 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 | `gems.js` | Procedural gem art |
 | `server/app.py` | Flask app: static files, Stripe shop, API |
 | `server/ledger.py` | SQLite ledger (coins, bonuses, idempotent pack credit) |
-| `server/game.py` | Symbol weights, RNG, paytables, coin scale (~20% RTP) |
-| `server/simulate_rtp.py` | 1,000,000-spin RTP check |
-| `server/test_cap.py` | Cap, API, shop, and social-casino tests |
+| `server/game.py` | Symbol weights, RNG, paytables, coin scale (~95% RTP) |
+| `server/simulate_rtp.py` | Multi-million-spin RTP check (target ~95%) |
+| `server/test_cap.py` | Payout, jackpot, API, shop, and social-casino tests |
 | `server/templates/` | Shop success / cancel pages |
 | `requirements.txt` | Python dependencies (includes gunicorn) |
 | `render.yaml` | Render Blueprint for a Python web service |
@@ -221,4 +221,4 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 
 v3–v5 added 25-line Classic, Megaways, mini games, sound, and richer animation. Those game features remain. v5's client-side daily USDT play-money credit has been replaced by the server-authoritative daily and hourly **coin** bonuses. Fiat/crypto wallet display and simulated withdrawals were removed in the social-casino conversion.
 
-Internal math (weights, paytables, 20% per-step cap, hidden house pool) is unchanged from v5. Public amounts are coins (`COIN_SCALE = 1000`).
+Public amounts are coins (`COIN_SCALE = 1000`). The 20% per-step payout cap from v3–v5 has been removed; the Green Tea Jackpot is a fixed 5,000× total bet and long-run RTP is ~95%.

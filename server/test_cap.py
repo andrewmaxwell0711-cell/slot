@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Unit-style checks: 20%-of-pool cap, jackpot == cap, multi-line evaluation,
-gamble limits, and that public API responses never leak pool/max-win numbers."""
+"""Unit-style checks: uncapped payouts, fixed Green Tea Jackpot (× total bet),
+multi-line evaluation, fair 50/50 gamble, and that public API responses never
+leak pool / cap / max-win numbers."""
 
 from __future__ import annotations
 
@@ -60,13 +61,14 @@ def new_player(aud: float) -> str:
 
 # ---- cap -------------------------------------------------------------------
 
-def test_empty_pool_tiny_bet() -> None:
+def test_empty_pool_pays_in_full() -> None:
     fresh_db()
     pid = new_player(10)
     snap = ledger.settle_round(pid, 0.5, rnd(250.0), "AUD", NO_JP)
-    assert snap["total_paid_aud"] == 0.10 and snap["any_capped"]  # pool 0.50 -> cap 0.10
-    assert abs(ledger.pool_status()["pool_aud"] - 0.40) < 1e-9
-    assert snap["coins"] == game.to_coins(9.60)
+    # No payout cap: a 250-unit win is paid even if the internal pool starts at 0.
+    assert snap["total_paid_aud"] == 250.0 and not snap["any_capped"]
+    assert ledger.pool_status()["pool_aud"] == 0.0
+    assert snap["coins"] == game.to_coins(10 - 0.5 + 250)
 
 
 def test_example_100k() -> None:
@@ -74,8 +76,8 @@ def test_example_100k() -> None:
     pid = new_player(1000)
     set_pool(100_000 - 100)
     snap = ledger.settle_round(pid, 100, rnd(50_000.0), "AUD", NO_JP)
-    assert snap["total_paid_aud"] == 20_000.0
-    assert ledger.pool_status()["pool_aud"] == 80_000.0
+    assert snap["total_paid_aud"] == 50_000.0
+    assert ledger.pool_status()["pool_aud"] == 50_000.0
 
 
 def test_small_win_uncapped() -> None:
@@ -86,55 +88,58 @@ def test_small_win_uncapped() -> None:
     assert snap["total_paid_aud"] == 4.0 and not snap["any_capped"]
 
 
-def test_free_spins_each_capped() -> None:
+def test_free_spins_each_pay_in_full() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(99)
     snap = ledger.settle_round(pid, 1, rnd(10.0, [1000.0, 1000.0, 1000.0]), "AUD", NO_JP)
-    pool, expected = 100.0, 0.0
-    for raw in (10.0, 1000.0, 1000.0, 1000.0):
-        paid = min(raw, game.cap_for_pool(pool))
-        pool -= paid
-        expected += paid
-    assert abs(snap["total_paid_aud"] - round(expected, 2)) < 0.011
-    for s in snap["steps"]:
-        assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
-    assert ledger.pool_status()["pool_aud"] > 0
+    assert snap["total_paid_aud"] == 3010.0
+    assert all(not s.get("capped") and "cap_aud" not in s for s in snap["steps"])
+    assert [s["paid_aud"] for s in snap["steps"]] == [10.0, 1000.0, 1000.0, 1000.0]
+    assert ledger.pool_status()["pool_aud"] >= 0
 
 
 # ---- jackpot = cap ---------------------------------------------------------
 
-def test_jackpot_pays_exactly_cap() -> None:
+def test_jackpot_pays_fixed_multiple() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(100_000 - 1)
     snap = ledger.settle_round(pid, 1, rnd(3.0), "AUD", JP)
     assert snap["jackpot_hit"]
-    assert snap["total_paid_aud"] == 20_000.0, snap["total_paid_aud"]  # line win 3 + jackpot 19,997
-    assert snap["jackpot_paid_aud"] == 19_997.0
-    assert ledger.pool_status()["pool_aud"] == 80_000.0
+    prize = game.jackpot_amount(1)
+    assert prize == 5000.0
+    assert snap["jackpot_paid_aud"] == prize
+    assert snap["total_paid_aud"] == 3.0 + prize
+    # Internal pool is reduced but never blocks the payout.
+    assert ledger.pool_status()["pool_aud"] == 100_000.0 - prize - 3.0
 
 
-def test_jackpot_never_exceeds_cap_with_free_spins() -> None:
+def test_jackpot_plus_free_spins_pay_in_full() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(999)
-    snap = ledger.settle_round(pid, 1, rnd(5000.0, [5000.0, 5000.0]), "AUD", JP)
+    snap = ledger.settle_round(pid, 1, rnd(40.0, [50.0, 60.0]), "AUD", JP)
     first = snap["steps"][0]
-    assert first["paid_aud"] + first["jackpot_aud"] == first["cap_aud"] == 200.0
-    for s in snap["steps"]:
-        assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
+    prize = game.jackpot_amount(1)
+    assert first["paid_aud"] == 40.0 and first["jackpot_aud"] == prize
+    assert "cap_aud" not in first
+    assert [s["paid_aud"] for s in snap["steps"][1:]] == [50.0, 60.0]
+    assert snap["total_paid_aud"] == 40.0 + 50.0 + 60.0 + prize
     assert ledger.pool_status()["pool_aud"] >= 0
 
 
-def test_jackpot_probability_scales() -> None:
-    assert game.jackpot_probability(1, 0) == 0.0
-    assert game.jackpot_probability(1, 10) == game.JACKPOT_MAX_P  # clamped on tiny pools
-    assert abs(game.jackpot_probability(1, 1_000_000) - game.JACKPOT_C / 1_000_000) < 1e-15
-    # EV per A$1 staked = p * 0.2 * pool = JACKPOT_C * 0.2 regardless of pool size
-    for pool in (5_000, 100_000, 10_000_000):
-        ev = game.jackpot_probability(1, pool) * game.cap_for_pool(pool)
-        assert abs(ev - game.JACKPOT_C * game.POOL_CAP_FRACTION) < 1e-3
+def test_jackpot_probability_is_fixed() -> None:
+    assert game.jackpot_probability(0) == 0.0
+    p = game.jackpot_probability(1)
+    assert p == game.JACKPOT_P
+    # Chance does not depend on the hidden house pool or bet size (prize is × bet).
+    for pool in (0, 10, 1_000_000):
+        assert game.jackpot_probability(1, pool) == p
+        assert game.jackpot_probability(50, pool) == p
+    ev = p * game.JACKPOT_MULT
+    assert abs(ev - 0.02) < 1e-12
+    assert game.jackpot_amount(2) == 10_000.0
 
 
 def test_pool_never_negative_random() -> None:
@@ -144,20 +149,20 @@ def test_pool_never_negative_random() -> None:
         lines = game._rng.choice(game.LINE_OPTIONS)
         bpl = game._rng.choice(game.BET_PER_LINE_AUD)
         total = round(lines * bpl, 2)
-        before = ledger.pool_status()["pool_aud"] + total
         snap = ledger.settle_round(pid, total, game.play_classic(bpl, lines), "AUD",
                                    JP if game._rng.random() < 0.05 else NO_JP)
+        assert snap["total_paid_aud"] >= 0
         for s in snap["steps"]:
-            assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
-            assert s["cap_aud"] <= 0.2 * before + 1e-6
+            assert "cap_aud" not in s
+            assert not s.get("capped")
         assert ledger.pool_status()["pool_aud"] >= 0
 
 
-def test_zero_pool_cap() -> None:
+def test_no_payout_cap() -> None:
+    # cap_for_pool is a deprecated stub and must not be used to limit wins.
     assert game.cap_for_pool(0) == 0.0
-    assert game.cap_for_pool(-5) == 0.0
-    assert game.cap_for_pool(100_000) == 20_000.0
-    assert game.cap_for_pool(0.04) == 0.0
+    assert game.cap_for_pool(100_000) == 0.0
+    assert game.POOL_CAP_FRACTION == 0.0
 
 
 # ---- multi-line evaluation -------------------------------------------------
@@ -177,10 +182,10 @@ def test_paylines_shape() -> None:
 def test_centre_line_only_with_one_line() -> None:
     g = grid_from_rows("ruby ruby ruby ruby ruby", "quartz quartz quartz shard topaz", "topaz topaz topaz topaz topaz")
     wins = game.evaluate_lines(g, 1, 1)
-    assert [(w["line"], w["count"], w["symbol"], w["win_aud"]) for w in wins] == [(1, 3, "quartz", 4)]
+    assert [(w["line"], w["count"], w["symbol"], w["win_aud"]) for w in wins] == [(1, 3, "quartz", 18)]
     wins25 = {w["line"]: w for w in game.evaluate_lines(g, 1, 25)}
-    assert wins25[2]["symbol"] == "ruby" and wins25[2]["count"] == 5 and wins25[2]["win_aud"] == 200
-    assert wins25[3]["symbol"] == "topaz" and wins25[3]["win_aud"] == 40
+    assert wins25[2]["symbol"] == "ruby" and wins25[2]["count"] == 5 and wins25[2]["win_aud"] == 920
+    assert wins25[3]["symbol"] == "topaz" and wins25[3]["win_aud"] == 184
 
 
 def test_v_line_and_wild_double() -> None:
@@ -189,8 +194,8 @@ def test_v_line_and_wild_double() -> None:
                        "amethyst citrine sapphire citrine amethyst")
     wins = {w["line"]: w for w in game.evaluate_lines(g, 0.5, 25)}
     v = wins[4]  # V: top, mid, bottom, mid, top -> sapphire wild sapphire wild sapphire
-    assert v["count"] == 5 and v["symbol"] == "sapphire" and v["wild"] and v["mult"] == 200
-    assert v["win_aud"] == 100.0 and v["cells"] == [[0, 0], [1, 1], [2, 2], [3, 1], [4, 0]]
+    assert v["count"] == 5 and v["symbol"] == "sapphire" and v["wild"] and v["mult"] == 920
+    assert v["win_aud"] == 460.0 and v["cells"] == [[0, 0], [1, 1], [2, 2], [3, 1], [4, 0]]
 
 
 def test_scatter_and_shard_break_lines() -> None:
@@ -203,17 +208,17 @@ def test_scatter_and_shard_break_lines() -> None:
 def test_pure_wilds_and_leading_wilds() -> None:
     g = grid_from_rows("shard shard shard shard shard", "wild wild wild shard shard", "shard shard shard shard shard")
     w = game.evaluate_lines(g, 1, 1)[0]
-    assert w["symbol"] == "wild" and w["count"] == 3 and w["mult"] == 50 and not w["wild"]
+    assert w["symbol"] == "wild" and w["count"] == 3 and w["mult"] == 230 and not w["wild"]
     g = grid_from_rows("shard shard shard shard shard", "wild wild ruby ruby citrine", "shard shard shard shard shard")
     w = game.evaluate_lines(g, 1, 1)[0]
-    assert w["symbol"] == "ruby" and w["count"] == 4 and w["mult"] == 160
+    assert w["symbol"] == "ruby" and w["count"] == 4 and w["mult"] == 736
 
 
 def test_scatter_pays_on_total_bet() -> None:
     g = grid_from_rows("scatter shard shard shard scatter", "shard shard scatter shard shard", "shard shard shard shard shard")
     assert game.count_scatters(g) == 3
     mult, fs = game.SCATTER_PAYS[3]
-    assert (mult, fs) == (2, 8)
+    assert (mult, fs) == (9, 8)
 
 
 # ---- gamble ----------------------------------------------------------------
@@ -236,17 +241,13 @@ def test_gamble_win_lose_and_limit() -> None:
         raise AssertionError("should refuse with nothing to gamble")
     except ValueError:
         pass
-    # Limit: double must fit under the cap
+    # No pool cap on the double-up: a small hidden pool must not block a fair 50/50.
     fresh_db()
     pid = new_player(1000)
     set_pool(20)
-    ledger.settle_round(pid, 1, rnd(4.0), "AUD", NO_JP)  # pool 21 -> cap 4.2 -> paid 4, pool 17
-    try:
-        ledger.gamble(pid, "red", card("red"))  # pool 21 with stake, cap 4.2 < 8
-        raise AssertionError("should be limited")
-    except ledger.GambleUnavailable:
-        pass
-    assert ledger.snapshot(pid)["gamble"] == 0
+    ledger.settle_round(pid, 1, rnd(4.0), "AUD", NO_JP)
+    snap = ledger.gamble(pid, "red", card("red"))
+    assert snap["won"] and snap["gamble_payout_aud"] == 8
 
 
 def test_gamble_max_rounds() -> None:
@@ -419,52 +420,55 @@ def wheel_game(index: int, raw: float, pending: bool = False, fallback: int = 10
     return g
 
 
-def test_cap_across_cascades_and_minigames() -> None:
+def test_cascades_and_minigames_pay_in_full() -> None:
     fresh_db()
     pid = new_player(100)
-    set_pool(999)  # + stake 1 -> 1000
+    set_pool(999)  # + stake 1 -> 1000, far below these wins — still paid in full
     snap = ledger.settle_round(pid, 1, mw_rnd(50_000, [pick_game(50_000), wheel_game(7, 50_000)], [50_000, 50_000]),
                                "AUD", NO_JP, lambda s, p: False)
-    caps = [s["cap_aud"] for s in snap["steps"]]
     paid = [s["paid_aud"] for s in snap["steps"]]
-    assert caps[0] == 200.0 and paid[0] == 200.0              # base spin incl. all cascades
-    assert caps[1] == 160.0 and paid[1] == 160.0              # Crystal Pick capped on the reduced pool
-    assert caps[2] == 128.0 and paid[2] == 128.0              # Tea Wheel
-    assert all(p <= c + 1e-9 for p, c in zip(paid, caps)) and all(s["capped"] for s in snap["steps"])
+    assert paid == [50_000.0, 50_000.0, 50_000.0, 50_000.0, 50_000.0]
+    assert all("cap_aud" not in s and not s.get("capped") for s in snap["steps"])
+    assert snap["total_paid_aud"] == 250_000.0
     assert ledger.pool_status()["pool_aud"] >= 0
-    assert abs(snap["total_paid_aud"] - sum(paid)) < 1e-6
 
 
-def test_jackpot_equals_cap_megaways() -> None:
+def test_jackpot_equals_fixed_multiple_megaways() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(49_999)
     snap = ledger.settle_round(pid, 1, mw_rnd(12.34), "AUD", JP)
     s0 = snap["steps"][0]
-    assert s0["cap_aud"] == 10_000.0 and s0["paid_aud"] + s0["jackpot_aud"] == 10_000.0
-    assert snap["jackpot_paid_aud"] == round(10_000.0 - 12.34, 2)
+    prize = game.jackpot_amount(1)
+    assert s0["paid_aud"] == 12.34 and s0["jackpot_aud"] == prize
+    assert snap["jackpot_paid_aud"] == prize
+    assert snap["total_paid_aud"] == round(12.34 + prize, 2)
+    assert "cap_aud" not in s0
 
 
-def test_wheel_jackpot_wedge_pays_cap() -> None:
+def test_wheel_jackpot_wedge_pays_fixed_multiple() -> None:
     fresh_db()
     pid = new_player(100)
     set_pool(19_999)
     snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True)]), "AUD", NO_JP, lambda s, p: True)
     w = snap["steps"][1]
+    prize = game.jackpot_amount(1)
     assert w["kind"] == "wheel" and w["wheel_jackpot"] and w["wheel_index"] == 11
-    assert w["paid_aud"] == 0 and w["jackpot_aud"] == w["cap_aud"] == 4000.0
+    assert w["paid_aud"] == 0 and w["jackpot_aud"] == prize
     # miss: ticks on to the neighbouring 2x wedge
     snap = ledger.settle_round(pid, 1, mw_rnd(0.0, [wheel_game(11, 2.0, pending=True, fallback=0)]), "AUD", NO_JP, lambda s, p: False)
     w = snap["steps"][1]
     assert not w["wheel_jackpot"] and w["wheel_index"] == 0 and w["paid_aud"] == 2.0 and w["jackpot_aud"] == 0
 
 
-def test_wheel_jackpot_probability_bounded_ev() -> None:
-    assert game.wheel_jackpot_probability(1, 0) == 0.0
-    assert game.wheel_jackpot_probability(1, 10) == 1.0
-    for pool in (10_000, 1_000_000):
-        ev = game.wheel_jackpot_probability(1, pool) * game.cap_for_pool(pool)
-        assert abs(ev - game.WHEEL_JP_K * game.POOL_CAP_FRACTION) < 1e-2
+def test_wheel_jackpot_probability_is_fixed() -> None:
+    assert game.wheel_jackpot_probability(0) == 0.0
+    p = game.wheel_jackpot_probability(1)
+    assert p == game.WHEEL_JP_P
+    for pool in (0, 10, 1_000_000):
+        assert game.wheel_jackpot_probability(1, pool) == p
+    # EV if the jackpot wedge is already landed: p * 5000× bet
+    assert abs(p * game.JACKPOT_MULT - (game.WHEEL_JP_P * game.JACKPOT_MULT)) < 1e-12
 
 
 def test_minigame_shapes() -> None:
@@ -497,8 +501,8 @@ def test_pool_never_negative_random_megaways() -> None:
                                    (lambda s, p: True) if game._rng.random() < 0.5 else (lambda s, p: False))
         assert len(snap["steps"]) == len(game.round_steps(rnd))
         for s in snap["steps"]:
-            assert s["paid_aud"] + s["jackpot_aud"] <= s["cap_aud"] + 1e-9
-            assert s["cap_aud"] <= 0.2 * before + 1e-6
+            assert "cap_aud" not in s
+            assert not s.get("capped")
         assert ledger.pool_status()["pool_aud"] >= 0
 
 
