@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Crystal Casino v6 — Social Casino (TEST MODE)</title>
+  <title>Crystal Casino — Social Casino (TEST MODE)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -18,18 +18,24 @@
   <div class="side-crystals right" aria-hidden="true"></div>
 
   <header class="top-bar">
-    <div class="brand">
+    <a class="brand" href="#/home" id="brand-home">
       <img class="brand-gem" id="brand-gem" alt="" />
       <div>
         <h1>Crystal Casino</h1>
         <span class="demo-badge">DEMO · TEST MODE</span>
       </div>
-    </div>
+    </a>
     <div class="header-actions">
       <nav class="view-nav" role="tablist" aria-label="Casino areas">
-        <button type="button" class="active" data-view="slots" id="nav-slots">Slots</button>
-        <button type="button" data-view="lobby" id="nav-lobby">Side Games</button>
+        <button type="button" class="active" data-route="home" id="nav-home">Home</button>
+        <button type="button" data-route="lobby" id="nav-lobby">Games</button>
       </nav>
+      <div class="hdr-chip" title="Virtual coins — no cash value">
+        <small>COINS</small><strong id="hdr-credit" data-bind="coins">0</strong>
+      </div>
+      <div class="hdr-prog" title="Crystal Crown progressive jackpot">
+        <small>CROWN</small><strong id="hdr-prog" data-bind="progressive">0</strong>
+      </div>
       <div class="vol-wrap">
         <button id="btn-mute" class="icon-btn" type="button" title="Mute sound effects" aria-label="Mute or unmute sound effects">🔊</button>
         <input id="vol" class="vol" type="range" min="0" max="100" step="1" value="70" aria-label="Sound effects volume" title="SFX volume" />
@@ -46,6 +52,58 @@
     <div class="mode-banner key-banner" id="stripe-key-banner" hidden>Add a Stripe test key to enable the coin shop</div>
     <div class="mode-banner weekend-banner" id="weekend-banner" hidden>Weekend tournament is on — play the slots for a coin prize. No countdown to buy coins.</div>
   </div>
+
+
+  <!-- Casino home -->
+  <section class="home" id="home" hidden>
+    <div class="home-marquee">
+      <div class="bulbs" aria-hidden="true"></div>
+      <p class="home-kicker">SOCIAL CASINO · TEST MODE · 18+</p>
+      <h2 class="home-title">Crystal Casino</h2>
+      <p class="home-sub">Virtual coins only. Every game is decided on the server. Nothing here has cash value.</p>
+      <div class="prog-ticker home-ticker" id="home-ticker">
+        <small>CRYSTAL CROWN PROGRESSIVE</small>
+        <strong id="home-prog" data-bind="progressive">0</strong>
+      </div>
+    </div>
+    <div class="home-hud">
+      <div class="home-balance">
+        <span class="label">Coin balance</span>
+        <strong id="home-credit" data-bind="coins">0</strong>
+        <span class="sub">Virtual coins · no cash value</span>
+      </div>
+      <div class="home-profile">
+        <span id="home-nick">Hopper</span>
+        <span id="home-level">LV 1</span>
+        <span class="vip-badge bronze" id="home-vip">BRONZE</span>
+      </div>
+      <div class="home-actions">
+        <button type="button" class="daily-chest js-daily" id="btn-daily-home">
+          <span class="chest-icon" aria-hidden="true">🍵</span>
+          <span class="chest-copy"><small>DAILY</small><strong class="daily-home-label">BONUS</strong></span>
+        </button>
+        <button type="button" class="daily-chest hourly js-hourly" id="btn-hourly-home">
+          <span class="chest-icon" aria-hidden="true">⏰</span>
+          <span class="chest-copy"><small>HOURLY</small><strong class="hourly-home-label">BONUS</strong></span>
+        </button>
+        <button type="button" class="btn btn-gold js-shop">Shop</button>
+        <button type="button" class="btn btn-outline js-prizes">Prizes</button>
+      </div>
+    </div>
+    <a class="hero" href="#/slots" id="hero-slots">
+      <div class="hero-copy">
+        <span class="hero-tag">FEATURED</span>
+        <h3>Crystal Slots</h3>
+        <p>Megaways up to 117,649 ways, or classic 25-line. Green Tea Jackpot 5,000× · Hold &amp; Spin · Crystal Crown progressive.</p>
+        <span class="btn btn-gold">Play now</span>
+      </div>
+      <div class="hero-art" aria-hidden="true">💎</div>
+    </a>
+    <div class="home-feature-row" id="home-features"></div>
+    <div class="home-browse">
+      <a class="btn btn-outline" href="#/lobby">Browse all games</a>
+    </div>
+  </section>
 
   <main class="layout">
     <section class="cabinet-wrap">
@@ -193,17 +251,26 @@
     </aside>
   </main>
 
-  <!-- Side games lobby -->
+  <!-- Game selection lobby -->
   <section class="lobby" id="lobby" hidden>
     <div class="lobby-head">
       <div>
-        <h2>Side Games</h2>
-        <p class="hint">Fair table games, coin bets only. Every outcome is decided on the server. Coins have no cash value.</p>
+        <h2>Game Floor</h2>
+        <p class="hint">Fair games, coin bets only. Every outcome is decided on the server. Coins have no cash value.</p>
       </div>
-      <button type="button" class="btn btn-outline" id="btn-lobby-back">Back to slots</button>
+      <a class="btn btn-outline" href="#/home" id="btn-lobby-back">Back to home</a>
     </div>
-    <div class="lobby-grid" id="lobby-grid"></div>
-    <div class="lobby-table" id="lobby-table" hidden></div>
+    <div class="lobby-cats" id="lobby-grid"></div>
+  </section>
+
+  <!-- Full-screen table / game stage -->
+  <section class="game-stage" id="game-stage" hidden>
+    <div class="stage-head">
+      <a class="btn btn-outline" href="#/lobby" id="btn-stage-back">← Games</a>
+      <h2 id="stage-title">Game</h2>
+      <div class="stage-balance"><small>COINS</small><strong data-bind="coins">0</strong></div>
+    </div>
+    <div class="stage-body" id="stage-body"></div>
   </section>
 
   <!-- Info / paytable -->
@@ -429,5 +496,6 @@
   <script src="gems.js"></script>
   <script src="app.js"></script>
   <script src="lobby.js"></script>
+  <script src="casino.js"></script>
 </body>
 </html>

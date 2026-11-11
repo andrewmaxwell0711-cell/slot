@@ -14,7 +14,7 @@ _rng = secrets.SystemRandom()
 # Standard coin stakes offered in the lobby (virtual coins, no cash value).
 BETS = (100, 200, 500, 1_000, 2_000, 5_000, 10_000, 25_000, 50_000)
 
-GAMES = ("blackjack", "roulette", "highcard", "mines", "scratch", "dice")
+GAMES = ("blackjack", "roulette", "highcard", "mines", "scratch", "dice", "videopoker", "threecard", "war")
 
 SUITS = ("hearts", "diamonds", "clubs", "spades")
 RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
@@ -58,12 +58,15 @@ def catalogue() -> dict[str, Any]:
     return {
         "bets": list(BETS),
         "games": [
-            {"id": "blackjack", "name": "Blackjack", "tag": "3:2 · stand soft 17 · 6-deck"},
-            {"id": "roulette", "name": "European Roulette", "tag": "Single zero · 2.70% house edge"},
-            {"id": "highcard", "name": "High Card", "tag": "Higher card wins 1:1 · tie push or war"},
-            {"id": "mines", "name": "Crystal Mines", "tag": "Cash out anytime · ~4% house edge"},
-            {"id": "scratch", "name": "Dragon Scratch", "tag": "Scratch card · ~95% RTP"},
-            {"id": "dice", "name": "Lucky Dice", "tag": "2d6 duel · tie is a push"},
+            {"id": "blackjack", "name": "Blackjack", "tag": "3:2 · stand soft 17 · 6-deck", "category": "Card Games"},
+            {"id": "roulette", "name": "European Roulette", "tag": "Single zero · 2.70% house edge", "category": "Table Games"},
+            {"id": "videopoker", "name": "Video Poker", "tag": "Jacks or Better 9/6 · ~0.5% house edge", "category": "Card Games"},
+            {"id": "threecard", "name": "Three Card Poker", "tag": "Ante/Play + Pair Plus · dealer Q-high", "category": "Card Games"},
+            {"id": "war", "name": "Casino War", "tag": "Higher card wins · war on a tie · 6-deck", "category": "Card Games"},
+            {"id": "highcard", "name": "High Card", "tag": "Higher card wins 1:1 · tie push or war", "category": "Card Games"},
+            {"id": "mines", "name": "Crystal Mines", "tag": "Cash out anytime · ~4% house edge", "category": "Instant/Mini"},
+            {"id": "scratch", "name": "Dragon Scratch", "tag": "Scratch card · ~95% RTP", "category": "Instant/Mini"},
+            {"id": "dice", "name": "Lucky Dice", "tag": "2d6 duel · tie is a push", "category": "Instant/Mini"},
         ],
         "roulette": {
             "wheel": list(WHEEL_ORDER),
@@ -80,6 +83,26 @@ def catalogue() -> dict[str, Any]:
         "blackjack": {
             "decks": 6, "soft_17": "stand", "blackjack_pays": "3:2",
             "insurance": True, "double": True, "split": True,
+        },
+        "videopoker": {
+            "variant": "jacks_or_better",
+            "paytable": "9/6",
+            "pays": {
+                "royal_flush": 800, "straight_flush": 50, "four_of_a_kind": 25,
+                "full_house": 9, "flush": 6, "straight": 4, "three_of_a_kind": 3,
+                "two_pair": 2, "jacks_or_better": 1,
+            },
+        },
+        "threecard": {
+            "dealer_qualifies": "Q-high",
+            "ante_bonus": {"straight_flush": 5, "three_of_a_kind": 4, "straight": 1},
+            "pair_plus": {"straight_flush": 40, "three_of_a_kind": 30, "straight": 6, "flush": 4, "pair": 1},
+        },
+        "war": {
+            "decks": 6,
+            "war_win": "1:1 on the raise; original bet pushes",
+            "surrender": "half the ante",
+            "tie_on_war": "both bets push",
         },
     }
 
@@ -766,6 +789,556 @@ def dice_play(bet: int) -> dict[str, Any]:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Video Poker — Jacks or Better, 9/6 full-pay
+# ---------------------------------------------------------------------------
+
+JOB_PAYS = {
+    "royal_flush": 800,
+    "straight_flush": 50,
+    "four_of_a_kind": 25,
+    "full_house": 9,
+    "flush": 6,
+    "straight": 4,
+    "three_of_a_kind": 3,
+    "two_pair": 2,
+    "jacks_or_better": 1,
+}
+
+_HIGH = {11, 12, 13, 14}  # J, Q, K, A
+
+
+def _rank5(cards: list[dict[str, Any]]) -> tuple[str, tuple]:
+    """Rank a 5-card Jacks-or-Better hand. Returns (name, tiebreak)."""
+    if len(cards) != 5:
+        raise SideError("Video poker hands have five cards")
+    ranks = [ACE_HIGH[c["rank"]] for c in cards]
+    suits = [c["suit"] for c in cards]
+    flush = len(set(suits)) == 1
+    counts: dict[int, int] = {}
+    for r in ranks:
+        counts[r] = counts.get(r, 0) + 1
+    uniq = sorted(set(ranks))
+
+    def straight_high(rs: list[int]) -> int:
+        s = sorted(set(rs))
+        if len(s) != 5:
+            return 0
+        if s[-1] - s[0] == 4:
+            return s[-1]
+        if s == [2, 3, 4, 5, 14]:
+            return 5  # 5-high wheel
+        return 0
+
+    sh = straight_high(ranks)
+    if flush and sh == 14:
+        return "royal_flush", (14,)
+    if flush and sh:
+        return "straight_flush", (sh,)
+    of_a_kind = sorted(((n, r) for r, n in counts.items()), reverse=True)
+    if of_a_kind[0][0] == 4:
+        kicker = next(r for r in uniq if r != of_a_kind[0][1])
+        return "four_of_a_kind", (of_a_kind[0][1], kicker)
+    if of_a_kind[0][0] == 3 and of_a_kind[1][0] == 2:
+        return "full_house", (of_a_kind[0][1], of_a_kind[1][1])
+    if flush:
+        return "flush", tuple(sorted(ranks, reverse=True))
+    if sh:
+        return "straight", (sh,)
+    if of_a_kind[0][0] == 3:
+        kick = tuple(sorted((r for r in ranks if r != of_a_kind[0][1]), reverse=True))
+        return "three_of_a_kind", (of_a_kind[0][1],) + kick
+    if of_a_kind[0][0] == 2 and of_a_kind[1][0] == 2:
+        pairs = sorted((of_a_kind[0][1], of_a_kind[1][1]), reverse=True)
+        kicker = next(r for r in uniq if r not in pairs)
+        return "two_pair", (pairs[0], pairs[1], kicker)
+    if of_a_kind[0][0] == 2:
+        pair = of_a_kind[0][1]
+        kick = tuple(sorted((r for r in ranks if r != pair), reverse=True))
+        if pair >= 11:
+            return "jacks_or_better", (pair,) + kick
+        return "nothing", (pair,) + kick
+    return "nothing", tuple(sorted(ranks, reverse=True))
+
+
+def job_hand_name(cards: list[dict[str, Any]]) -> str:
+    return _rank5(cards)[0]
+
+
+def job_payout(cards: list[dict[str, Any]], bet: int) -> tuple[int, str, int]:
+    """Return (payout_including_stake_if_any, hand_name, multiplier)."""
+    bet = valid_bet(bet)
+    name, _ = _rank5(cards)
+    # 9/6 paytable values are total return multiples (Jacks or Better pays 1× = a push).
+    mult = JOB_PAYS.get(name, 0)
+    return bet * mult, name, mult
+
+
+def _fresh_deck() -> list[dict[str, Any]]:
+    return _fresh_shoe(1)
+
+
+def videopoker_deal(bet: int) -> dict[str, Any]:
+    bet = valid_bet(bet)
+    deck = _fresh_deck()
+    cards = [_draw(deck) for _ in range(5)]
+    name = job_hand_name(cards)
+    return {
+        "game": "videopoker",
+        "done": False,
+        "bet": bet,
+        "cards": cards,
+        "held": [False] * 5,
+        "deck": deck,
+        "hand": name,
+        "can": ["draw", "hold"],
+        "payout": 0,
+    }
+
+
+def videopoker_draw(state: dict[str, Any], holds: list[Any]) -> dict[str, Any]:
+    if state.get("done"):
+        raise SideError("Hand is already finished")
+    if state.get("game") != "videopoker":
+        raise SideError("Not a video poker hand")
+    flags = _parse_holds(holds, state.get("held") or [False] * 5)
+    deck = list(state["deck"])
+    cards = list(state["cards"])
+    for i in range(5):
+        if not flags[i]:
+            cards[i] = _draw(deck)
+    payout, name, mult = job_payout(cards, int(state["bet"]))
+    return {
+        "game": "videopoker",
+        "done": True,
+        "bet": int(state["bet"]),
+        "cards": cards,
+        "held": flags,
+        "dealt": list(state["cards"]),
+        "hand": name,
+        "mult": mult,
+        "payout": payout,
+        "result": "win" if payout > int(state["bet"]) else ("push" if payout == int(state["bet"]) else "lose"),
+        "can": [],
+    }
+
+
+def _parse_holds(holds: list[Any], current: list[bool]) -> list[bool]:
+    flags = [bool(x) for x in current] + [False] * 5
+    flags = flags[:5]
+    if holds is None:
+        return flags
+    if not isinstance(holds, (list, tuple)):
+        raise SideError("Invalid holds")
+    # list of indices, or list of 5 booleans
+    if len(holds) == 5 and all(isinstance(x, (bool, int)) and not (isinstance(x, int) and x not in (0, 1)) or isinstance(x, bool) for x in holds):
+        # 5 booleans / 0/1 — but indices 0,1 could be confused. If any value is > 1, treat as indices.
+        if all(x in (0, 1, True, False) for x in holds) and max((int(x) for x in holds), default=0) <= 1:
+            return [bool(x) for x in holds]
+    for h in holds:
+        try:
+            i = int(h)
+        except (TypeError, ValueError) as exc:
+            raise SideError("Invalid hold index") from exc
+        if i < 0 or i >= 5:
+            raise SideError("Hold index out of range")
+        flags[i] = True
+    return flags
+
+
+def job_hold_strategy(cards: list[dict[str, Any]]) -> list[bool]:
+    """A strong Jacks-or-Better hold strategy used for house-edge simulation."""
+    idx = list(range(5))
+    ranks = [ACE_HIGH[c["rank"]] for c in cards]
+    suits = [c["suit"] for c in cards]
+    name, _ = _rank5(cards)
+    if name in ("royal_flush", "straight_flush", "four_of_a_kind", "full_house", "flush", "straight"):
+        return [True] * 5
+    if name == "three_of_a_kind":
+        trips = max(r for r in set(ranks) if ranks.count(r) == 3)
+        return [r == trips for r in ranks]
+    if name == "two_pair":
+        pairs = {r for r in set(ranks) if ranks.count(r) == 2}
+        return [r in pairs for r in ranks]
+    if name == "jacks_or_better":
+        pair = max(r for r in set(ranks) if ranks.count(r) == 2)
+        return [r == pair for r in ranks]
+
+    def combo(ids: list[int]) -> list[dict[str, Any]]:
+        return [cards[i] for i in ids]
+
+    # Four to a royal
+    for suit in SUITS:
+        royal = [i for i in idx if suits[i] == suit and ranks[i] in (10, 11, 12, 13, 14)]
+        if len(royal) == 4:
+            return [i in royal for i in idx]
+    # Four to a straight flush (including insides)
+    for suit in SUITS:
+        group = [i for i in idx if suits[i] == suit]
+        if len(group) >= 4:
+            rs = sorted(ACE_HIGH[cards[i]["rank"]] for i in group)
+            # any 4 that can make a SF
+            from itertools import combinations
+            for pick in combinations(group, 4):
+                pr = sorted(ACE_HIGH[cards[i]["rank"]] for i in pick)
+                span = pr[-1] - pr[0]
+                wheel = pr == [2, 3, 4, 5] or set(pr) <= {14, 2, 3, 4, 5}
+                if span <= 4 or wheel:
+                    return [i in pick for i in idx]
+
+    # Low pair
+    if any(ranks.count(r) == 2 for r in set(ranks)):
+        pair = max(r for r in set(ranks) if ranks.count(r) == 2)
+        return [r == pair for r in ranks]
+
+    # Three to a royal
+    for suit in SUITS:
+        royal = [i for i in idx if suits[i] == suit and ranks[i] in (10, 11, 12, 13, 14)]
+        if len(royal) == 3:
+            return [i in royal for i in idx]
+
+    # Four to a flush
+    for suit in SUITS:
+        group = [i for i in idx if suits[i] == suit]
+        if len(group) == 4:
+            return [i in group for i in idx]
+
+    # Four to an outside straight
+    uniq = sorted(set(ranks))
+    if len(uniq) >= 4:
+        from itertools import combinations
+        for pick in combinations(range(5), 4):
+            pr = sorted(ACE_HIGH[cards[i]["rank"]] for i in pick)
+            if len(set(pr)) == 4 and pr[-1] - pr[0] == 3 and 14 not in pr:
+                return [i in pick for i in idx]
+
+    # Two suited high cards (or 10 + high suited for a royal)
+    suited_high: dict[str, list[int]] = {}
+    for i in idx:
+        if ranks[i] in _HIGH or ranks[i] == 10:
+            suited_high.setdefault(suits[i], []).append(i)
+    best = None
+    for group in suited_high.values():
+        highs = [i for i in group if ranks[i] in _HIGH or ranks[i] == 10]
+        if len([i for i in highs if ranks[i] in _HIGH]) >= 2 or (
+            any(ranks[i] == 10 for i in highs) and any(ranks[i] in _HIGH for i in highs)
+        ):
+            pick = [i for i in highs if ranks[i] in _HIGH or ranks[i] == 10]
+            pick = sorted(pick, key=lambda i: ranks[i], reverse=True)[:2]
+            if best is None or sum(ranks[i] for i in pick) > sum(ranks[i] for i in best):
+                best = pick
+    if best:
+        return [i in best for i in idx]
+
+    # Three to a straight flush
+    for suit in SUITS:
+        group = [i for i in idx if suits[i] == suit]
+        if len(group) >= 3:
+            from itertools import combinations
+            for pick in combinations(group, 3):
+                pr = sorted(ACE_HIGH[cards[i]["rank"]] for i in pick)
+                span = pr[-1] - pr[0]
+                wheel = len(set(pr) & {14, 2, 3, 4, 5}) == 3
+                if span <= 4 or wheel:
+                    return [i in pick for i in idx]
+
+    # Unsuited high cards — hold the two highest (but never 3+)
+    highs = [i for i in idx if ranks[i] in _HIGH]
+    if len(highs) >= 2:
+        highs = sorted(highs, key=lambda i: ranks[i], reverse=True)[:2]
+        return [i in highs for i in idx]
+    if len(highs) == 1:
+        return [i in highs for i in idx]
+    return [False] * 5
+
+
+# ---------------------------------------------------------------------------
+# Three Card Poker — Ante/Play + Pair Plus, dealer qualifies Q-high
+# ---------------------------------------------------------------------------
+
+TCP_ANTE_BONUS = {"straight_flush": 5, "three_of_a_kind": 4, "straight": 1}
+TCP_PAIR_PLUS = {"straight_flush": 40, "three_of_a_kind": 30, "straight": 6, "flush": 4, "pair": 1}
+# Categories, high to low: SF=6, trips=5, straight=4, flush=3, pair=2, high=1
+TCP_CAT = {
+    "straight_flush": 6,
+    "three_of_a_kind": 5,
+    "straight": 4,
+    "flush": 3,
+    "pair": 2,
+    "high_card": 1,
+}
+
+
+def _tcp_straight_high(ranks: list[int]) -> int:
+    s = sorted(ranks)
+    if s == [2, 3, 14]:
+        return 3  # 3-high wheel, lowest straight
+    if s[0] + 1 == s[1] and s[1] + 1 == s[2]:
+        return s[2]
+    return 0
+
+
+def tcp_rank(cards: list[dict[str, Any]]) -> tuple[str, tuple]:
+    """Rank a 3-card poker hand. Higher tuple wins."""
+    if len(cards) != 3:
+        raise SideError("Three Card Poker hands have three cards")
+    ranks = [ACE_HIGH[c["rank"]] for c in cards]
+    suits = [c["suit"] for c in cards]
+    flush = len(set(suits)) == 1
+    sh = _tcp_straight_high(ranks)
+    counts: dict[int, int] = {}
+    for r in ranks:
+        counts[r] = counts.get(r, 0) + 1
+    if flush and sh:
+        return "straight_flush", (TCP_CAT["straight_flush"], sh)
+    if 3 in counts.values():
+        trips = next(r for r, n in counts.items() if n == 3)
+        return "three_of_a_kind", (TCP_CAT["three_of_a_kind"], trips)
+    if sh:
+        return "straight", (TCP_CAT["straight"], sh)
+    if flush:
+        return "flush", (TCP_CAT["flush"],) + tuple(sorted(ranks, reverse=True))
+    if 2 in counts.values():
+        pair = next(r for r, n in counts.items() if n == 2)
+        kicker = next(r for r in ranks if r != pair)
+        return "pair", (TCP_CAT["pair"], pair, kicker)
+    return "high_card", (TCP_CAT["high_card"],) + tuple(sorted(ranks, reverse=True))
+
+
+def tcp_hand_name(cards: list[dict[str, Any]]) -> str:
+    return tcp_rank(cards)[0]
+
+
+def tcp_qualifies(cards: list[dict[str, Any]]) -> bool:
+    """Dealer qualifies with Queen-high or better."""
+    name, key = tcp_rank(cards)
+    if name != "high_card":
+        return True
+    return key[1] >= 12  # Queen or better as the highest card
+
+
+def tcp_should_play(cards: list[dict[str, Any]]) -> bool:
+    """Optimal-ish Q-6-4 strategy: play Q-6-4 or better."""
+    name, key = tcp_rank(cards)
+    if name != "high_card":
+        return True
+    return tuple(key[1:]) >= (12, 6, 4)
+
+
+def tcp_settle(player: list[dict[str, Any]], dealer: list[dict[str, Any]],
+               ante: int, pair_plus: int, played: bool) -> dict[str, Any]:
+    ante = valid_bet(ante)
+    try:
+        pair_plus = int(pair_plus or 0)
+    except (TypeError, ValueError) as exc:
+        raise SideError("Invalid Pair Plus bet") from exc
+    if pair_plus < 0:
+        raise SideError("Invalid Pair Plus bet")
+    p_name, p_key = tcp_rank(player)
+    d_name, d_key = tcp_rank(dealer)
+    pp_mult = TCP_PAIR_PLUS.get(p_name, 0)
+    pp_payout = (pair_plus + pair_plus * pp_mult) if pair_plus and pp_mult else 0
+    ante_bonus_mult = TCP_ANTE_BONUS.get(p_name, 0) if played else 0
+    ante_bonus = ante * ante_bonus_mult
+    play_bet = ante if played else 0
+
+    if not played:
+        result = "fold"
+        payout = pp_payout
+        ante_payout = 0
+        play_payout = 0
+    else:
+        qualifies = tcp_qualifies(dealer)
+        if not qualifies:
+            # Ante 1:1, Play pushes.
+            result = "dealer_does_not_qualify"
+            ante_payout = ante * 2
+            play_payout = play_bet
+        elif p_key > d_key:
+            result = "win"
+            ante_payout = ante * 2
+            play_payout = play_bet * 2
+        elif p_key < d_key:
+            result = "lose"
+            ante_payout = 0
+            play_payout = 0
+        else:
+            result = "tie"
+            ante_payout = ante
+            play_payout = play_bet
+        payout = ante_payout + play_payout + ante_bonus + pp_payout
+
+    return {
+        "game": "threecard",
+        "done": True,
+        "ante": ante,
+        "pair_plus": pair_plus,
+        "play": play_bet,
+        "bet": ante + pair_plus + play_bet,
+        "player": player,
+        "dealer": dealer,
+        "player_hand": p_name,
+        "dealer_hand": d_name,
+        "dealer_qualifies": tcp_qualifies(dealer),
+        "played": played,
+        "ante_bonus": ante_bonus,
+        "pair_plus_payout": pp_payout,
+        "ante_payout": ante_payout if played else 0,
+        "play_payout": play_payout if played else 0,
+        "payout": payout,
+        "result": result,
+        "can": [],
+    }
+
+
+def threecard_deal(ante: int, pair_plus: int = 0) -> dict[str, Any]:
+    ante = valid_bet(ante)
+    try:
+        pair_plus = int(pair_plus or 0)
+    except (TypeError, ValueError) as exc:
+        raise SideError("Invalid Pair Plus bet") from exc
+    if pair_plus < 0:
+        raise SideError("Invalid Pair Plus bet")
+    shoe = _fresh_shoe(1)
+    player = [_draw(shoe) for _ in range(3)]
+    dealer = [_draw(shoe) for _ in range(3)]
+    return {
+        "game": "threecard",
+        "done": False,
+        "ante": ante,
+        "pair_plus": pair_plus,
+        "bet": ante + pair_plus,
+        "player": player,
+        "dealer": dealer,  # hidden in public_state until done
+        "player_hand": tcp_hand_name(player),
+        "played": False,
+        "payout": 0,
+        "can": ["play", "fold"],
+        "shoe": shoe,
+    }
+
+
+def threecard_act(state: dict[str, Any], action: str) -> dict[str, Any]:
+    if state.get("done"):
+        raise SideError("Hand is already finished")
+    action = str(action or "").lower().strip()
+    if action not in ("play", "fold"):
+        raise SideError("Choose play or fold")
+    return tcp_settle(state["player"], state["dealer"], int(state["ante"]),
+                      int(state.get("pair_plus") or 0), played=(action == "play"))
+
+
+def threecard_public(state: dict[str, Any]) -> dict[str, Any]:
+    out = {k: v for k, v in state.items() if k not in {"shoe"}}
+    if not state.get("done"):
+        out["dealer"] = [{"rank": "?", "suit": "back", "value": 0, "colour": "back", "hidden": True} for _ in state["dealer"]]
+        out.pop("dealer_hand", None)
+        out.pop("dealer_qualifies", None)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Casino War — 6-deck shoe, surrender half or go to war
+# ---------------------------------------------------------------------------
+
+def war_card_value(card: dict[str, Any]) -> int:
+    return ACE_HIGH[card["rank"]]
+
+
+def war_settle(player: dict[str, Any], dealer: dict[str, Any], bet: int,
+               war: bool = False, raise_bet: int = 0,
+               player_war: dict[str, Any] | None = None,
+               dealer_war: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Pure payout helper (also used by tests). Payout is total coins returned."""
+    bet = valid_bet(bet)
+    if not war:
+        pv, dv = war_card_value(player), war_card_value(dealer)
+        if pv > dv:
+            return {"result": "win", "payout": bet * 2, "done": True}
+        if pv < dv:
+            return {"result": "lose", "payout": 0, "done": True}
+        return {"result": "tie", "payout": 0, "done": False, "awaiting_war": True}
+
+    raise_bet = valid_bet(raise_bet or bet)
+    if player_war is None or dealer_war is None:
+        raise SideError("War cards required")
+    pv, dv = war_card_value(player_war), war_card_value(dealer_war)
+    # Win: 1:1 on the raise, original ante pushes → return ante + 2×raise
+    if pv > dv:
+        return {"result": "war_win", "payout": bet + raise_bet * 2, "done": True}
+    if pv < dv:
+        return {"result": "war_lose", "payout": 0, "done": True}
+    # Tie on war: both bets push (optional bonus not applied — keeps HE ~2.9%).
+    return {"result": "war_tie", "payout": bet + raise_bet, "done": True}
+
+
+def war_deal(bet: int) -> dict[str, Any]:
+    bet = valid_bet(bet)
+    shoe = _fresh_shoe(6)
+    player = _draw(shoe)
+    dealer = _draw(shoe)
+    settled = war_settle(player, dealer, bet, war=False)
+    state = {
+        "game": "war",
+        "bet": bet,
+        "player": player,
+        "dealer": dealer,
+        "shoe": shoe,
+        "war": False,
+        "payout": settled["payout"],
+        "result": settled["result"],
+        "done": settled["done"],
+        "awaiting_war": bool(settled.get("awaiting_war")),
+        "can": ["war", "surrender"] if settled.get("awaiting_war") else [],
+    }
+    return state
+
+
+def war_act(state: dict[str, Any], action: str) -> dict[str, Any]:
+    if state.get("done"):
+        raise SideError("Hand is already finished")
+    if not state.get("awaiting_war"):
+        raise SideError("No tie to resolve")
+    action = str(action or "").lower().strip()
+    bet = int(state["bet"])
+    if action == "surrender":
+        # Half the ante is returned (integer coins; odd bets lose the leftover).
+        payout = bet // 2
+        state = {**state, "done": True, "awaiting_war": False, "war": False,
+                 "result": "surrender", "payout": payout, "can": [], "raise": 0}
+        return state
+    if action != "war":
+        raise SideError("Choose war or surrender")
+    shoe = list(state.get("shoe") or _fresh_shoe(6))
+    # Standard casino war: burn three each, then one card each.
+    for _ in range(3):
+        if shoe:
+            _draw(shoe)
+        if shoe:
+            _draw(shoe)
+    player_war = _draw(shoe)
+    dealer_war = _draw(shoe)
+    settled = war_settle(state["player"], state["dealer"], bet, war=True,
+                         raise_bet=bet, player_war=player_war, dealer_war=dealer_war)
+    return {
+        "game": "war",
+        "done": True,
+        "bet": bet,
+        "raise": bet,
+        "player": state["player"],
+        "dealer": state["dealer"],
+        "player_war": player_war,
+        "dealer_war": dealer_war,
+        "war": True,
+        "awaiting_war": False,
+        "payout": settled["payout"],
+        "result": settled["result"],
+        "can": [],
+    }
+
+
+
 def public_state(state: dict[str, Any]) -> dict[str, Any]:
     """Drop private fields (shoe, mine locations mid-round) for the client."""
     game = state.get("game")
@@ -774,6 +1347,8 @@ def public_state(state: dict[str, Any]) -> dict[str, Any]:
         return out
     if game == "mines":
         return mines_public(state)
+    if game == "threecard":
+        return threecard_public(state)
     # Other games are one-shot or already public.
-    banned = {"shoe", "bombs"} if not state.get("done") else {"shoe"}
+    banned = {"shoe", "bombs", "deck"} if not state.get("done") else {"shoe", "deck"}
     return {k: v for k, v in state.items() if k not in banned}

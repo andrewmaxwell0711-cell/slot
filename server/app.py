@@ -37,7 +37,7 @@ import ledger  # noqa: E402
 import prizes  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js", "casino.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -250,6 +250,11 @@ def app_js():
 @app.get("/lobby.js")
 def lobby_js():
     return send_from_directory(ROOT, "lobby.js")
+
+
+@app.get("/casino.js")
+def casino_js():
+    return send_from_directory(ROOT, "casino.js")
 
 
 ASSETS_DIR = ROOT / "assets"

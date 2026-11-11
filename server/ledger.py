@@ -777,6 +777,73 @@ def play_side(player_id: str, game: str, payload: dict | None = None) -> dict:
     payload = payload or {}
     game = str(game or "").lower().strip()
     if game not in _side.GAMES:
+
+        if game == "videopoker":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                state = _side.videopoker_deal(payload.get("bet") or payload.get("coins") or 0)
+                _take_coins(conn, player_id, state["bet"], "side_bet", f"videopoker {state['bet']} coins")
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "videopoker":
+                raise ValueError("No video poker hand in play")
+            if action != "draw":
+                raise ValueError("Unknown video poker action")
+            state = _side.videopoker_draw(existing, payload.get("holds") or payload.get("held") or [])
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
+
+        if game == "threecard":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                ante = payload.get("ante") or payload.get("bet") or payload.get("coins") or 0
+                pair_plus = payload.get("pair_plus") or payload.get("pairplus") or 0
+                state = _side.threecard_deal(ante, pair_plus)
+                _take_coins(conn, player_id, int(state["bet"]), "side_bet",
+                            f"threecard ante {int(state['ante'])} pp {int(state['pair_plus'])} coins")
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "threecard":
+                raise ValueError("No Three Card Poker hand in play")
+            if action not in ("play", "fold"):
+                raise ValueError("Choose play or fold")
+            if action == "play":
+                extra = int(existing["ante"])
+                _take_coins(conn, player_id, extra, "side_bet", f"threecard play {extra} coins")
+            state = _side.threecard_act(existing, action)
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
+
+        if game == "war":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                state = _side.war_deal(payload.get("bet") or payload.get("coins") or 0)
+                _take_coins(conn, player_id, state["bet"], "side_bet", f"war {state['bet']} coins")
+                if state.get("done"):
+                    _save(None)
+                    return _finish(state, state["bet"], int(state.get("payout") or 0))
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "war":
+                raise ValueError("No Casino War hand in play")
+            if action not in ("war", "surrender"):
+                raise ValueError("Choose war or surrender")
+            if action == "war":
+                extra = int(existing["bet"])
+                _take_coins(conn, player_id, extra, "side_bet", f"war raise {extra} coins")
+            state = _side.war_act(existing, action)
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
+
         raise ValueError("Unknown game")
     ensure_player(player_id)
     action = str(payload.get("action") or "").lower().strip()
@@ -919,5 +986,72 @@ def play_side(player_id: str, game: str, payload: dict | None = None) -> dict:
             pub = _side.public_state(state)
             pub["coins"] = _coin_balance(conn, player_id)
             return pub
+
+
+        if game == "videopoker":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                state = _side.videopoker_deal(payload.get("bet") or payload.get("coins") or 0)
+                _take_coins(conn, player_id, state["bet"], "side_bet", f"videopoker {state['bet']} coins")
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "videopoker":
+                raise ValueError("No video poker hand in play")
+            if action != "draw":
+                raise ValueError("Unknown video poker action")
+            state = _side.videopoker_draw(existing, payload.get("holds") or payload.get("held") or [])
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
+
+        if game == "threecard":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                ante = payload.get("ante") or payload.get("bet") or payload.get("coins") or 0
+                pair_plus = payload.get("pair_plus") or payload.get("pairplus") or 0
+                state = _side.threecard_deal(ante, pair_plus)
+                _take_coins(conn, player_id, int(state["bet"]), "side_bet",
+                            f"threecard ante {int(state['ante'])} pp {int(state['pair_plus'])} coins")
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "threecard":
+                raise ValueError("No Three Card Poker hand in play")
+            if action not in ("play", "fold"):
+                raise ValueError("Choose play or fold")
+            if action == "play":
+                extra = int(existing["ante"])
+                _take_coins(conn, player_id, extra, "side_bet", f"threecard play {extra} coins")
+            state = _side.threecard_act(existing, action)
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
+
+        if game == "war":
+            if action in ("", "deal"):
+                if existing and not existing.get("done"):
+                    raise ValueError("Finish your current game first")
+                state = _side.war_deal(payload.get("bet") or payload.get("coins") or 0)
+                _take_coins(conn, player_id, state["bet"], "side_bet", f"war {state['bet']} coins")
+                if state.get("done"):
+                    _save(None)
+                    return _finish(state, state["bet"], int(state.get("payout") or 0))
+                _save(state)
+                pub = _side.public_state(state)
+                pub["coins"] = _coin_balance(conn, player_id)
+                return pub
+            if not existing or existing_game != "war":
+                raise ValueError("No Casino War hand in play")
+            if action not in ("war", "surrender"):
+                raise ValueError("Choose war or surrender")
+            if action == "war":
+                extra = int(existing["bet"])
+                _take_coins(conn, player_id, extra, "side_bet", f"war raise {extra} coins")
+            state = _side.war_act(existing, action)
+            _save(None)
+            return _finish(state, 0, int(state.get("payout") or 0))
 
         raise ValueError("Unknown game")

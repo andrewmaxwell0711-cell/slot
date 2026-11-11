@@ -165,7 +165,7 @@ Removed (return 404): `/api/withdraw`, `/api/deposit/checkout`, `/api/deposit/pl
 .venv/bin/python server/test_cap.py
 ```
 
-Coverage includes uncapped payouts, the fixed Green Tea Jackpot (5,000× bet), an honest weight-proportional Tea Wheel, multi-line and Megaways evaluation, fair 50/50 gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, **themes locked until level**, plus v6 Hold & Spin, progressive, collection, VIP, weekend tournament, and side-game rules/house edges (`server/test_v6.py`).
+Coverage includes uncapped payouts, the fixed Green Tea Jackpot (5,000× bet), an honest weight-proportional Tea Wheel, multi-line and Megaways evaluation, fair 50/50 gamble, public API hiding the pool, **no withdraw route**, **idempotent coin-pack checkout credit**, **coins never converting out**, **trophy unlock**, **mission progress and claim-once**, **leaderboard ordering and nickname sanitising**, **themes locked until level**, plus v6 Hold & Spin, progressive, collection, VIP, weekend tournament, and side-game rules/house edges (`server/test_v6.py`), plus v7 video poker, three card poker and casino war (`server/test_v7.py`).
 
 ## Deploy on Render
 
@@ -210,9 +210,11 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 | `server/ledger.py` | SQLite ledger (coins, bonuses, idempotent pack credit) |
 | `server/game.py` | Symbol weights, RNG, paytables, coin scale (~95% RTP) |
 | `server/simulate_rtp.py` | Multi-million-spin RTP check (target ~95%, incl. progressive) |
-| `server/side.py` | Blackjack, European roulette, high card, mines, scratch, dice |
+| `server/side.py` | Table games: blackjack, roulette, video poker, three card poker, casino war, high card, mines, scratch, dice |
 | `server/test_v6.py` | v6 features, side-game rules and house-edge sims |
-| `lobby.js` | Side-games lobby UI |
+| `server/test_v7.py` | Video poker, three card poker, casino war rules and house-edge sims |
+| `lobby.js` | Legacy side-game helpers (v7 shell takes over the floor) |
+| `casino.js` | Home, game floor, hash routing, full-screen tables |
 | `server/test_cap.py` | Payout, jackpot, API, shop, and social-casino tests |
 | `server/templates/` | Shop success / cancel pages |
 | `requirements.txt` | Python dependencies (includes gunicorn) |
@@ -224,4 +226,4 @@ This demo stays in Stripe **test mode**. Accepting real payments for coin packs 
 
 v3–v5 added 25-line Classic, Megaways, mini games, sound, and richer animation. Those game features remain. v5's client-side daily USDT play-money credit has been replaced by the server-authoritative daily and hourly **coin** bonuses. Fiat/crypto wallet display and simulated withdrawals were removed in the social-casino conversion.
 
-Public amounts are coins (`COIN_SCALE = 1000`). The 20% per-step payout cap from v3–v5 has been removed. v6 adds an honest Tea Wheel, a live Crystal Crown progressive, Hold & Spin, Crystal Collection, surprise wilds, VIP tiers (by level, never by purchase), a weekend tournament, and a side-games lobby. Long-run slot RTP stays ~95% including the progressive.
+Public amounts are coins (`COIN_SCALE = 1000`). The 20% per-step payout cap from v3–v5 has been removed. v6 adds an honest Tea Wheel, a live Crystal Crown progressive, Hold & Spin, Crystal Collection, surprise wilds, VIP tiers (by level, never by purchase), a weekend tournament, and a side-games lobby. Long-run slot RTP stays ~95% including the progressive. v7 turns the app into a full casino: a home marquee, a categorised game floor, hash routing, full-screen roulette and blackjack tables, Jacks or Better video poker, Three Card Poker, and Casino War.

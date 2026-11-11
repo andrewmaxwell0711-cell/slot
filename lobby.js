@@ -376,6 +376,8 @@
   }
 
   function init() {
+    // v7 casino.js owns the floor, home, and full-screen tables.
+    if (document.getElementById("home") && document.getElementById("game-stage")) return;
     const cfg = CC() && CC().config;
     if (cfg && cfg.side && cfg.side.bets) betsList = cfg.side.bets;
     renderGrid();

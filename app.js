@@ -199,6 +199,14 @@
     if (s.collection) collection = { ...collection, ...s.collection };
     if (s.weekend) weekend = s.weekend;
     if (s.progressive_hit) lastProgHit = s.progressive_paid || 0;
+    try {
+      const credit = Math.max(0, typeof coins === "number" ? coins : 0);
+      document.querySelectorAll("[data-bind=coins]").forEach((el) => { el.textContent = moneyShort(credit); });
+      document.querySelectorAll("[data-bind=progressive]").forEach((el) => { el.textContent = money(progressiveCoins); });
+      if (window.CrystalShell && window.CrystalShell.refreshHud) {
+        window.CrystalShell.refreshHud({ coins: credit, profile, bonuses, progressive: progressiveCoins, weekend });
+      }
+    } catch (e) { /* ignore */ }
   }
   function applyConfig(cfg) {
     stripeEnabled = !!cfg.stripe_enabled;
@@ -235,6 +243,13 @@
     const credit = Math.max(0, totalCoins() - pendingWinAud);
     $("#credit").textContent = moneyShort(credit);
     $("#primary-balance").textContent = moneyShort(credit);
+    document.querySelectorAll("[data-bind=coins]").forEach((el) => { el.textContent = moneyShort(credit); });
+    document.querySelectorAll("[data-bind=progressive]").forEach((el) => { el.textContent = money(progressiveCoins); });
+    if (window.CrystalShell && window.CrystalShell.refreshHud) {
+      window.CrystalShell.refreshHud({
+        coins: credit, profile, bonuses, progressive: progressiveCoins, weekend,
+      });
+    }
     const legalEl = $("#shop-legal"); if (legalEl) legalEl.textContent = LEGAL;
     const foot = $("#footer-legal"); if (foot) foot.textContent = LEGAL;
     const resp = $("#footer-responsible"); if (resp) resp.textContent = RESPONSIBLE + " DEMO · TEST MODE.";
@@ -1659,13 +1674,13 @@
     }
   }
   function setView(name) {
-    currentView = name === "lobby" ? "lobby" : "slots";
-    document.body.classList.toggle("view-lobby", currentView === "lobby");
-    document.body.classList.toggle("view-slots", currentView === "slots");
-    const lobby = $("#lobby");
-    if (lobby) lobby.hidden = currentView !== "lobby";
-    document.querySelectorAll(".view-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === currentView));
-    if (currentView === "lobby" && window.CrystalLobby) window.CrystalLobby.renderGrid();
+    const map = { slots: "/slots", lobby: "/lobby", home: "/home", games: "/lobby" };
+    const path = map[name] || (String(name || "").startsWith("/") ? name : "/" + (name || "home"));
+    if (window.CrystalShell && window.CrystalShell.go) window.CrystalShell.go(path);
+    else {
+      const hash = "#" + path;
+      if (location.hash !== hash) location.hash = hash;
+    }
   }
 
   async function playHoldSpin(g, betAmt) {
@@ -2008,7 +2023,7 @@
       ensureAudio(); applyVolume(); savePrefs(); render();
       if (musicMuted) stopBgMusic(); else startBgMusic();
     });
-    document.querySelectorAll(".view-nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+    document.querySelectorAll(".view-nav button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.route || b.dataset.view || "home")));
     volEl.addEventListener("change", () => { if (!muted) chime(880, 0.25, 0.05); });
     const openShop = () => openModal("shop");
     const openPrizes = (tab) => {
@@ -2124,7 +2139,12 @@
   window.CrystalCasino = {
     api, money, toast, ensureAudio, applySnapshot,
     sfx, startBgMusic, stopBgMusic, setView, presentHoldSpin: playHoldSpin,
+    claimDaily, claimHourly,
+    openShop: () => openModal("shop"),
+    openPrizes: () => openModal("prizes"),
     get coins() { return coins; },
+    get profile() { return profile; },
+    get bonuses() { return bonuses; },
     get config() { return { side: SIDE, hold: HOLD, collection, progressive: progressiveCoins }; },
   };
 
@@ -2139,7 +2159,8 @@
     } catch { toast("Could not load the server ledger — is the Flask app running?", true); }
     startHourlyTick();
     renderEngage();
-    setView("slots");
+    if (window.CrystalShell && window.CrystalShell.start) window.CrystalShell.start();
+    else if (!location.hash) setView("home");
     startProgTick();
     setMsg(mode === "megaways" ? `MEGAWAYS · UP TO ${fmtWays(MW.max_ways)} WAYS` : "PLACE YOUR BET");
     ready = true;
