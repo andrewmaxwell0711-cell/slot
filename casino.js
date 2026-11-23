@@ -290,14 +290,24 @@
     stage("Poker", `
       <div class="poker-menu">
         <a class="lobby-tile poker-pick" href="#/videopoker">
-          <span class="glyph">♚</span>
-          <h3>Video Poker</h3>
-          <p>Jacks or Better · 9/6 full-pay paytable. Hold and draw five cards.</p>
+          <div class="tile-media">
+            <img class="tile-art" src="/assets/tiles/poker-sm.webp" srcset="/assets/tiles/poker-sm.webp 400w, /assets/tiles/poker.webp 800w" sizes="(max-width: 720px) 100vw, 480px" alt="" loading="lazy" decoding="async" />
+            <span class="tile-shine" aria-hidden="true"></span>
+          </div>
+          <div class="tile-copy">
+            <h3>Video Poker</h3>
+            <p>Jacks or Better · 9/6 full-pay. Hold and draw five cards.</p>
+          </div>
         </a>
         <a class="lobby-tile poker-pick" href="#/threecard">
-          <span class="glyph">♛</span>
-          <h3>Three Card Poker</h3>
-          <p>Ante/Play + Pair Plus. Dealer qualifies Queen-high.</p>
+          <div class="tile-media">
+            <img class="tile-art" src="/assets/tiles/blackjack-sm.webp" srcset="/assets/tiles/blackjack-sm.webp 400w, /assets/tiles/blackjack.webp 800w" sizes="(max-width: 720px) 100vw, 480px" alt="" loading="lazy" decoding="async" />
+            <span class="tile-shine" aria-hidden="true"></span>
+          </div>
+          <div class="tile-copy">
+            <h3>Three Card Poker</h3>
+            <p>Ante/Play + Pair Plus. Dealer qualifies Queen-high.</p>
+          </div>
         </a>
       </div>`, "#/lobby");
   }

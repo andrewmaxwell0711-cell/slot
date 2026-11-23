@@ -2131,3 +2131,66 @@ body.view-table .site-footer { display: none; }
   z-index: 1;
   max-width: none;
 }
+
+/* ============================================================
+   v8.1 polish — brighter emerald is a raster swap; these rules
+   tighten mobile contrast, alignment and fold at ~390×844.
+   ============================================================ */
+:root { --hud-h: 76px; }
+
+#btn-lobby-back { white-space: nowrap; flex-shrink: 0; padding: .45rem .75rem; }
+
+.vp-pays { padding-right: 2.6rem; } /* keep the rules ? off the 800× */
+
+@media (max-width: 800px) {
+  .top-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 40;
+  }
+  body.v8 { padding-top: calc(var(--hud-h) + env(safe-area-inset-top, 0px)); }
+
+  /* Home: drop duplicate balance / shop / prizes so the hero fits */
+  .home-balance { display: none; }
+  .home-actions .js-shop, .home-actions .js-prizes { display: none; }
+  .mode-banner { font-size: .6rem; padding: .28rem .5rem; line-height: 1.3; }
+  .home-marquee { padding: .55rem .7rem .6rem; margin-bottom: .45rem; }
+  .home-title { font-size: 1.4rem !important; }
+  .home-hud { margin: .35rem 0 .45rem; gap: .4rem; }
+  .hero { min-height: 200px; }
+  .jackpot-plaque strong, .home-ticker strong { font-size: 1.45rem; }
+  .home-profile { padding: .45rem .7rem; }
+
+  /* Slots: keep SPIN above the bottom nav on shorter phones */
+  :root { --mw-h: calc(var(--mw-col) * 3.25); --mw-top: calc(var(--mw-col) * .66); }
+  body.view-slots .btn-spin { width: 70px; height: 70px; max-width: 70px; }
+  body.view-slots .marquee { padding-top: 6px; padding-bottom: 4px; }
+  body.view-slots .cbtn { height: 34px; font-size: .58rem; }
+
+  /* Tables: hide duplicate coin chip, tighten chrome, clear the nav */
+  .stage-balance { display: none; }
+  .stage-head { margin: .1rem 0 .2rem; gap: .4rem; flex-wrap: nowrap; }
+  .stage-head h2 { font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #btn-stage-back { padding: .35rem .55rem; font-size: .76rem; white-space: nowrap; flex-shrink: 0; }
+  .game-stage { padding: 0 .5rem .6rem; margin-bottom: 0; }
+
+  body.view-table .wheel-box { max-width: 200px; padding-bottom: 26px; margin: 0 auto; }
+  body.view-table .rl-history { margin-bottom: .15rem; min-height: 0; }
+  body.view-table .felt-table { padding: .45rem .4rem .55rem; min-height: 0; }
+  body.view-table .felt-eu { grid-auto-rows: minmax(18px, auto); gap: 2px; font-size: .56rem; }
+  body.view-table .felt-eu button { min-height: 18px; }
+  body.view-table .chip-rack { margin: .3rem 0 .15rem; max-width: calc(4 * 46px + 3 * 6px); gap: 6px; }
+  body.view-table .chip { width: 44px; height: 44px; font-size: .6rem; }
+  body.view-table .table-msg, body.view-table .step-prompt { margin: .15rem 0; font-size: .75rem; }
+  body.view-table .actions-row { margin-top: .15rem; display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; }
+  body.view-table .bet-circle { width: 76px; height: 76px; margin: .35rem auto; }
+  body.view-table .vp-pays { font-size: .7rem; }
+  body.view-table .vp-pays li { padding: .22rem .55rem; }
+  body.view-table .vp-card .pcard { width: 58px; height: 82px; }
+
+  .poker-menu { gap: .8rem; margin-top: .4rem; }
+  .poker-pick { min-height: 0; }
+}
+@media (max-width: 800px) {
+  body.view-table .rl-history.empty { display: none; }
+  body.view-table .wheel-box { max-width: 184px; padding-bottom: 18px; }
+}
