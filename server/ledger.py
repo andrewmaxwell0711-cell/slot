@@ -6,13 +6,14 @@ transferred or exchanged for money or prizes. There is no cash-out path.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
+
+import db as dbmod
 
 from game import jackpot_roll as game_jackpot_roll
 from game import settle_steps as game_settle_steps
@@ -32,7 +33,7 @@ from game import (
 
 PERTH = ZoneInfo("Australia/Perth")
 
-DB_PATH = Path(__file__).resolve().parent / "ledger.db"
+DB_PATH = dbmod.DEFAULT_SQLITE_PATH
 
 _local = threading.local()
 
@@ -41,25 +42,19 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def connect(path: Path | None = None) -> sqlite3.Connection:
-    db_path = path or DB_PATH
-    conn = sqlite3.connect(str(db_path), check_same_thread=False, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+def connect(path: Path | None = None) -> Any:
+    return dbmod.connect(path or DB_PATH)
 
 
-def get_conn() -> sqlite3.Connection:
+def get_conn() -> Any:
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = connect()
+        conn = connect(DB_PATH)
         _local.conn = conn
     return conn
 
 
-def init_db(conn: sqlite3.Connection | None = None) -> None:
+def init_db(conn: Any | None = None) -> None:
     c = conn or get_conn()
     c.executescript(
         """
@@ -111,7 +106,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             biggest_win_aud REAL NOT NULL DEFAULT 0,
             updated_at TEXT
         );
-        INSERT OR IGNORE INTO house (id, pool_aud, jackpot_aud) VALUES (1, 0, 0);
+        INSERT INTO house (id, pool_aud, jackpot_aud) VALUES (1, 0, 0) ON CONFLICT (id) DO NOTHING;
 
         CREATE TABLE IF NOT EXISTS withdrawals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,10 +121,12 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
     _migrate(c)
     from prizes import ensure_schema
     ensure_schema(c)
+    import auth
+    auth.ensure_schema(c)
 
 
 @contextmanager
-def transaction() -> Iterator[sqlite3.Connection]:
+def transaction() -> Iterator[Any]:
     conn = get_conn()
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -168,7 +165,7 @@ def ensure_player(player_id: str) -> None:
         )
 
 
-def _coin_balance(conn: sqlite3.Connection, player_id: str) -> int:
+def _coin_balance(conn: Any, player_id: str) -> int:
     row = conn.execute(
         "SELECT amount FROM balances WHERE player_id = ? AND asset = ?",
         (player_id, COIN_ASSET),
@@ -182,7 +179,7 @@ def _coin_balance(conn: sqlite3.Connection, player_id: str) -> int:
     return int(round(float(row["amount"])))
 
 
-def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
+def _player_stats(conn: Any, player_id: str) -> dict[str, Any]:
     row = conn.execute(
         """
         SELECT display_currency, spins, total_won_aud, total_bet_aud, last_win_aud, gamble_aud
@@ -209,7 +206,7 @@ def _player_stats(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
     }
 
 
-def _bonus_status(conn: sqlite3.Connection, player_id: str) -> dict[str, Any]:
+def _bonus_status(conn: Any, player_id: str) -> dict[str, Any]:
     row = conn.execute(
         "SELECT last_daily_date, last_hourly_at FROM players WHERE id = ?",
         (player_id,),
@@ -286,7 +283,7 @@ def snapshot(player_id: str) -> dict[str, Any]:
     return attach(player_id, out)
 
 
-def _credit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float) -> None:
+def _credit(conn: Any, player_id: str, asset: str, amount: float) -> None:
     amount = clean_amount(asset, amount)
     if amount <= 0:
         raise ValueError("Credit amount must be positive")
@@ -299,7 +296,7 @@ def _credit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float)
     )
 
 
-def _debit(conn: sqlite3.Connection, player_id: str, asset: str, amount: float) -> None:
+def _debit(conn: Any, player_id: str, asset: str, amount: float) -> None:
     amount = clean_amount(asset, amount)
     if amount <= 0:
         raise ValueError("Debit amount must be positive")
@@ -348,31 +345,35 @@ def credit_coin_pack(
             (session_id,),
         ).fetchone()
         if existing:
-            return False, "already credited", snapshot(player_id)
-        _credit(conn, player_id, COIN_ASSET, coins)
-        now = _utc_now()
-        conn.execute(
-            """
-            INSERT INTO processed_sessions (session_id, player_id, asset, amount, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (session_id, player_id, COIN_ASSET, coins, now),
-        )
-        conn.execute(
-            """
-            INSERT INTO ledger_entries
-                (player_id, kind, asset, amount, stripe_session_id, note, created_at)
-            VALUES (?, 'shop_pack', ?, ?, ?, ?, ?)
-            """,
-            (
-                player_id,
-                COIN_ASSET,
-                coins,
-                session_id,
-                f"Stripe test-mode coin pack {pack_id} — virtual coins, no cash value",
-                now,
-            ),
-        )
+            already = True
+        else:
+            already = False
+            _credit(conn, player_id, COIN_ASSET, coins)
+            now = _utc_now()
+            conn.execute(
+                """
+                INSERT INTO processed_sessions (session_id, player_id, asset, amount, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, player_id, COIN_ASSET, coins, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO ledger_entries
+                    (player_id, kind, asset, amount, stripe_session_id, note, created_at)
+                VALUES (?, 'shop_pack', ?, ?, ?, ?, ?)
+                """,
+                (
+                    player_id,
+                    COIN_ASSET,
+                    coins,
+                    session_id,
+                    f"Stripe test-mode coin pack {pack_id} — virtual coins, no cash value",
+                    now,
+                ),
+            )
+    if already:
+        return False, "already credited", snapshot(player_id)
     return True, "credited", snapshot(player_id)
 
 
@@ -461,8 +462,8 @@ def claim_hourly(player_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+def _migrate(conn: Any) -> None:
+    cols = dbmod.table_columns(conn, "players")
     if "gamble_aud" not in cols:
         conn.execute("ALTER TABLE players ADD COLUMN gamble_aud REAL NOT NULL DEFAULT 0")
     if "gamble_rounds" not in cols:
@@ -473,7 +474,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE players ADD COLUMN last_hourly_at TEXT")
     if "collect_meter" not in cols:
         conn.execute("ALTER TABLE players ADD COLUMN collect_meter TEXT NOT NULL DEFAULT '{}'")
-    house_cols = {r["name"] for r in conn.execute("PRAGMA table_info(house)").fetchall()}
+    house_cols = dbmod.table_columns(conn, "house")
     if "progressive_aud" not in house_cols:
         conn.execute("ALTER TABLE house ADD COLUMN progressive_aud REAL NOT NULL DEFAULT 25")
     conn.execute(
@@ -488,12 +489,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     )
 
 
-def _house_row(conn: sqlite3.Connection) -> dict[str, float]:
+def _house_row(conn: Any) -> dict[str, float]:
     row = conn.execute(
         "SELECT pool_aud, total_staked_aud, total_paid_aud, biggest_win_aud, progressive_aud FROM house WHERE id = 1"
     ).fetchone()
     if not row:
-        conn.execute("INSERT OR IGNORE INTO house (id) VALUES (1)")
+        conn.execute("INSERT INTO house (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
         return {"pool_aud": 0.0, "total_staked_aud": 0.0, "total_paid_aud": 0.0, "biggest_win_aud": 0.0,
                 "progressive_aud": 25.0}
     out = {k: float(row[k]) for k in row.keys() if k in row.keys()}
@@ -527,7 +528,7 @@ def progressive_public() -> dict[str, Any]:
     }
 
 
-def _take_stake(conn: sqlite3.Connection, player_id: str, amount_units: float, kind: str, note: str) -> None:
+def _take_stake(conn: Any, player_id: str, amount_units: float, kind: str, note: str) -> None:
     """Debit the coin equivalent of a game-unit stake. No cash leaves the ledger."""
     coins = to_coins(amount_units)
     if coins <= 0:
@@ -541,7 +542,7 @@ def _take_stake(conn: sqlite3.Connection, player_id: str, amount_units: float, k
     )
 
 
-def _pay(conn: sqlite3.Connection, player_id: str, amount_units: float, kind: str, note: str) -> None:
+def _pay(conn: Any, player_id: str, amount_units: float, kind: str, note: str) -> None:
     if amount_units <= 0:
         return
     coins = to_coins(amount_units)
@@ -728,7 +729,7 @@ class GambleUnavailable(ValueError):
 # Side games (lobby). Bets are integer coins; outcomes come from side.py.
 # ---------------------------------------------------------------------------
 
-def _take_coins(conn: sqlite3.Connection, player_id: str, coins: int, kind: str, note: str) -> None:
+def _take_coins(conn: Any, player_id: str, coins: int, kind: str, note: str) -> None:
     coins = int(coins)
     if coins <= 0:
         raise ValueError("Invalid bet")
@@ -741,7 +742,7 @@ def _take_coins(conn: sqlite3.Connection, player_id: str, coins: int, kind: str,
     )
 
 
-def _pay_coins(conn: sqlite3.Connection, player_id: str, coins: int, kind: str, note: str) -> None:
+def _pay_coins(conn: Any, player_id: str, coins: int, kind: str, note: str) -> None:
     coins = int(coins)
     if coins <= 0:
         return

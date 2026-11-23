@@ -248,7 +248,8 @@ def catalogue() -> dict[str, Any]:
 
 
 def ensure_schema(conn) -> None:
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(players)").fetchall()}
+    import db as dbmod
+    cols = dbmod.table_columns(conn, "players")
     additions = {
         "nickname": "TEXT",
         "xp": "INTEGER NOT NULL DEFAULT 0",
@@ -421,7 +422,7 @@ def _unlock_many(conn, player_id: str, ids: list[str], now: str) -> list[dict[st
         if tid in have or tid not in _TROPHY_BY_ID:
             continue
         conn.execute(
-            "INSERT OR IGNORE INTO trophies (player_id, trophy_id, unlocked_at) VALUES (?, ?, ?)",
+            "INSERT INTO trophies (player_id, trophy_id, unlocked_at) VALUES (?, ?, ?) ON CONFLICT (player_id, trophy_id) DO NOTHING",
             (player_id, tid, now),
         )
         have.add(tid)
@@ -846,6 +847,11 @@ def leaderboard(period_type: str, board: str, period_key: str | None = None, vie
         score = float(row["score"] or 0)
         nick_row = conn.execute("SELECT nickname FROM players WHERE id = ?", (pid,)).fetchone()
         nick = (nick_row["nickname"] if nick_row and nick_row["nickname"] else default_nickname(pid))
+        try:
+            import auth
+            nick = auth.display_name_for(conn, pid, nick)
+        except Exception:
+            pass
         item = {
             "place": i,
             "nickname": nick,

@@ -45,11 +45,17 @@
         <button type="button" class="active" data-route="home" id="nav-home">Home</button>
         <button type="button" data-route="lobby" id="nav-lobby">Games</button>
       </nav>
-      <div class="hud-level" id="hud-level-wrap" title="Level">
+      <a class="hud-level" id="hud-level-wrap" href="#/profile" title="Your profile">
         <div class="level-ring" id="hud-level-ring" style="--p:0">
-          <img class="hud-avatar" src="/assets/ui/avatar.webp" width="32" height="32" alt="" />
+          <img class="hud-avatar" id="hud-avatar" src="/assets/ui/avatar.webp" width="32" height="32" alt="" />
         </div>
-        <span class="hud-lvl" id="hud-level">1</span>
+        <div class="hud-who">
+          <span class="hud-name" id="hud-name">Guest</span>
+          <span class="hud-lvl" id="hud-level">1</span>
+        </div>
+      </a>
+      <div class="hud-auth" id="hud-auth">
+        <button type="button" class="btn btn-outline btn-signin" id="btn-signin" hidden>Sign in</button>
       </div>
       <div class="hdr-chip hud-coins" title="Virtual coins — no cash value">
         <img class="coin-icon" src="/assets/symbols/coin.webp" width="28" height="28" alt="" />
@@ -97,11 +103,12 @@
         <strong id="home-credit" data-bind="coins">0</strong>
         <span class="sub">Virtual coins · no cash value</span>
       </div>
-      <div class="home-profile">
+      <a class="home-profile" id="home-profile-link" href="#/profile">
+        <img class="home-avatar" id="home-avatar" src="/assets/ui/avatar.webp" width="40" height="40" alt="" />
         <span id="home-nick">Hopper</span>
         <span id="home-level">LV 1</span>
         <span class="vip-badge bronze" id="home-vip">BRONZE</span>
-      </div>
+      </a>
       <div class="home-actions">
         <button type="button" class="daily-chest js-daily" id="btn-daily-home">
           <span class="chest-icon" aria-hidden="true">🍵</span>
@@ -304,6 +311,51 @@
       <a class="btn btn-outline" href="#/home" id="btn-lobby-back">← Home</a>
     </div>
     <div class="lobby-cats" id="lobby-grid"></div>
+  </section>
+
+  <!-- Profile / account -->
+  <section class="profile-page" id="profile-page" hidden>
+    <div class="lobby-head">
+      <div>
+        <h2>Profile</h2>
+        <p class="hint">Your account and game progress. Coins have no cash value.</p>
+      </div>
+      <a class="btn btn-outline" href="#/home">← Home</a>
+    </div>
+    <div class="profile-card" id="profile-card">
+      <div class="profile-identity">
+        <img class="profile-avatar" id="profile-avatar" src="/assets/ui/avatar.webp" width="72" height="72" alt="" />
+        <div>
+          <h3 id="profile-page-name">Guest</h3>
+          <p class="hint" id="profile-page-email">Playing as a guest on this device</p>
+          <span class="vip-badge bronze" id="profile-page-vip">BRONZE</span>
+        </div>
+      </div>
+      <dl class="profile-stats" id="profile-stats">
+        <div><dt>Level</dt><dd id="ps-level">1</dd></div>
+        <div><dt>XP</dt><dd id="ps-xp">0</dd></div>
+        <div><dt>Trophies</dt><dd id="ps-trophies">0</dd></div>
+        <div><dt>Spins</dt><dd id="ps-spins">0</dd></div>
+        <div><dt>Lifetime won</dt><dd id="ps-won">0</dd></div>
+        <div><dt>Lifetime bet</dt><dd id="ps-bet">0</dd></div>
+      </dl>
+      <div class="profile-auth" id="profile-auth-guest">
+        <p>Sign in to keep your coins, VIP, trophies and bonuses across devices.</p>
+        <div class="google-slot" id="google-btn-profile"></div>
+        <p class="hint" id="google-unavailable" hidden>Google sign-in is not configured on this server. You can keep playing as a guest.</p>
+      </div>
+      <div class="profile-auth" id="profile-auth-user" hidden>
+        <button type="button" class="btn btn-outline" id="btn-signout">Sign out</button>
+      </div>
+      <div class="privacy-note" id="privacy-note">
+        <h3>Privacy</h3>
+        <p id="privacy-copy">If you sign in, we store your Google name, email and avatar, plus your game progress (coins, XP and VIP tier, trophies, themes, missions, bonus timers and coin-pack purchases). Coins have no cash value and cannot be cashed out. You can delete your account at any time; this permanently removes your account and progress.</p>
+      </div>
+      <div class="profile-delete" id="profile-delete" hidden>
+        <button type="button" class="btn btn-outline btn-danger" id="btn-delete-account">Delete my account</button>
+        <p class="hint">This permanently deletes your account and game progress. It cannot be undone.</p>
+      </div>
+    </div>
   </section>
 
   <!-- Full-screen table / game stage -->
@@ -525,6 +577,7 @@
   <footer class="site-footer">
     <p id="footer-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
     <p id="footer-responsible">Play for fun. This is a social casino, not real-money gambling. If you need a break, step away. 18+ only. DEMO · TEST MODE.</p>
+    <p id="footer-privacy">Signed-in accounts store your Google name, email, avatar and game progress. You can review or delete this from your profile.</p>
   </footer>
 
   <!-- 18+ age gate -->
@@ -550,6 +603,45 @@
     </div>
   </div>
 
+  <div class="modal" id="modal-signin" hidden>
+    <div class="modal-backdrop" data-close="signin"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="signin-title" aria-modal="true">
+      <div class="modal-body">
+        <h2 id="signin-title">Sign in</h2>
+        <p>Use Google to save your coins, VIP, trophies and bonuses across devices. Coins have no cash value.</p>
+        <div class="google-slot" id="google-btn-modal"></div>
+        <p class="hint" id="signin-unavailable" hidden>Google sign-in is not configured. You can keep playing as a guest.</p>
+        <button type="button" class="btn btn-outline" data-close="signin" id="btn-signin-cancel">Not now</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="modal-merge" hidden>
+    <div class="modal-backdrop" data-close="merge"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="merge-title" aria-modal="true">
+      <div class="modal-body">
+        <h2 id="merge-title">Add progress from this device?</h2>
+        <p>We found guest progress on this device. You can add it to your account once. Bonuses already claimed on either side stay claimed, and coin-pack purchases are not credited twice.</p>
+        <div class="merge-compare" id="merge-compare"></div>
+        <div class="age-actions">
+          <button type="button" class="btn btn-gold" id="btn-merge-yes">Add device progress</button>
+          <button type="button" class="btn btn-outline" id="btn-merge-no">Not now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="modal-delete" hidden>
+    <div class="modal-backdrop" data-close="delete"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="delete-title" aria-modal="true">
+      <div class="modal-body">
+        <h2 id="delete-title">Delete your account?</h2>
+        <p>This permanently deletes your account and game progress. Coins have no cash value. This cannot be undone.</p>
+        <div class="age-actions">
+          <button type="button" class="btn btn-outline btn-danger" id="btn-delete-yes">Delete account</button>
+          <button type="button" class="btn btn-gold" id="btn-delete-no">Keep account</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="toast" class="toast" hidden></div>
   <script src="gems.js"></script>
   <script src="app.js"></script>

@@ -52,6 +52,10 @@
   let stats = { spins: 0, totalWonAud: 0, totalBetAud: 0 };
   let bonuses = { daily_available: false, hourly_available: false, hourly_seconds: 0, daily_coins: 8000, hourly_coins: 2000 };
   let profile = { nickname: "Hopper", level: 1, xp: 0, xp_needed: 80, current_streak: 0, best_streak: 0, theme: "crystal" };
+  let account = { signed_in: false, google_enabled: false };
+  let googleClientId = "";
+  let gisReady = false;
+  let gisRendered = false;
   let trophies = { unlocked: [], new: [], items: [] };
   let missions = [];
   let themes = [];
@@ -164,8 +168,16 @@
   const symbolName = (id) => (SYMBOLS.find((s) => s.id === id) || {}).name || id;
 
   // ---- API ----
+  function csrfToken() {
+    const m = document.cookie.match(/(?:^|; )cc_csrf=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
   async function api(path, options = {}) {
-    const res = await fetch(path, { credentials: "same-origin", headers: options.body ? { "Content-Type": "application/json" } : {}, ...options });
+    const headers = { ...(options.headers || {}) };
+    if (options.body) headers["Content-Type"] = "application/json";
+    const csrf = csrfToken();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    const res = await fetch(path, { credentials: "same-origin", ...options, headers });
     let data = null;
     try { data = await res.json(); } catch { data = null; }
     if (!res.ok) { const e = new Error((data && data.error) || `Request failed (${res.status})`); e.status = res.status; e.data = data; throw e; }
@@ -178,6 +190,12 @@
     if (typeof s.gamble === "number") gambleAud = s.gamble;
     else if (typeof s.gamble_aud === "number") gambleAud = s.gamble_aud;
     if (s.bonuses) bonuses = { ...bonuses, ...s.bonuses };
+    if (s.account) {
+      account = { ...account, ...s.account };
+      if (s.account.privacy) {
+        const el = $("#privacy-copy"); if (el) el.textContent = s.account.privacy;
+      }
+    }
     if (s.profile) {
       profile = { ...profile, ...s.profile };
       engage.level = profile.level;
@@ -204,8 +222,9 @@
       document.querySelectorAll("[data-bind=coins]").forEach((el) => { el.textContent = moneyShort(credit); });
       document.querySelectorAll("[data-bind=progressive]").forEach((el) => { el.textContent = money(progressiveCoins); });
       if (window.CrystalShell && window.CrystalShell.refreshHud) {
-        window.CrystalShell.refreshHud({ coins: credit, profile, bonuses, progressive: progressiveCoins, weekend });
+        window.CrystalShell.refreshHud({ coins: credit, profile, bonuses, progressive: progressiveCoins, weekend, account });
       }
+      renderAccount();
     } catch (e) { /* ignore */ }
   }
   function applyConfig(cfg) {
@@ -231,6 +250,13 @@
     if (cfg.collection) collection = { ...collection, ...cfg.collection, meter: collection.meter || {} };
     if (cfg.progressive && typeof cfg.progressive.progressive === "number") progressiveCoins = cfg.progressive.progressive;
     if (cfg.side) SIDE = cfg.side;
+    if (cfg.google_client_id) googleClientId = cfg.google_client_id;
+    if (typeof cfg.google_enabled === "boolean") account.google_enabled = cfg.google_enabled;
+    if (cfg.privacy) {
+      const el = $("#privacy-copy"); if (el) el.textContent = cfg.privacy;
+    }
+    setupGoogleSignIn();
+    renderAccount();
     if (Array.isArray(cfg.symbols)) SYMBOLS = cfg.symbols.map((s) => ({ ...s, pays: Object.fromEntries(Object.entries(s.pays || {}).map(([k, v]) => [Number(k), v])) }));
     lineIdx = Math.min(lineIdx, LINE_OPTIONS.length - 1);
     bplIdx = Math.min(bplIdx, BPL.length - 1);
@@ -247,7 +273,7 @@
     document.querySelectorAll("[data-bind=progressive]").forEach((el) => { el.textContent = money(progressiveCoins); });
     if (window.CrystalShell && window.CrystalShell.refreshHud) {
       window.CrystalShell.refreshHud({
-        coins: credit, profile, bonuses, progressive: progressiveCoins, weekend,
+        coins: credit, profile, bonuses, progressive: progressiveCoins, weekend, account,
       });
     }
     const legalEl = $("#shop-legal"); if (legalEl) legalEl.textContent = LEGAL;
@@ -1674,7 +1700,7 @@
     }
   }
   function setView(name) {
-    const map = { slots: "/slots", lobby: "/lobby", home: "/home", games: "/lobby" };
+    const map = { slots: "/slots", lobby: "/lobby", home: "/home", games: "/lobby", profile: "/profile" };
     const path = map[name] || (String(name || "").startsWith("/") ? name : "/" + (name || "home"));
     if (window.CrystalShell && window.CrystalShell.go) window.CrystalShell.go(path);
     else {
@@ -2084,10 +2110,24 @@
         if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(tag) || document.querySelector(".modal:not([hidden])") || !ageAccepted()) return;
         e.preventDefault(); spin();
       }
-      if (e.key === "Escape") { ["shop", "auto", "info", "prizes"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
+      if (e.key === "Escape") { ["shop", "auto", "info", "prizes", "signin", "merge", "delete"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
     });
     let rt = null;
     window.addEventListener("resize", () => { resizeCanvas(); clearTimeout(rt); rt = setTimeout(() => { layoutBadges(); clearLines(); if (!busy && mwCols) setMwBoard(mwCols); }, 120); });
+    const btnSignin = $("#btn-signin");
+    if (btnSignin) btnSignin.addEventListener("click", () => openModal("signin"));
+    const btnSignout = $("#btn-signout");
+    if (btnSignout) btnSignout.addEventListener("click", signOut);
+    const btnDel = $("#btn-delete-account");
+    if (btnDel) btnDel.addEventListener("click", () => openModal("delete"));
+    const btnDelYes = $("#btn-delete-yes");
+    if (btnDelYes) btnDelYes.addEventListener("click", deleteAccount);
+    const btnDelNo = $("#btn-delete-no");
+    if (btnDelNo) btnDelNo.addEventListener("click", () => closeModal("delete"));
+    const btnMergeYes = $("#btn-merge-yes");
+    if (btnMergeYes) btnMergeYes.addEventListener("click", mergeGuest);
+    const btnMergeNo = $("#btn-merge-no");
+    if (btnMergeNo) btnMergeNo.addEventListener("click", () => closeModal("merge"));
     // unlock audio on first interaction (browsers block autoplay)
     const unlock = () => { ensureAudio(); startBgMusic(); window.removeEventListener("pointerdown", unlock); };
     window.addEventListener("pointerdown", unlock);
@@ -2142,6 +2182,173 @@
     };
     tick();
     setInterval(tick, 6000);
+  }
+
+  const DEFAULT_AVATAR = "/assets/ui/avatar.webp";
+
+  function setupGoogleSignIn() {
+    if (!googleClientId) {
+      renderGoogleSlots(false);
+      return;
+    }
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      gisReady = true;
+      renderGoogleSlots(true);
+      return;
+    }
+    if (document.getElementById("gis-script")) return;
+    const s = document.createElement("script");
+    s.id = "gis-script";
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.defer = true;
+    s.onload = () => { gisReady = true; renderGoogleSlots(true); };
+    document.head.appendChild(s);
+  }
+
+  function renderGoogleSlots(enabled) {
+    ["google-unavailable", "signin-unavailable"].forEach((id) => {
+      const el = $("#" + id);
+      if (el) el.hidden = !!enabled;
+    });
+    if (!enabled || !googleClientId || !window.google || !window.google.accounts || !window.google.accounts.id) return;
+    try {
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: onGoogleCredential,
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        itp_support: true,
+      });
+      ["google-btn-profile", "google-btn-modal"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = "";
+        window.google.accounts.id.renderButton(el, {
+          type: "standard",
+          theme: "filled_black",
+          size: "large",
+          shape: "pill",
+          text: "signin_with",
+          logo_alignment: "left",
+        });
+      });
+      gisRendered = true;
+    } catch (e) { /* button will stay empty; guest play still works */ }
+  }
+
+  async function onGoogleCredential(response) {
+    const credential = response && response.credential;
+    if (!credential) { toast("Google sign-in was cancelled", true); return; }
+    try {
+      const data = await api("/api/auth/google", { method: "POST", body: JSON.stringify({ credential }) });
+      applySnapshot(data);
+      closeModal("signin");
+      toast("Signed in");
+      maybeOfferMerge(data && data.account);
+      renderAccount();
+    } catch (e) {
+      toast((e && e.message) || "Could not sign in", true);
+    }
+  }
+
+  function maybeOfferMerge(acc) {
+    if (acc && acc.needs_merge && acc.merge) {
+      paintMerge(acc.merge);
+      openModal("merge");
+    }
+  }
+
+  function paintMerge(merge) {
+    const el = $("#merge-compare");
+    if (!el || !merge) return;
+    const col = (title, s) => `<div class="col"><h4>${title}</h4>
+      <p>Coins ${money(s.coins || 0)}</p>
+      <p>Level ${s.level || 1}</p>
+      <p>Trophies ${s.trophies || 0}</p>
+      <p>Spins ${s.spins || 0}</p></div>`;
+    el.innerHTML = col("This device", merge.guest || {}) + col("Your account", merge.account || {});
+  }
+
+  function renderAccount() {
+    const signed = !!account.signed_in;
+    const name = account.display_name || profile.nickname || "Guest";
+    const picture = account.picture || DEFAULT_AVATAR;
+    const email = account.email || (signed ? "" : "Playing as a guest on this device");
+    const btn = $("#btn-signin");
+    if (btn) btn.hidden = signed || !account.google_enabled;
+    const guestBox = $("#profile-auth-guest");
+    if (guestBox) guestBox.hidden = signed;
+    const userBox = $("#profile-auth-user");
+    if (userBox) userBox.hidden = !signed;
+    const delBox = $("#profile-delete");
+    if (delBox) delBox.hidden = !signed;
+    const pageName = $("#profile-page-name");
+    if (pageName) pageName.textContent = signed ? name : (profile.nickname || "Guest");
+    const pageEmail = $("#profile-page-email");
+    if (pageEmail) pageEmail.textContent = signed ? (email || "") : "Playing as a guest on this device";
+    const vip = (profile.vip && profile.vip.name) || "Bronze";
+    const vipId = (profile.vip && profile.vip.id) || "bronze";
+    const pv = $("#profile-page-vip");
+    if (pv) { pv.textContent = String(vip).toUpperCase(); pv.className = "vip-badge " + vipId; }
+    ["#profile-avatar", "#hud-avatar", "#home-avatar"].forEach((sel) => {
+      const img = $(sel);
+      if (img) img.src = picture;
+    });
+    const hn = $("#hud-name");
+    if (hn) hn.textContent = signed ? name : "Guest";
+    const homeNick = $("#home-nick");
+    if (homeNick) homeNick.textContent = signed ? name : (profile.nickname || "Hopper");
+    const ps = {
+      "ps-level": String(profile.level || 1),
+      "ps-xp": `${profile.xp || 0} / ${profile.xp_needed || 80}`,
+      "ps-trophies": String((trophies.unlocked && trophies.unlocked.length) || 0),
+      "ps-spins": String(stats.spins || 0),
+      "ps-won": money(stats.totalWonAud || 0),
+      "ps-bet": money(stats.totalBetAud || 0),
+    };
+    Object.entries(ps).forEach(([id, val]) => { const el = $("#" + id); if (el) el.textContent = val; });
+    ["google-unavailable", "signin-unavailable"].forEach((id) => {
+      const el = $("#" + id);
+      if (el) el.hidden = !!account.google_enabled;
+    });
+    if (account.needs_merge && account.merge) {
+      paintMerge(account.merge);
+    }
+  }
+
+  async function signOut() {
+    try {
+      const data = await api("/api/auth/logout", { method: "POST", body: "{}" });
+      applySnapshot(data);
+      toast("Signed out — you are playing as a guest");
+      if (location.hash === "#/profile") { /* stay */ }
+    } catch (e) {
+      toast((e && e.message) || "Could not sign out", true);
+    }
+  }
+
+  async function mergeGuest() {
+    try {
+      const data = await api("/api/auth/merge", { method: "POST", body: "{}" });
+      applySnapshot(data);
+      closeModal("merge");
+      toast("Device progress added to your account");
+    } catch (e) {
+      toast((e && e.message) || "Could not merge progress", true);
+    }
+  }
+
+  async function deleteAccount() {
+    try {
+      const data = await api("/api/auth/delete", { method: "POST", body: "{}" });
+      applySnapshot(data);
+      closeModal("delete");
+      toast("Your account and progress have been deleted");
+      if (window.CrystalShell && window.CrystalShell.go) window.CrystalShell.go("/home");
+    } catch (e) {
+      toast((e && e.message) || "Could not delete account", true);
+    }
   }
 
   window.CrystalCasino = {

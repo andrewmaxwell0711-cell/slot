@@ -32,6 +32,8 @@ sys.path.insert(0, str(SERVER_DIR))
 
 load_dotenv(ROOT / ".env")
 
+import auth  # noqa: E402
+import db as dbmod  # noqa: E402
 import game  # noqa: E402
 import ledger  # noqa: E402
 import prizes  # noqa: E402
@@ -87,6 +89,7 @@ app = Flask(
 )
 app.secret_key = _load_flask_secret()
 ledger.init_db()
+print(f"Crystal Casino ledger: {dbmod.backend_name(ledger.DB_PATH)}", file=sys.stderr)
 
 
 def _valid_player_id(value: str | None) -> bool:
@@ -99,33 +102,92 @@ def _valid_player_id(value: str | None) -> bool:
         return False
 
 
+def _cookie_secure() -> bool:
+    xf = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return xf == "https" or bool(request.is_secure)
+
+
+def _cookie_kwargs(max_age: int, httponly: bool) -> dict:
+    kw = {
+        "max_age": max_age,
+        "httponly": httponly,
+        "samesite": "Lax",
+        "path": "/",
+    }
+    if _cookie_secure():
+        kw["secure"] = True
+    return kw
+
+
+def _mint_guest() -> str:
+    guest_id = str(uuid.uuid4())
+    g.guest_id = guest_id
+    g.set_player_cookie = True
+    ledger.ensure_player(guest_id)
+    return guest_id
+
+
 @app.before_request
 def ensure_player() -> None:
     # Webhooks are signed by Stripe and must not mint a player cookie.
     if request.path == "/api/stripe/webhook":
         return
-    player_id = request.cookies.get(PLAYER_COOKIE)
-    if not _valid_player_id(player_id):
-        player_id = str(uuid.uuid4())
-        g.set_player_cookie = True
+    g.account = None
+    g.csrf_token = None
+    g.set_session_cookie = None
+    g.clear_session_cookie = False
+    guest = request.cookies.get(PLAYER_COOKIE)
+    if not _valid_player_id(guest):
+        guest = _mint_guest()
     else:
+        g.guest_id = guest
         g.set_player_cookie = False
-    g.player_id = player_id
-    ledger.ensure_player(player_id)
+        ledger.ensure_player(guest)
+    sess = auth.load_session(request.cookies.get(auth.SESSION_COOKIE))
+    if sess:
+        g.account = sess["account"]
+        g.player_id = sess["player_id"]
+        g.csrf_token = sess["csrf_token"]
+        ledger.ensure_player(g.player_id)
+    else:
+        g.player_id = g.guest_id
+        # already ensured above
 
 
 @app.after_request
 def set_player_cookie(response):
-    if getattr(g, "set_player_cookie", False) and getattr(g, "player_id", None):
+    if getattr(g, "set_player_cookie", False) and getattr(g, "guest_id", None):
         response.set_cookie(
             PLAYER_COOKIE,
-            g.player_id,
-            max_age=365 * 24 * 3600,
-            httponly=True,
-            samesite="Lax",
-            path="/",
+            g.guest_id,
+            **_cookie_kwargs(365 * 24 * 3600, True),
         )
+    sess = getattr(g, "set_session_cookie", None)
+    if sess:
+        age = auth.SESSION_DAYS * 24 * 3600
+        response.set_cookie(auth.SESSION_COOKIE, sess["token"], **_cookie_kwargs(age, True))
+        response.set_cookie(auth.CSRF_COOKIE, sess["csrf_token"], **_cookie_kwargs(age, False))
+    if getattr(g, "clear_session_cookie", False):
+        response.delete_cookie(auth.SESSION_COOKIE, path="/")
+        response.delete_cookie(auth.CSRF_COOKIE, path="/")
     return response
+
+
+def _require_signed_in_csrf():
+    if not getattr(g, "account", None):
+        return _json_error("Sign in required", 401)
+    provided = request.headers.get("X-CSRF-Token")
+    if provided is None:
+        provided = (request.get_json(silent=True) or {}).get("csrf")
+    if not auth.csrf_ok(getattr(g, "csrf_token", None), provided):
+        return _json_error("Invalid or missing CSRF token", 403)
+    return None
+
+
+def _become_fresh_guest() -> None:
+    g.account = None
+    g.csrf_token = None
+    g.player_id = _mint_guest()
 
 
 def _json_error(message: str, status: int = 400):
@@ -154,6 +216,9 @@ def _config_payload() -> dict:
         "jackpot_mult": game.JACKPOT_MULT,
         "prizes": prizes.catalogue(),
         "prize_legal": prizes.PRIZE_LEGAL,
+        "google_client_id": auth.google_client_id() or None,
+        "google_enabled": auth.google_enabled(),
+        "privacy": auth.PRIVACY_NOTE,
         "packs": [
             {
                 "id": p["id"],
@@ -291,7 +356,83 @@ def _public_snap(snap: dict, include_config: bool = False) -> dict:
     if "awarded" in snap:
         out["awarded"] = snap["awarded"]
         out["bonus"] = snap.get("bonus")
+    if request.path != "/api/stripe/webhook":
+        out["account"] = auth.account_public(
+            getattr(g, "account", None),
+            guest_id=getattr(g, "guest_id", None),
+        )
     return out
+
+
+@app.get("/api/auth/me")
+def api_auth_me():
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
+
+
+@app.post("/api/auth/google")
+def api_auth_google():
+    if not auth.google_enabled():
+        return _json_error("Google sign-in is not configured", 503)
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential") or data.get("id_token") or ""
+    try:
+        profile = auth.verify_google_token(credential)
+    except ValueError as exc:
+        return _json_error(str(exc), 401)
+    except Exception:
+        return _json_error("Could not verify Google sign-in", 401)
+    guest_id = getattr(g, "guest_id", None) or g.player_id
+    account = auth.upsert_account_from_google(profile, guest_id)
+    session = auth.create_session(account["id"])
+    g.account = account
+    g.player_id = account["player_id"]
+    g.csrf_token = session["csrf_token"]
+    g.set_session_cookie = session
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    err = _require_signed_in_csrf()
+    if err:
+        return err
+    auth.revoke_session(request.cookies.get(auth.SESSION_COOKIE))
+    g.clear_session_cookie = True
+    _become_fresh_guest()
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
+
+
+@app.post("/api/auth/merge")
+def api_auth_merge():
+    err = _require_signed_in_csrf()
+    if err:
+        return err
+    guest_id = getattr(g, "guest_id", None)
+    try:
+        account = auth.merge_guest(g.account["id"], guest_id)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    g.account = account
+    g.player_id = account["player_id"]
+    # Replace the merged guest cookie so it cannot be merged again.
+    g.guest_id = str(uuid.uuid4())
+    g.set_player_cookie = True
+    ledger.ensure_player(g.guest_id)
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
+
+
+@app.post("/api/auth/delete")
+def api_auth_delete():
+    err = _require_signed_in_csrf()
+    if err:
+        return err
+    try:
+        auth.delete_account(g.account["id"])
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    g.clear_session_cookie = True
+    _become_fresh_guest()
+    return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
 
 
 @app.get("/api/config")

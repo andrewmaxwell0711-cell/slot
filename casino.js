@@ -86,6 +86,7 @@
     let view = "home";
     if (path === "/slots") view = "slots";
     else if (path === "/lobby" || path === "/games") view = "lobby";
+    else if (path === "/profile") view = "profile";
     else if (path === "/home" || path === "/") view = "home";
     else view = "table";
 
@@ -93,11 +94,13 @@
     document.body.classList.toggle("view-lobby", view === "lobby");
     document.body.classList.toggle("view-slots", view === "slots");
     document.body.classList.toggle("view-table", view === "table");
+    document.body.classList.toggle("view-profile", view === "profile");
 
-    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage");
+    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page");
     if (home) home.hidden = view !== "home";
     if (lobby) lobby.hidden = view !== "lobby";
     if (stage) stage.hidden = view !== "table";
+    if (profile) profile.hidden = view !== "profile";
 
     $$(".view-nav button").forEach((b) => {
       const r = b.dataset.route || b.dataset.view;
@@ -138,10 +141,17 @@
   function refreshHud(s) {
     if (!s) return;
     if (s.profile) {
-      const nick = s.profile.nickname || "Hopper";
+      const account = s.account || {};
+      const nick = account.display_name || s.profile.nickname || "Hopper";
       const lvl = s.profile.level || 1;
       const vip = (s.profile.vip && s.profile.vip.name) || "Bronze";
       const vipId = (s.profile.vip && s.profile.vip.id) || "bronze";
+      const nameEl = $("#hud-name");
+      if (nameEl) nameEl.textContent = account.signed_in ? nick : "Guest";
+      const av = $("#hud-avatar");
+      if (av) av.src = account.picture || "/assets/ui/avatar.webp";
+      const homeAv = $("#home-avatar");
+      if (homeAv) homeAv.src = account.picture || "/assets/ui/avatar.webp";
       const hn = $("#home-nick"); if (hn) hn.textContent = nick;
       const hl = $("#home-level"); if (hl) hl.textContent = "LV " + lvl;
       const hudLvl = $("#hud-level"); if (hudLvl) hudLvl.textContent = String(lvl);

@@ -16,3 +16,18 @@ services:
         sync: false
       - key: FLASK_SECRET_KEY
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: crystal-casino-db
+          property: connectionString
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+databases:
+  # Free Render Postgres expires (and may be paused) after a limited period.
+  # Recreate or upgrade the database if the instance is deleted at expiry.
+  - name: crystal-casino-db
+    plan: free
+    region: oregon
+    databaseName: crystal_casino
+    user: casino
+    postgresMajorVersion: "16"
