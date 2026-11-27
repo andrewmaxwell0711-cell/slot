@@ -999,6 +999,7 @@
         document.querySelectorAll(".tcp-table .dealer-spot .pcard:not(.back)").forEach((el, i) => {
           el.classList.add("flip");
           el.style.animationDelay = (i * 90) + "ms";
+          sfx("cardFlip");
         });
       }
     } catch (err) { toast(err.message || "Failed", true); }
@@ -1300,6 +1301,7 @@
     root.querySelectorAll(".fx-squeeze-pending").forEach((el) => {
       const reveal = () => {
         el.classList.remove("fx-squeeze-pending");
+        sfx("cardFlip");
         if (window.CrystalFX) CrystalFX.squeezeCard(el);
       };
       el.addEventListener("click", reveal, { once: true });

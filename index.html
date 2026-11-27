@@ -11,7 +11,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/ui/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/ui/icon-192.png" />
   <link rel="preload" as="image" href="/assets/ui/logo.webp" />
@@ -21,8 +22,26 @@
   <link rel="preload" as="image" href="/assets/ui/gem-interior-sm.webp" />
 </head>
 <body class="v8">
+  <script>
+    (function () {
+      try { if (localStorage.getItem("crystal-casino-age-ok-v1")) document.documentElement.classList.add("returning"); } catch (e) {}
+      var h = (location.hash || "#/home").replace(/^#/, "") || "/home";
+      var view = "home";
+      if (h === "/lobby" || h === "/games") view = "lobby";
+      else if (h === "/slots" || h === "/dragon" || h === "/pharaoh" || h === "/neon") view = "slots";
+      else if (h === "/profile") view = "profile";
+      else if (h !== "/" && h !== "/home") view = "table";
+      document.body.classList.add("view-" + view);
+      var theme = { "/neon": "neon", "/dragon": "dragon", "/pharaoh": "pharaoh" }[h];
+      if (theme) {
+        var pre = document.createElement("link");
+        pre.rel = "preload"; pre.as = "image"; pre.href = "/assets/themes/" + theme + "/bg.webp";
+        document.head.appendChild(pre);
+      }
+    })();
+  </script>
   <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Crystal Casino">
-    <img class="splash-logo" src="/assets/ui/logo-512.webp" width="168" height="168" alt="Crystal Casino" />
+    <img class="splash-logo" src="/assets/ui/logo.webp" width="168" height="168" alt="Crystal Casino" />
     <h1>Crystal Casino</h1>
     <p>SOCIAL CASINO · TEST MODE · 18+</p>
     <div class="splash-bar" aria-hidden="true"><span></span></div>
@@ -145,7 +164,7 @@
     </div>
     <div class="hero-carousel" id="hero-carousel">
       <a class="hero is-on" href="#/slots" id="hero-slots">
-        <img class="hero-bg" src="/assets/ui/hero-slots-sm.webp" srcset="/assets/ui/hero-slots-sm.webp 800w, /assets/ui/hero-slots.webp 1280w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <img class="hero-bg" src="/assets/ui/hero-slots-sm.webp" width="800" height="450" fetchpriority="high" decoding="async" alt="" />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">FEATURED</span>
@@ -156,7 +175,7 @@
         </div>
       </a>
       <a class="hero" href="#/dragon" id="hero-dragon">
-        <img class="hero-bg" src="/assets/tiles/dragon-sm.webp" srcset="/assets/tiles/dragon-sm.webp 400w, /assets/tiles/dragon.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <img class="hero-bg" src="/assets/tiles/dragon-sm.webp" srcset="/assets/tiles/dragon-sm.webp 400w, /assets/tiles/dragon.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" width="800" height="500" loading="lazy" decoding="async" alt="" />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">NEW THEME</span>
@@ -167,7 +186,7 @@
         </div>
       </a>
       <a class="hero" href="#/baccarat" id="hero-baccarat">
-        <img class="hero-bg" src="/assets/tiles/baccarat-sm.webp" srcset="/assets/tiles/baccarat-sm.webp 400w, /assets/tiles/baccarat.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <img class="hero-bg" src="/assets/tiles/baccarat-sm.webp" srcset="/assets/tiles/baccarat-sm.webp 400w, /assets/tiles/baccarat.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" width="800" height="500" loading="lazy" decoding="async" alt="" />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">TABLES</span>
@@ -178,7 +197,7 @@
         </div>
       </a>
       <a class="hero" href="#/keno" id="hero-keno">
-        <img class="hero-bg" src="/assets/tiles/keno-sm.webp" srcset="/assets/tiles/keno-sm.webp 400w, /assets/tiles/keno.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <img class="hero-bg" src="/assets/tiles/keno-sm.webp" srcset="/assets/tiles/keno-sm.webp 400w, /assets/tiles/keno.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" width="800" height="500" loading="lazy" decoding="async" alt="" />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">NEW</span>
@@ -189,7 +208,7 @@
         </div>
       </a>
       <a class="hero" href="#/roulette" id="hero-roulette">
-        <img class="hero-bg" src="/assets/tiles/roulette-sm.webp" srcset="/assets/tiles/roulette-sm.webp 400w, /assets/tiles/roulette.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" alt="" />
+        <img class="hero-bg" src="/assets/tiles/roulette-sm.webp" srcset="/assets/tiles/roulette-sm.webp 400w, /assets/tiles/roulette.webp 800w" sizes="(max-width: 720px) 100vw, 1100px" width="800" height="500" loading="lazy" decoding="async" alt="" />
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">TABLES</span>
@@ -587,13 +606,18 @@
 
   <!-- Celebration -->
   <div class="celebrate" id="celebrate" hidden>
+    <div class="celebrate-scrim" aria-hidden="true"></div>
     <div class="celebrate-rays" aria-hidden="true"></div>
     <div class="celebrate-burst" aria-hidden="true"></div>
-    <div class="celebrate-inner">
-      <div class="celebrate-title" id="celebrate-title">BIG WIN</div>
-      <div class="celebrate-amount" id="celebrate-amount"></div>
-      <div class="celebrate-sub" id="celebrate-sub"></div>
-      <div class="celebrate-hint">Tap to continue</div>
+    <div class="celebrate-panel">
+      <div class="celebrate-inner">
+        <div class="celebrate-kicker" id="celebrate-kicker">GREEN TEA</div>
+        <div class="celebrate-title" id="celebrate-title">BIG WIN</div>
+        <div class="celebrate-amount" id="celebrate-amount"></div>
+        <div class="celebrate-sub" id="celebrate-sub"></div>
+        <div class="celebrate-legal">A social-casino win — coins have no cash value</div>
+        <div class="celebrate-hint">Tap to continue</div>
+      </div>
     </div>
   </div>
 

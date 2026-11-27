@@ -904,6 +904,18 @@
     const meter = winMeter.parentElement;
     meter.classList.remove("punch"); void meter.offsetWidth; meter.classList.add("punch");
   }
+  function payoutCoins(n) { return Math.round(Number(n) || 0); }
+  function setCreditDisplay(credit) {
+    const v = moneyShort(Math.max(0, credit));
+    const el = $("#credit"); if (el) el.textContent = v;
+    const prim = $("#primary-balance"); if (prim) prim.textContent = v;
+    document.querySelectorAll("[data-bind=coins]").forEach((node) => { node.textContent = v; });
+    if (window.CrystalShell && window.CrystalShell.refreshHud) {
+      window.CrystalShell.refreshHud({
+        coins: Math.max(0, credit), profile, bonuses, progressive: progressiveCoins, weekend, account,
+      });
+    }
+  }
   function flyWin(el, amount) {
     if (REDUCE || !el || !(amount > 0)) return;
     const r = el.getBoundingClientRect();
@@ -1028,66 +1040,148 @@
   function startBgMusic() {
     ensureAudio();
     if (!audioCtx || bgMusic || musicMuted || musicVolume === 0) return;
-    const pad = [57, 60, 64, 67];
-    const bass = [33, 33, 36, 38, 33, 31, 29, 33];
-    let step = 0;
-    const tick = () => {
-      if (silentMusic() || music) return;
-      const t = step++;
-      tone(NOTE(bass[t % 8]), 0.55, { type: "sine", gain: 0.045, bus: musicBus });
-      if (t % 2 === 0) tone(NOTE(pad[(t >> 1) % 4]), 0.8, { type: "triangle", gain: 0.02, bus: musicBus });
-      if (t % 4 === 0) chime(NOTE(72 + (t % 3)), 0.35, 0.012, 0, musicBus);
+    const t0 = audioCtx.currentTime;
+    const nodes = [];
+    const pad = (freq, type, gain, detune, lfoHz) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+      o.type = type; o.frequency.value = freq; o.detune.value = detune || 0;
+      f.type = "lowpass"; f.frequency.value = 820; f.Q.value = 0.6;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 1.8);
+      o.connect(f); f.connect(g); g.connect(musicBus);
+      const lfo = audioCtx.createOscillator(), lg = audioCtx.createGain();
+      lfo.type = "sine"; lfo.frequency.value = lfoHz;
+      lg.gain.value = gain * 0.32;
+      lfo.connect(lg); lg.connect(g.gain);
+      o.start(t0); lfo.start(t0);
+      nodes.push(o, g, f, lfo, lg);
     };
-    tick();
-    bgMusic = setInterval(tick, 480);
+    pad(110, "sine", 0.028, 0, 0.06);
+    pad(164.81, "sine", 0.016, 5, 0.08);
+    pad(196, "triangle", 0.01, -4, 0.05);
+    let sparkle = setInterval(() => {
+      if (silentMusic() || music) return;
+      chime(NOTE(74 + ((Math.random() * 3) | 0) * 2), 1.4, 0.009, 0, musicBus);
+    }, 5200);
+    bgMusic = {
+      sparkle,
+      stop() {
+        const now = audioCtx ? audioCtx.currentTime : 0;
+        nodes.forEach((n) => {
+          try { if (n.gain) { n.gain.cancelScheduledValues(now); n.gain.exponentialRampToValueAtTime(0.0001, now + 0.5); } } catch (e) {}
+          try { if (n.stop) n.stop(now + 0.55); } catch (e) {}
+        });
+        clearInterval(sparkle);
+      },
+    };
   }
-  function stopBgMusic() { if (bgMusic) clearInterval(bgMusic); bgMusic = null; }
+  function stopBgMusic() {
+    if (!bgMusic) return;
+    if (bgMusic.stop) bgMusic.stop();
+    else clearInterval(bgMusic);
+    bgMusic = null;
+  }
   function silentMusic() { return !audioCtx || musicMuted || musicVolume === 0; }
 
   const sfx = {
-    spin() { ensureAudio(); noise(0.2, 0.04, 2400, { type: "highpass" }); tone(180, 0.25, { type: "triangle", gain: 0.03, slideTo: 520 }); startSpinLoop(); },
-    spinEnd() { stopSpinLoop(); },
-    stop(col) { ensureAudio(); tone(85, 0.14, { type: "sine", gain: 0.14, slideTo: 55 }); noise(0.07, 0.07, 500); chime(980 + col * 110, 0.2, 0.02); },
-    anticipate(n) { ensureAudio(); tone(NOTE(60 + n * 4), 0.9, { type: "sawtooth", gain: 0.018, slideTo: NOTE(72 + n * 4), attack: 0.3 }); tone(NOTE(48 + n * 4), 0.9, { type: "sine", gain: 0.04, attack: 0.3 }); },
-    scatter(n) { ensureAudio(); const f = NOTE(76 + n * 3); chime(f, 0.7, 0.07); chime(f * 1.5, 0.5, 0.03, 0.08); },
-    tease() { ensureAudio(); tone(330, 0.8, { type: "sawtooth", gain: 0.015, slideTo: 1320 }); },
-    nearMiss() { ensureAudio(); tone(NOTE(76), 0.25, { type: "triangle", gain: 0.04 }); tone(NOTE(73), 0.4, { type: "triangle", gain: 0.04, delay: 0.18, slideTo: NOTE(68) }); },
-    shatter(n = 6) {
-      ensureAudio(); noise(0.35, 0.09, 4200, { type: "highpass" }); noise(0.12, 0.08, 1200, { type: "bandpass", q: 2 });
-      for (let i = 0; i < Math.min(10, 3 + n); i++) tone(2000 + Math.random() * 4200, 0.12 + Math.random() * 0.25, { type: "sine", gain: 0.015 + Math.random() * 0.015, delay: Math.random() * 0.18 });
+    spin() {
+      ensureAudio();
+      noise(0.22, 0.035, 2200, { type: "highpass" });
+      tone(140, 0.28, { type: "sine", gain: 0.04, slideTo: 420 });
+      tone(320, 0.18, { type: "triangle", gain: 0.018, slideTo: 680, delay: 0.04 });
+      startSpinLoop();
     },
-    drop() { ensureAudio(); tone(140, 0.12, { type: "sine", gain: 0.08, slideTo: 70, delay: 0.1 }); noise(0.05, 0.04, 700, { delay: 0.1 }); },
+    spinEnd() { stopSpinLoop(); },
+    stop(col) {
+      ensureAudio();
+      const n = Number(col) || 0;
+      tone(92, 0.11, { type: "sine", gain: 0.1, slideTo: 58 });
+      noise(0.05, 0.045, 480, { type: "lowpass" });
+      chime(880 + n * 90, 0.14, 0.016);
+    },
+    anticipate(n) { ensureAudio(); tone(NOTE(60 + n * 4), 0.9, { type: "sawtooth", gain: 0.016, slideTo: NOTE(72 + n * 4), attack: 0.3 }); tone(NOTE(48 + n * 4), 0.9, { type: "sine", gain: 0.036, attack: 0.3 }); },
+    scatter(n) { ensureAudio(); const f = NOTE(76 + n * 3); chime(f, 0.7, 0.06); chime(f * 1.5, 0.5, 0.025, 0.08); },
+    tease() { ensureAudio(); tone(330, 0.8, { type: "sawtooth", gain: 0.014, slideTo: 1320 }); },
+    nearMiss() { /* unused — no staged near-miss presentation */ },
+    shatter(n = 6) {
+      ensureAudio(); noise(0.28, 0.07, 4000, { type: "highpass" }); noise(0.1, 0.06, 1200, { type: "bandpass", q: 2 });
+      for (let i = 0; i < Math.min(10, 3 + n); i++) tone(2000 + Math.random() * 4200, 0.1 + Math.random() * 0.2, { type: "sine", gain: 0.012 + Math.random() * 0.012, delay: Math.random() * 0.18 });
+    },
+    drop() { ensureAudio(); tone(140, 0.12, { type: "sine", gain: 0.07, slideTo: 70, delay: 0.1 }); noise(0.05, 0.035, 700, { delay: 0.1 }); },
+    fanfare(notes, { gain = 0.05, stagger = 0.09, hold = 0.7, bass = true } = {}) {
+      ensureAudio();
+      notes.forEach((n, i) => {
+        chime(NOTE(n), hold, gain, i * stagger);
+        if (bass) tone(NOTE(n - 24), hold * 0.45, { type: "triangle", gain: gain * 0.8, delay: i * stagger });
+      });
+    },
     winScaled(x, cascade = 0) {
       ensureAudio(); const up = cascade * 2;
-      if (x < 1) [72, 79].forEach((n, i) => chime(NOTE(n + up), 0.35, 0.045, i * 0.07));
-      else if (x < 5) [72, 76, 79].forEach((n, i) => chime(NOTE(n + up), 0.45, 0.05, i * 0.08));
-      else if (x < BIG_WIN_X) [72, 76, 79, 84, 88].forEach((n, i) => chime(NOTE(n + up), 0.55, 0.055, i * 0.08));
+      if (x < 1) [72, 79].forEach((n, i) => chime(NOTE(n + up), 0.32, 0.04, i * 0.07));
+      else if (x < 5) [72, 76, 79].forEach((n, i) => chime(NOTE(n + up), 0.42, 0.045, i * 0.08));
+      else if (x < BIG_WIN_X) [72, 76, 79, 84].forEach((n, i) => chime(NOTE(n + up), 0.5, 0.05, i * 0.08));
       else this.big();
     },
     win() { this.winScaled(2); },
-    big() { ensureAudio(); [60, 64, 67, 72, 76, 79, 84].forEach((n, i) => { chime(NOTE(n), 0.8, 0.06, i * 0.1); tone(NOTE(n - 24), 0.3, { type: "triangle", gain: 0.05, delay: i * 0.1 }); }); },
-    bonus() { ensureAudio(); for (let i = 0; i < 12; i++) chime(600 * Math.pow(2, i / 6), 0.5, 0.04, i * 0.06); },
-    bonusSting() { ensureAudio(); [67, 71, 74, 79].forEach((n, i) => chime(NOTE(n), 0.6, 0.05, i * 0.07)); },
-    jackpot() { ensureAudio(); for (let r = 0; r < 3; r++) [60, 67, 72, 79].forEach((n, i) => chime(NOTE(n), 0.9, 0.06, r * 0.5 + i * 0.09)); },
-    multUp(n) { ensureAudio(); tone(NOTE(67 + Math.min(n, 24)), 0.3, { type: "square", gain: 0.03, slideTo: NOTE(79 + Math.min(n, 24)) }); },
-    lose() { ensureAudio(); tone(196, 0.16, { type: "triangle", gain: 0.02 }); },
-    tick() { ensureAudio(); chime(1760, 0.05, 0.016); },
-    waysTick(k) { ensureAudio(); tone(600 + k * 900, 0.04, { type: "square", gain: 0.012 }); },
-    wheelTick() { ensureAudio(); noise(0.03, 0.08, 3000, { type: "bandpass", q: 3 }); tone(1400, 0.03, { type: "square", gain: 0.015 }); },
-    reveal(i) { ensureAudio(); chime(NOTE(72 + i * 2), 0.5, 0.06); noise(0.15, 0.05, 5000, { type: "highpass" }); },
-    collect() { ensureAudio(); [79, 76, 72, 79, 84].forEach((n, i) => chime(NOTE(n), 0.4, 0.05, i * 0.09)); },
-    click() { ensureAudio(); tone(880, 0.04, { type: "square", gain: 0.018 }); tone(1320, 0.03, { type: "sine", gain: 0.02, delay: 0.02 }); },
-    card() { ensureAudio(); noise(0.12, 0.06, 3000); },
-    levelUp() { ensureAudio(); [60, 64, 67, 72, 76, 79, 84, 88].forEach((n, i) => chime(NOTE(n), 0.5, 0.05, i * 0.06)); },
-    chest() { ensureAudio(); noise(0.2, 0.06, 600, { type: "bandpass" }); [67, 74, 79, 86].forEach((n, i) => chime(NOTE(n), 0.45, 0.05, 0.08 + i * 0.07)); },
-    streak() { ensureAudio(); [72, 76, 79, 84].forEach((n, i) => chime(NOTE(n), 0.35, 0.05, i * 0.06)); },
-    trophy() { ensureAudio(); [67, 71, 74, 79, 86, 91].forEach((n, i) => chime(NOTE(n), 0.7, 0.06, i * 0.08)); tone(NOTE(43), 0.8, { type: "triangle", gain: 0.05 }); },
-    coins() { ensureAudio(); for (let i = 0; i < 8; i++) tone(900 + Math.random() * 800, 0.08, { type: "square", gain: 0.02, delay: i * 0.05 }); },
-    chip() { ensureAudio(); tone(1400, 0.05, { type: "square", gain: 0.03 }); tone(900, 0.06, { type: "triangle", gain: 0.025, delay: 0.03 }); },
-    roulette() { ensureAudio(); for (let i = 0; i < 28; i++) tone(700 + i * 18, 0.05, { type: "square", gain: 0.02, delay: i * 0.09 }); noise(0.3, 0.05, 1800, { delay: 2.4 }); },
-    dice() { ensureAudio(); noise(0.18, 0.08, 1400, { type: "bandpass", q: 1.2 }); tone(180, 0.12, { type: "triangle", gain: 0.06, slideTo: 90 }); },
-    scratch() { ensureAudio(); noise(0.16, 0.07, 3500, { type: "highpass" }); },
-    progressive() { ensureAudio(); [60, 67, 72, 79, 84, 91].forEach((n, i) => chime(NOTE(n), 1.0, 0.07, i * 0.1)); },
+    big() { this.fanfare([60, 64, 67, 72, 76], { gain: 0.05, stagger: 0.1, hold: 0.75 }); },
+    mega() { this.fanfare([60, 64, 67, 72, 76, 79, 84], { gain: 0.055, stagger: 0.09, hold: 0.9 }); noise(0.35, 0.03, 2400, { type: "bandpass", q: 0.8 }); },
+    epic() {
+      this.fanfare([48, 55, 60, 64, 67, 72, 76, 79, 84, 88], { gain: 0.06, stagger: 0.08, hold: 1.05 });
+      tone(NOTE(36), 1.4, { type: "sine", gain: 0.05, attack: 0.08 });
+      noise(0.45, 0.035, 1800, { type: "bandpass", q: 0.7 });
+    },
+    bonus() { ensureAudio(); for (let i = 0; i < 12; i++) chime(600 * Math.pow(2, i / 6), 0.5, 0.035, i * 0.06); },
+    bonusSting() { this.fanfare([67, 71, 74, 79], { gain: 0.05, stagger: 0.07, hold: 0.6, bass: false }); },
+    jackpot() { ensureAudio(); for (let r = 0; r < 3; r++) [60, 67, 72, 79].forEach((n, i) => chime(NOTE(n), 0.9, 0.055, r * 0.5 + i * 0.09)); tone(NOTE(36), 1.6, { type: "sine", gain: 0.05, attack: 0.1 }); },
+    multUp(n) { ensureAudio(); tone(NOTE(67 + Math.min(n, 24)), 0.3, { type: "triangle", gain: 0.03, slideTo: NOTE(79 + Math.min(n, 24)) }); },
+    lose() { ensureAudio(); tone(196, 0.16, { type: "triangle", gain: 0.018 }); },
+    tick() {
+      ensureAudio();
+      tone(1860, 0.04, { type: "sine", gain: 0.014 });
+      tone(2480, 0.03, { type: "triangle", gain: 0.008, delay: 0.01 });
+    },
+    waysTick(k) { ensureAudio(); tone(600 + k * 900, 0.04, { type: "triangle", gain: 0.012 }); },
+    wheelTick() { ensureAudio(); noise(0.03, 0.06, 3000, { type: "bandpass", q: 3 }); tone(1400, 0.03, { type: "triangle", gain: 0.014 }); },
+    reveal(i) { ensureAudio(); chime(NOTE(72 + i * 2), 0.5, 0.05); noise(0.12, 0.04, 5000, { type: "highpass" }); },
+    collect() { ensureAudio(); [79, 76, 72, 79, 84].forEach((n, i) => chime(NOTE(n), 0.4, 0.045, i * 0.09)); },
+    click() { ensureAudio(); tone(1020, 0.035, { type: "sine", gain: 0.016 }); tone(1480, 0.03, { type: "triangle", gain: 0.012, delay: 0.015 }); },
+    card() { this.cardDeal(); },
+    cardDeal() {
+      ensureAudio();
+      noise(0.1, 0.05, 2600, { type: "highpass" });
+      tone(420, 0.09, { type: "triangle", gain: 0.03, slideTo: 180 });
+    },
+    cardFlip() {
+      ensureAudio();
+      noise(0.08, 0.045, 4200, { type: "highpass" });
+      tone(1320, 0.07, { type: "triangle", gain: 0.03, slideTo: 880 });
+      chime(1760, 0.12, 0.012, 0.02);
+    },
+    levelUp() { this.fanfare([60, 64, 67, 72, 76, 79, 84, 88], { gain: 0.045, stagger: 0.06, hold: 0.5 }); },
+    chest() { ensureAudio(); noise(0.18, 0.05, 600, { type: "bandpass" }); [67, 74, 79, 86].forEach((n, i) => chime(NOTE(n), 0.45, 0.045, 0.08 + i * 0.07)); },
+    streak() { ensureAudio(); [72, 76, 79, 84].forEach((n, i) => chime(NOTE(n), 0.35, 0.045, i * 0.06)); },
+    trophy() { this.fanfare([67, 71, 74, 79, 86, 91], { gain: 0.055, stagger: 0.08, hold: 0.7 }); tone(NOTE(43), 0.8, { type: "triangle", gain: 0.045 }); },
+    coins() { ensureAudio(); for (let i = 0; i < 8; i++) tone(980 + Math.random() * 700, 0.07, { type: "triangle", gain: 0.016, delay: i * 0.05 }); },
+    chip() {
+      ensureAudio();
+      noise(0.04, 0.04, 1800, { type: "bandpass", q: 2.4 });
+      tone(1240, 0.045, { type: "triangle", gain: 0.028 });
+      tone(780, 0.06, { type: "sine", gain: 0.02, delay: 0.025 });
+    },
+    roulette() {
+      ensureAudio();
+      let t = 0;
+      for (let i = 0; i < 22; i++) {
+        const gap = 0.055 + i * 0.012;
+        tone(980 - i * 16, 0.035, { type: "triangle", gain: 0.016, delay: t });
+        t += gap;
+      }
+      noise(0.22, 0.05, 1400, { type: "bandpass", q: 1.4, delay: t });
+      tone(180, 0.2, { type: "sine", gain: 0.05, slideTo: 90, delay: t });
+    },
+    dice() { ensureAudio(); noise(0.16, 0.07, 1400, { type: "bandpass", q: 1.2 }); tone(180, 0.12, { type: "triangle", gain: 0.05, slideTo: 90 }); },
+    scratch() { ensureAudio(); noise(0.16, 0.06, 3500, { type: "highpass" }); },
+    progressive() { this.fanfare([60, 67, 72, 79, 84, 91], { gain: 0.06, stagger: 0.1, hold: 1.0 }); },
   };
 
   // ---- Sparkles ----
@@ -1162,44 +1256,78 @@
 
   // ---- Celebrations ----
   let celebrateResolve = null;
-  function celebrate({ kind = "big", title, amountAud = null, sub = "", hold = 3400, tier = null }) {
+  function celebrate({ kind = "big", title, amountAud = null, sub = "", hold = 3400, tier = null, kicker = "", syncMeters = true }) {
     return new Promise((resolve) => {
+      const payout = amountAud == null ? null : payoutCoins(amountAud);
       const inner = celebrateEl.querySelector(".celebrate-inner");
       inner.querySelector(".celebrate-art")?.remove();
       const art = document.createElement("div");
       art.className = "celebrate-art";
-      art.innerHTML = kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="Green Tea 1kg packet" /></div>`;
+      art.innerHTML = kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="" /></div>`;
       inner.prepend(art);
       const cls = ["celebrate"];
       if (kind === "bonus" || kind === "pick") cls.push("bonus");
       if (kind === "jackpot") cls.push("jackpot", "cinematic");
       if (tier) cls.push(`tier-${tier}`);
       celebrateEl.className = cls.join(" ");
+      const kickEl = $("#celebrate-kicker");
+      if (kickEl) {
+        const kick = kicker || (kind === "jackpot" ? "JACKPOT" : (kind === "bonus" || kind === "pick") ? "FEATURE" : "GREEN TEA");
+        kickEl.textContent = kick;
+        kickEl.hidden = !kick;
+      }
       $("#celebrate-title").textContent = title;
       $("#celebrate-sub").textContent = sub;
       const amtEl = $("#celebrate-amount");
-      amtEl.textContent = amountAud == null ? "" : money(0);
+      amtEl.textContent = payout == null ? "" : money(0);
+      const coinsTotal = totalCoins();
+      const sync = syncMeters && payout != null;
+      if (sync) {
+        pendingWinAud = payout;
+        winMeter.textContent = moneyShort(0);
+        setCreditDisplay(coinsTotal - payout);
+      }
       celebrateEl.hidden = false;
       const tea = ["#8ff06b", "#eaffd0", "#fff3b0", "#f3c441", "#ffffff"];
       const heavy = kind === "jackpot" || tier === "mega" || tier === "epic";
       shakeCabinet(heavy);
       if (kind === "bonus" || kind === "pick") { sfx.bonus(); rain(90); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.win); CrystalFX.fountain(24); } }
       else if (kind === "jackpot") { sfx.jackpot(); rain(240, tea); coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.jackpot); CrystalFX.fountain(48); } }
-      else if (tier === "epic") { sfx.big(); rain(200, tea); coinBurst(150); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.epic); CrystalFX.fountain(44); } }
-      else if (tier === "mega") { sfx.big(); rain(160, tea); coinBurst(100); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.mega); CrystalFX.fountain(36); } }
+      else if (tier === "epic") { sfx.epic(); rain(200, tea); coinBurst(150); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.epic); CrystalFX.fountain(44); } }
+      else if (tier === "mega") { sfx.mega(); rain(160, tea); coinBurst(100); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.mega); CrystalFX.fountain(36); } }
       else { sfx.big(); rain(140, tea); coinBurst(70); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.big); CrystalFX.fountain(28); } }
       let r = null;
-      if (amountAud != null) {
-        const t0 = performance.now(), dur = Math.min(hold * 0.7, 2400); let last = 0;
-        const step = (t) => { const k = Math.min(1, (t - t0) / dur); amtEl.textContent = money(amountAud * (1 - Math.pow(1 - k, 3))); if (t - last > 90 && k < 1) { sfx.tick(); last = t; } if (k < 1) r = requestAnimationFrame(step); };
+      const settle = () => {
+        if (payout != null) amtEl.textContent = money(payout);
+        if (sync) {
+          pendingWinAud = 0;
+          winMeter.textContent = moneyShort(payout);
+          setCreditDisplay(coinsTotal);
+        }
+      };
+      if (payout != null) {
+        const t0 = performance.now(), dur = REDUCE ? 0 : Math.min(hold * 0.7, 2400); let last = 0;
+        const step = (t) => {
+          const k = Math.min(1, dur <= 0 ? 1 : (t - t0) / dur);
+          const v = payoutCoins(payout * (1 - Math.pow(1 - k, 3)));
+          amtEl.textContent = money(v);
+          if (sync) {
+            winMeter.textContent = moneyShort(v);
+            pendingWinAud = Math.max(0, payout - v);
+            setCreditDisplay(coinsTotal - (payout - v));
+          }
+          if (t - last > 90 && k < 1) { sfx.tick(); last = t; }
+          if (k < 1) r = requestAnimationFrame(step);
+          else settle();
+        };
         r = requestAnimationFrame(step);
       }
-      const done = () => { if (r) cancelAnimationFrame(r); if (amountAud != null) amtEl.textContent = money(amountAud); celebrateEl.hidden = true; clearTimeout(timer); celebrateResolve = null; resolve(); };
+      const done = () => { if (r) cancelAnimationFrame(r); settle(); celebrateEl.hidden = true; clearTimeout(timer); celebrateResolve = null; resolve(); };
       const timer = setTimeout(done, auto.running || turbo || REDUCE ? Math.min(hold, 1800) : hold);
       celebrateResolve = done;
     });
   }
-  const bigTitle = (x) => (x >= EPIC_WIN_X ? "GREEN TEA EPIC WIN!" : x >= MEGA_WIN_X ? "GREEN TEA MEGA WIN!" : "GREEN TEA BIG WIN!");
+  const bigTitle = (x) => (x >= EPIC_WIN_X ? "EPIC WIN" : x >= MEGA_WIN_X ? "MEGA WIN" : "BIG WIN");
   const winTier = (x) => (x >= EPIC_WIN_X ? "epic" : x >= MEGA_WIN_X ? "mega" : "big");
 
   let stingResolve = null;
@@ -1677,14 +1805,17 @@
       toast(`Crystal Collection complete — ${money(res.collection.paid)} (${res.collection.completed})`);
       sfx.collect();
     }
-    pendingWinAud = 0;
-    winMeter.textContent = money(totalWin);
     const x = bet ? totalWin / bet : 0;
     const netWin = totalWin > bet + 1e-9;
     // Wins at or below the total bet are not celebrated (no disguised-loss fanfare).
-    if (netWin && x >= BIG_WIN_X && !field(res, "jackpot_paid", "jackpot_paid_aud") && !res.progressive_hit) {
+    const willCelebrate = netWin && x >= BIG_WIN_X && !field(res, "jackpot_paid", "jackpot_paid_aud") && !res.progressive_hit;
+    if (willCelebrate) {
       const tier = winTier(x);
-      await celebrate({ kind: "big", tier, title: bigTitle(x), amountAud: totalWin, sub: `${Math.round(x)}× your total bet`, hold: tier === "epic" ? 4400 : tier === "mega" ? 4000 : 3400 });
+      await celebrate({ kind: "big", tier, title: bigTitle(x), amountAud: totalWin, sub: `${Math.round(x)}× your total bet`, hold: tier === "epic" ? 4400 : tier === "mega" ? 4000 : 3400, syncMeters: true });
+    } else {
+      pendingWinAud = 0;
+      winMeter.textContent = moneyShort(totalWin);
+      render();
     }
     if (totalWin > 0) setMsg(`${netWin ? "TOTAL WIN" : "RETURN"} ${money(totalWin)}${fs.length ? ` · ${fs.length} FREE SPINS` : ""}${games.length ? ` · ${games.map((g) => (g.kind === "pick" ? "PICK" : g.kind === "hold_spin" ? "HOLD" : "WHEEL")).join(" + ")}` : ""}${field(res, "jackpot_paid", "jackpot_paid_aud") ? " · JACKPOT" : ""}${res.progressive_hit ? " · CROWN" : ""}${!auto.running && netWin ? " · GAMBLE OR SPIN" : ""}`);
 
@@ -2616,7 +2747,9 @@
     ready = true;
   }
   async function boot() {
-    const splashWait = REDUCE ? 200 : 1200;
+    let returning = false;
+    try { returning = !!localStorage.getItem(AGE_KEY); } catch (e) {}
+    const splashWait = REDUCE || returning ? 180 : 1200;
     setTimeout(dismissSplash, 4000); // safety: never leave the splash stuck
     resizeCanvas(); decorate(); initReels(); renderBadges(); render(); initMw(); renderHistory(); wire(); updateAutoUI();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layoutBadges(); if (mwCols && !busy) setMwBoard(mwCols); });
@@ -2627,9 +2760,10 @@
       setTimeout(() => { dismissSplash(); openModal("age"); }, splashWait);
       return;
     }
+    // Reveal the first view without waiting on the ledger — LCP should not sit behind /api/balance.
+    setTimeout(dismissSplash, splashWait);
     await startGame();
     await loadTutorialState();
-    setTimeout(dismissSplash, splashWait);
     setTimeout(maybeStartTutorial, splashWait + 200);
   }
   boot();

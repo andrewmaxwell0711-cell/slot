@@ -94,7 +94,7 @@
 @keyframes gem-glow { from { opacity: 0.65; } to { opacity: 1; } }
 
 /* Hide the old flat cavern under the gem world; keep aurora very soft */
-.bg-cavern { opacity: 0 !important; }
+.bg-cavern { opacity: 0 !important; background-image: none !important; }
 .bg-aurora { opacity: 0.22; mix-blend-mode: screen; }
 .side-crystals { opacity: 0.28; filter: drop-shadow(0 0 24px rgba(190, 110, 255, 0.45)); }
 
@@ -345,3 +345,323 @@ html.reduce-effects .pcard.fx-squeeze-pending { clip-path: none; transform: none
   .top-bar .hud-shop-btn { font-size: 0 !important; padding: .4rem .55rem; max-width: 4.4rem; }
   .top-bar .hud-shop-btn::after { content: "Shop"; font-size: .72rem; font-weight: 800; color: #3a2200; }
 }
+
+/* ---------- v12 celebrate overlay: opaque scrim + premium medallion ---------- */
+.celebrate {
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: max(4.6rem, env(safe-area-inset-top)) .7rem max(4.8rem, calc(var(--nav-h, 64px) + .4rem));
+  background: transparent;
+  overflow: hidden;
+}
+.celebrate-scrim {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 38%, rgba(90, 30, 140, .18), transparent 64%),
+    #0a0414;
+}
+.celebrate-rays {
+  inset: -30%;
+  opacity: .32;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 236, 180, .11) 0 4deg, transparent 4deg 22deg);
+  animation: rays-spin 28s linear infinite;
+  mix-blend-mode: screen;
+}
+.celebrate.jackpot .celebrate-rays,
+.celebrate.tier-epic .celebrate-rays,
+.celebrate.tier-mega .celebrate-rays,
+.celebrate.tier-big .celebrate-rays,
+.celebrate.bonus .celebrate-rays {
+  opacity: .28;
+  animation-duration: 28s;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 236, 180, .1) 0 4deg, transparent 4deg 22deg);
+}
+.celebrate-burst {
+  background: radial-gradient(circle at 50% 42%, rgba(255, 236, 190, .16), transparent 48%);
+  opacity: .7;
+}
+.celebrate.tier-big,
+.celebrate.tier-mega,
+.celebrate.tier-epic,
+.celebrate.jackpot,
+.celebrate.bonus {
+  background: transparent;
+}
+.celebrate-panel {
+  position: relative;
+  z-index: 2;
+  width: min(26.5rem, calc(100vw - 1.4rem));
+  max-height: 100%;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 1rem .85rem 1.15rem;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(120, 50, 180, .28), rgba(12, 4, 28, .9) 58%),
+    rgba(10, 4, 22, .92);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, .55),
+    0 0 0 1px rgba(243, 196, 65, .32),
+    inset 0 1px 0 rgba(255, 243, 176, .16);
+}
+.celebrate-inner {
+  text-align: center;
+  padding: 0;
+  background: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+}
+.celebrate-kicker {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--gold-4, #f6d36a);
+  margin: 0;
+}
+.celebrate-title {
+  font-size: clamp(1.7rem, 8.2vw, 3.1rem);
+  margin: 0;
+  line-height: 1;
+  max-width: 100%;
+}
+.celebrate-amount {
+  font-size: clamp(1.45rem, 6.4vw, 2.5rem);
+  margin: .15rem 0 0;
+  text-transform: uppercase;
+  line-height: 1.1;
+  max-width: 100%;
+}
+.celebrate-sub {
+  margin: .15rem 0 0;
+  font-size: .82rem;
+  color: #e9dbff;
+  max-width: 22rem;
+}
+.celebrate-legal {
+  margin: .1rem 0 0;
+  font-size: .68rem;
+  line-height: 1.35;
+  color: #cbbbe6;
+  max-width: 22rem;
+}
+.celebrate-hint {
+  margin: .55rem 0 0;
+  font-size: .68rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #d8c9a0;
+  opacity: .9;
+}
+
+/* Premium gem/gold medallion — centred crown, radial glow, not a flat disc */
+.celebrate-art {
+  display: grid;
+  place-items: center;
+  margin: .15rem 0 .2rem;
+}
+.celebrate-tea {
+  position: relative;
+  width: min(196px, 48vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background:
+    conic-gradient(from 120deg,
+      #fff6c8 0deg, #c9a24a 50deg, #7a4b00 95deg,
+      #f6d36a 150deg, #8a5a00 200deg, #fff3b0 255deg,
+      #c9a24a 300deg, #fff6c8 360deg);
+  box-shadow:
+    0 0 0 2px #3a2200,
+    0 0 22px rgba(243, 196, 65, .48),
+    0 0 64px rgba(180, 90, 255, .28),
+    inset 0 0 0 1px rgba(255, 243, 176, .35);
+  animation: medal-glow 2.4s ease-in-out infinite;
+}
+.celebrate-tea::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(255, 236, 190, .55), rgba(120, 40, 170, .28) 42%, rgba(14, 4, 28, .94) 74%);
+  box-shadow: inset 0 0 18px rgba(243, 196, 65, .22);
+}
+.celebrate-tea::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .32), transparent 42%);
+}
+.celebrate-art img,
+.celebrate-tea img,
+.celebrate-art img.prism {
+  position: relative;
+  z-index: 1;
+  width: 74%;
+  height: 74%;
+  max-width: 74%;
+  object-fit: contain;
+  object-position: center 62%;
+  display: block;
+  margin: 0;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .45)) drop-shadow(0 0 16px rgba(243, 196, 65, .4));
+  animation: none;
+}
+.celebrate-art img.prism {
+  width: min(160px, 42vw);
+  height: auto;
+  max-width: none;
+  object-position: center;
+  filter: drop-shadow(0 0 24px #c792ff);
+}
+@keyframes medal-glow {
+  50% { box-shadow: 0 0 0 2px #3a2200, 0 0 34px rgba(243, 196, 65, .7), 0 0 80px rgba(180, 90, 255, .38), inset 0 0 0 1px rgba(255, 243, 176, .45); }
+}
+.celebrate.jackpot .celebrate-tea {
+  animation: medal-pop .85s cubic-bezier(.15, 1.5, .4, 1), medal-glow 2.4s ease-in-out infinite .85s;
+}
+@keyframes medal-pop {
+  0% { transform: scale(.2); opacity: 0; }
+  62% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+@media (max-width: 380px) {
+  .celebrate { padding: 4.2rem .45rem 4.6rem; }
+  .celebrate-panel { padding: .75rem .6rem .9rem; border-radius: 18px; }
+  .celebrate-tea { width: min(150px, 46vw); }
+  .celebrate-tea::before, .celebrate-tea::after { inset: 6px; }
+  .celebrate-title { font-size: clamp(1.45rem, 8.6vw, 2.2rem); }
+  .celebrate-amount { font-size: clamp(1.2rem, 6.6vw, 1.85rem); }
+  .celebrate-legal, .celebrate-hint { font-size: .62rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebrate-tea, .celebrate.jackpot .celebrate-tea { animation: none; }
+  .celebrate-rays { animation: none; opacity: .16; }
+}
+html.reduce-motion .celebrate-tea,
+html.reduce-effects .celebrate-tea,
+html.reduce-motion .celebrate.jackpot .celebrate-tea,
+html.reduce-effects .celebrate.jackpot .celebrate-tea {
+  animation: none;
+}
+html.reduce-motion .celebrate-rays,
+html.reduce-effects .celebrate-rays { animation: none; opacity: .16; }
+
+/* ---------- Fit controls above the bottom nav on short phones ---------- */
+@media (max-width: 800px) and (max-height: 920px) {
+  body.view-slots .marquee-crystals { display: none; }
+  body.view-slots .marquee { padding: 4px 6px 4px; margin: 0 0 4px; }
+  body.view-slots .marquee-title { font-size: 1.15rem; }
+  body.view-slots .jackpot-sign { margin-top: 2px; padding: 2px 10px; gap: .3rem; }
+  body.view-slots .jackpot-sign img { width: 22px; height: 22px; }
+  body.view-slots .prog-ticker { margin: 4px auto 0; padding: .05rem .7rem .08rem; min-width: 0; width: auto; }
+  body.view-slots .prog-ticker small { display: none; }
+  body.view-slots .prog-ticker strong { font-size: .92rem; }
+  body.view-slots .bezel { padding: 4px; }
+  body.view-slots .bezel-top { margin-bottom: 2px; }
+  body.view-slots .win-strip { min-height: 0; padding: 2px 6px; }
+  body.view-slots .console { margin-top: 4px; padding: 5px; }
+  body.view-slots .console-row + .console-row { margin-top: 5px; }
+  body.view-slots .console-row.meters { flex-wrap: nowrap; gap: 4px; }
+  body.view-slots .console-row.meters .meter { flex: 1 1 0; padding: 3px 2px; }
+  body.view-slots .meter small { font-size: .5rem; }
+  body.view-slots .meter strong { font-size: .78rem; }
+  body.view-slots .console-row.buttons {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 4px;
+  }
+  body.view-slots .cbtn { flex: 1 1 auto; height: 32px; font-size: .55rem; letter-spacing: .03em; padding: 0 .3rem; }
+  body.view-slots .btn-spin {
+    order: 0 !important;
+    flex: 0 0 auto !important;
+    flex-basis: auto !important;
+    width: 58px !important;
+    height: 58px !important;
+    max-width: 58px !important;
+    margin: 0 2px 0 0 !important;
+  }
+  body.view-slots .btn-spin span { font-size: .95rem; inset: 5px; }
+  :root { --mw-h: calc(var(--mw-col) * 2.85); --mw-top: calc(var(--mw-col) * .58); }
+
+  .lobby, .profile-page, .game-stage, .home {
+    padding-bottom: .8rem;
+  }
+  body.view-lobby .lobby-tile .tile-media,
+  body.view-lobby .feature-tile .tile-media { aspect-ratio: 16 / 8; }
+  body.view-lobby .tile-copy { padding: .4rem .55rem .5rem; }
+  body.view-lobby .lobby-tile h3, body.view-lobby .feature-tile h3 { font-size: 1rem; }
+
+  body.view-table .wheel-box { max-width: 150px; padding-bottom: 14px; }
+  body.view-table .felt-eu { grid-auto-rows: minmax(16px, auto); gap: 1px; font-size: .5rem; }
+  body.view-table .felt-eu button { min-height: 16px; }
+  body.view-table .chip-rack { margin: .2rem 0 .1rem; gap: 4px; }
+  body.view-table .chip { width: 38px; height: 38px; font-size: .52rem; }
+  body.view-table .actions-row { margin-top: .1rem; gap: .28rem; }
+  body.view-table .bet-circle { width: 68px; height: 68px; margin: .2rem auto; }
+}
+
+@media (max-width: 800px) and (max-height: 700px) {
+  body.view-slots .prog-ticker { display: none; }
+  body.view-slots .marquee-title { font-size: 1.05rem; }
+  body.view-slots .btn-spin {
+    width: 52px !important;
+    height: 52px !important;
+    max-width: 52px !important;
+  }
+  body.view-slots .cbtn { height: 30px; font-size: .52rem; }
+  :root { --mw-h: calc(var(--mw-col) * 2.55); --mw-top: calc(var(--mw-col) * .52); --sym-h: min(64px, calc((100vw - 100px) / 5)); }
+
+  body.view-lobby .lobby-tile .tile-media,
+  body.view-lobby .feature-tile .tile-media { aspect-ratio: 16 / 6.2; }
+
+  body.view-table .wheel-box { max-width: 118px; padding-bottom: 10px; }
+  body.view-table .felt-table { padding: .3rem .3rem .4rem; }
+  body.view-table .felt-eu { grid-auto-rows: minmax(14px, auto); font-size: .46rem; }
+  body.view-table .felt-eu button { min-height: 14px; }
+  body.view-table .chip { width: 34px; height: 34px; }
+  body.view-table .bet-circle { width: 60px; height: 60px; }
+  body.view-table .stage-head { margin: 0 0 .1rem; }
+}
+
+@media (max-width: 800px) {
+  body.view-slots .wallet, body.view-slots .info-col, body.view-slots .layout > .wallet { display: none; }
+  body.view-table .chip-rack { max-width: none !important; flex-wrap: nowrap; overflow-x: auto; justify-content: center; }
+}
+@media (max-width: 800px) and (max-height: 700px) {
+  body.view-table .keno-pays { display: none; }
+  body.view-table .keno-rtp { margin: .1rem 0 .2rem; font-size: .62rem; }
+  body.view-table .keno-board { gap: 3px; }
+  body.view-table .keno-ball { width: 24px; height: 24px; font-size: .52rem; }
+  body.view-table .keno-toolbar { margin-bottom: .25rem; gap: .25rem; }
+  body.view-table .keno-table { padding: .4rem .35rem .5rem; }
+  body.view-table .table-msg { margin: .08rem 0; font-size: .68rem; }
+}
+
+/* First paint: skip splash for returning players; show the hashed view before JS */
+html.returning #splash { display: none !important; visibility: hidden !important; }
+
+@media (max-width: 800px) {
+  .gem-bg-photo {
+    background-image: url("/assets/ui/gem-interior-sm.webp") !important;
+  }
+}
+.home-title { min-height: 1.15em; }
+.hero { aspect-ratio: 16 / 9; }
