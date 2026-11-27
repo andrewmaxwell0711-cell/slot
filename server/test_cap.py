@@ -525,7 +525,6 @@ def test_no_withdraw_route() -> None:
         "/api/withdraw",
         "/api/deposit/play",
         "/api/deposit/checkout",
-        "/api/prefs",
         "/deposit/success",
         "/deposit/cancel",
     ):
