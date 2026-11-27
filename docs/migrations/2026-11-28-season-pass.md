@@ -12,6 +12,8 @@ The premium track is catalogued and shown up front (no loot-box randomness) but 
 
 Each claim is atomic and idempotent per player, per season and per tier, keyed by `season-claim:{season_id}:player:{player_id}:track:{track}:tier:{n}`.
 
+Season 1 starts at Monday 23 November 2026, 00:00 Australia/Perth by default. Override the launch date without a code change by setting the `SEASON_EPOCH` environment variable to a `YYYY-MM-DD` date or an ISO datetime. Naive values are read as Australia/Perth. Invalid values fall back to the default.
+
 ## SQL (additive, safe)
 
 ```sql

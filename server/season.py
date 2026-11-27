@@ -22,6 +22,7 @@ against production Postgres.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -29,7 +30,25 @@ import prefs
 from prizes import PERTH, perth_date, perth_now, perth_week
 
 # Monday 00:00 Australia/Perth. Seasons are exactly 28 days.
-SEASON_EPOCH = datetime(2026, 11, 23, 0, 0, 0, tzinfo=PERTH)
+# Override at launch with SEASON_EPOCH (YYYY-MM-DD or an ISO datetime).
+# Naive values are interpreted in Australia/Perth. Invalid values fall
+# back to this default so a typo cannot take the app down.
+_DEFAULT_EPOCH = datetime(2026, 11, 23, 0, 0, 0, tzinfo=PERTH)
+SEASON_EPOCH = _DEFAULT_EPOCH
+
+
+def season_epoch() -> datetime:
+    """Return the configured season-1 start, honouring SEASON_EPOCH."""
+    raw = (os.environ.get("SEASON_EPOCH") or "").strip()
+    if not raw:
+        return _DEFAULT_EPOCH
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return _DEFAULT_EPOCH
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=PERTH)
+    return dt.astimezone(PERTH)
 SEASON_DAYS = 28
 TIER_COUNT = 30
 
@@ -177,13 +196,14 @@ def _tiers_payload(track: str) -> list[dict[str, Any]]:
 
 def current_season(when: datetime | None = None) -> dict[str, Any]:
     dt = now(when)
-    days = (dt.date() - SEASON_EPOCH.date()).days
+    epoch = season_epoch()
+    days = (dt.date() - epoch.date()).days
     if days < 0:
         idx = 0
-        start = SEASON_EPOCH
+        start = epoch
     else:
         idx = days // SEASON_DAYS
-        start = SEASON_EPOCH + timedelta(days=idx * SEASON_DAYS)
+        start = epoch + timedelta(days=idx * SEASON_DAYS)
     end = start + timedelta(days=SEASON_DAYS)
     name = SEASON_NAMES[idx % len(SEASON_NAMES)]
     return {

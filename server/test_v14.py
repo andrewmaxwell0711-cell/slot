@@ -11,7 +11,7 @@ import tempfile
 import threading
 import unittest
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 SERVER_DIR = Path(__file__).resolve().parent
@@ -30,6 +30,7 @@ import db as dbmod
 import events
 import ledger
 import prefs
+import prizes
 import season
 
 
@@ -208,7 +209,7 @@ class SeasonRolloverTests(unittest.TestCase):
         player = pid()
         ledger.ensure_player(player)
         # Mid-season 1 (relative to SEASON_EPOCH).
-        mid = season.SEASON_EPOCH + timedelta(days=10, hours=12)
+        mid = season.season_epoch() + timedelta(days=10, hours=12)
         season.set_clock(mid)
         sid1 = season.current_season()["id"]
         self.assertTrue(season.season_open())
@@ -222,7 +223,7 @@ class SeasonRolloverTests(unittest.TestCase):
         coins_after = ledger.snapshot(player)["coins"]
 
         # Exact end instant is the start of the next season.
-        season.set_clock(season.SEASON_EPOCH + timedelta(days=season.SEASON_DAYS))
+        season.set_clock(season.season_epoch() + timedelta(days=season.SEASON_DAYS))
         st2 = season.season_state(player)
         self.assertNotEqual(st2["season"]["id"], sid1)
         self.assertEqual(st2["xp"], 0)
@@ -299,6 +300,33 @@ class SeasonPolicyTests(unittest.TestCase):
         self.assertIn("grid-template-columns:repeat(4,1fr)", html)
         self.assertNotIn('data-nav="season"', html)
         self.assertIn("Practice or success at social casino gaming does not imply future success at real money gambling.", html)
+
+
+
+    def test_season_epoch_env_resets_season_one_without_code_change(self) -> None:
+        # A launch-date override must move Season 1 without editing the module.
+        self.assertEqual(season.season_epoch(), season._DEFAULT_EPOCH)
+        os.environ["SEASON_EPOCH"] = "2026-12-21"
+        self.addCleanup(os.environ.pop, "SEASON_EPOCH", None)
+        self.addCleanup(season.set_clock, None)
+        epoch = season.season_epoch()
+        self.assertEqual(epoch, datetime(2026, 12, 21, 0, 0, 0, tzinfo=prizes.PERTH))
+        season.set_clock(epoch + timedelta(hours=1))
+        info = season.current_season()
+        self.assertEqual(info["id"], "S20261221")
+        self.assertEqual(info["index"], 1)
+        self.assertTrue(info["starts_at"].startswith("2026-12-21T00:00:00"))
+        self.assertTrue(info["ends_at"].startswith("2027-01-18T00:00:00"))
+
+    def test_season_epoch_env_accepts_iso_datetime_and_falls_back_on_typo(self) -> None:
+        os.environ["SEASON_EPOCH"] = "2027-01-04T00:00:00+08:00"
+        self.addCleanup(os.environ.pop, "SEASON_EPOCH", None)
+        self.assertEqual(
+            season.season_epoch(),
+            datetime(2027, 1, 4, 0, 0, 0, tzinfo=prizes.PERTH),
+        )
+        os.environ["SEASON_EPOCH"] = "not-a-date"
+        self.assertEqual(season.season_epoch(), season._DEFAULT_EPOCH)
 
 
 if __name__ == "__main__":
