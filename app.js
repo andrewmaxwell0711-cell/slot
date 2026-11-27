@@ -24,7 +24,14 @@
     return Gems.url("greentea", big ? 512 : undefined);
   }
   const HI_SYMBOLS = new Set(["ruby", "greentea", "wild", "sapphire", "emerald"]);
-  const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const OS_REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let REDUCE = OS_REDUCE;
+  function refreshReduce() {
+    REDUCE = window.CrystalSettings ? !window.CrystalSettings.effectsOn() : OS_REDUCE;
+    document.documentElement.classList.toggle("reduce-motion", REDUCE);
+    document.documentElement.classList.toggle("reduce-effects", REDUCE);
+  }
+  try { refreshReduce(); } catch (e) { /* settings may load later */ }
   const ENGAGE_KEY = "crystal-reels-engage-v5";
   const AGE_KEY = "crystal-casino-age-ok-v1";
   const LEGAL_DEFAULT = "Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.";
@@ -514,7 +521,7 @@
   }
   function cellEl(col, row) { const cells = reelsEl.children[col].querySelectorAll(".symbol"); return cells[cells.length - ROWS + row]; }
   function highlightWin(w) {
-    w.cells.forEach(([c, r]) => { const el = cellEl(c, r); if (el) { el.classList.add("win"); el.style.setProperty("--lc", lineColor(w.line)); } });
+    w.cells.forEach(([c, r]) => { const el = cellEl(c, r); if (el) { el.classList.add("win"); el.style.setProperty("--lc", lineColor(w.line)); if (window.CrystalFX) CrystalFX.shine(el); } });
   }
 
   function makeCell(id) {
@@ -522,7 +529,7 @@
     d.className = "symbol" + (HI_SYMBOLS.has(id) ? " hi" : "") + (id === "wild" ? " wild" : "");
     d.dataset.id = id;
     const img = document.createElement("img");
-    img.src = Gems.url(id); img.alt = ""; img.draggable = false; img.decoding = "async";
+    img.src = Gems.url(id, 256); if (Gems.srcset) { img.srcset = Gems.srcset(id); img.sizes = "96px"; } img.alt = ""; img.draggable = false; img.decoding = "async";
     d.appendChild(img);
     return d;
   }
@@ -544,6 +551,7 @@
     cabinetEl.classList.remove("anticipate-any");
     reels.forEach((reel) => reel.querySelector(".reel-strip")?.classList.remove("land"));
     sfx.spin();
+    if (window.CrystalFX) CrystalFX.vibrate(CrystalFX.HAPTIC.spin);
     let scatters = 0, extra = 0, landedScat = 0;
     const base = speed(800), gap = speed(220);
     await Promise.all(reels.map((reel, col) => {
@@ -559,9 +567,11 @@
       const finals = grid[col].map(makeCell);
       finals.reverse().forEach((f) => strip.insertBefore(f, strip.firstChild));
       strip.style.transform = `translateY(${-(strip.children.length - ROWS) * h}px)`;
-      if (scatters >= 2 && !turbo && !REDUCE) { extra += 950; reel.classList.add("anticipate"); cabinetEl.classList.add("anticipate-any"); sfx.anticipate(scatters); }
+      const colScats = grid.map((g) => g.filter((id) => id === "scatter").length);
+      const colScat = colScats[col];
+      const later = colScats.slice(col);
+      if (window.CrystalFX && CrystalFX.shouldAnticipate(scatters, later, 3) && !turbo && !REDUCE) { extra += 950; reel.classList.add("anticipate"); cabinetEl.classList.add("anticipate-any"); sfx.anticipate(scatters); if (CrystalFX.vibrate) CrystalFX.vibrate(CrystalFX.HAPTIC.scatter); }
       const dur = base + col * gap + extra;
-      const colScat = grid[col].filter((id) => id === "scatter").length;
       scatters += colScat;
       void strip.offsetHeight;
       reel.classList.add("spinning");
@@ -717,8 +727,10 @@
       for (let i = 0; i < pad; i++) { const el = mwCell(randomMwId(false, c)); el.style.height = `${ch}px`; strip.appendChild(el); }
       strip.style.transform = `translateY(${-pad * ch}px)`;
       reel.dataset.rows = String(main.length);
-      if (scat >= 3 && !turbo && !REDUCE) { extra += 1000; reel.classList.add("anticipate"); cabinetEl.classList.add("anticipate-any"); sfx.anticipate(scat); }
-      scat += col.filter((x) => x === "scatter").length;
+      const colScats = cols.map((c) => c.filter((x) => x === "scatter").length);
+      const later = colScats.slice(c);
+      if (window.CrystalFX && CrystalFX.shouldAnticipate(scat, later, 3) && !turbo && !REDUCE) { extra += 1000; reel.classList.add("anticipate"); cabinetEl.classList.add("anticipate-any"); sfx.anticipate(scat); if (CrystalFX.vibrate) CrystalFX.vibrate(CrystalFX.HAPTIC.scatter); }
+      scat += colScats[c];
       const dur = base + c * gap + extra;
       void strip.offsetHeight;
       reel.classList.add("spinning");
@@ -928,13 +940,15 @@
   }
   function applyVolume() {
     if (!master || !audioCtx) return;
-    master.gain.setTargetAtTime(1, audioCtx.currentTime, 0.03);
+    const st = window.CrystalSettings ? CrystalSettings.load() : { master: 100, sfx: true, music: true };
+    const masterV = Math.max(0, Math.min(1, (Number(st.master) || 0) / 100));
+    master.gain.setTargetAtTime(masterV, audioCtx.currentTime, 0.03);
     if (sfxBus) {
-      const v = muted ? 0 : Math.pow(volume / 100, 1.6) * 1.1;
+      const v = (muted || st.sfx === false) ? 0 : Math.pow(volume / 100, 1.6) * 1.1;
       sfxBus.gain.setTargetAtTime(v, audioCtx.currentTime, 0.03);
     }
     if (musicBus) {
-      const v = (musicMuted || musicVolume === 0) ? 0 : Math.pow(musicVolume / 100, 1.6) * 0.7;
+      const v = (musicMuted || st.music === false || musicVolume === 0) ? 0 : Math.pow(musicVolume / 100, 1.6) * 0.7;
       musicBus.gain.setTargetAtTime(v, audioCtx.currentTime, 0.05);
     }
   }
@@ -1169,11 +1183,11 @@
       const tea = ["#8ff06b", "#eaffd0", "#fff3b0", "#f3c441", "#ffffff"];
       const heavy = kind === "jackpot" || tier === "mega" || tier === "epic";
       shakeCabinet(heavy);
-      if (kind === "bonus" || kind === "pick") { sfx.bonus(); rain(90); }
-      else if (kind === "jackpot") { sfx.jackpot(); rain(240, tea); coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); }
-      else if (tier === "epic") { sfx.big(); rain(200, tea); coinBurst(150); }
-      else if (tier === "mega") { sfx.big(); rain(160, tea); coinBurst(100); }
-      else { sfx.big(); rain(140, tea); coinBurst(70); }
+      if (kind === "bonus" || kind === "pick") { sfx.bonus(); rain(90); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.win); CrystalFX.fountain(24); } }
+      else if (kind === "jackpot") { sfx.jackpot(); rain(240, tea); coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.jackpot); CrystalFX.fountain(48); } }
+      else if (tier === "epic") { sfx.big(); rain(200, tea); coinBurst(150); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.epic); CrystalFX.fountain(44); } }
+      else if (tier === "mega") { sfx.big(); rain(160, tea); coinBurst(100); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.mega); CrystalFX.fountain(36); } }
+      else { sfx.big(); rain(140, tea); coinBurst(70); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.big); CrystalFX.fountain(28); } }
       let r = null;
       if (amountAud != null) {
         const t0 = performance.now(), dur = Math.min(hold * 0.7, 2400); let last = 0;
@@ -1292,6 +1306,7 @@
     const btn = $("#btn-daily");
     if (btn) { btn.classList.add("opening"); btn.disabled = true; }
     sfx.chest();
+    if (window.CrystalFX) CrystalFX.openChest(btn);
     try {
       applySnapshot(await api("/api/bonus/daily", { method: "POST", body: "{}" }));
       render();
@@ -1886,7 +1901,7 @@
     const startLocked = first.map((v) => v != null);
     const paint = (cells, added = []) => {
       stage.innerHTML = `<div class="hold-grid">${(cells || []).map((v, i) =>
-        `<div class="hold-cell${v != null ? " locked" : ""}${added.includes(i) ? " new" : ""}">${v != null ? (v + "×") : ""}</div>`
+        `<div class="hold-cell${v != null ? " locked" : ""}${added.includes(i) ? " new fx-lock" : ""}">${v != null ? (v + "×") : ""}</div>`
       ).join("")}</div>`;
     };
     paint(first);
@@ -2283,7 +2298,7 @@
         if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(tag) || document.querySelector(".modal:not([hidden])") || !ageAccepted()) return;
         e.preventDefault(); spin();
       }
-      if (e.key === "Escape") { ["shop", "auto", "info", "prizes", "signin", "merge", "delete"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
+      if (e.key === "Escape") { ["shop", "auto", "info", "prizes", "signin", "merge", "delete", "settings"].forEach(closeModal); if (celebrateResolve) celebrateResolve(); if (stingResolve) stingResolve(); }
     });
     let rt = null;
     window.addEventListener("resize", () => { resizeCanvas(); clearTimeout(rt); rt = setTimeout(() => { layoutBadges(); clearLines(); if (!busy && mwCols) setMwBoard(mwCols); }, 120); });
@@ -2304,6 +2319,50 @@
     // unlock audio on first interaction (browsers block autoplay)
     const unlock = () => { ensureAudio(); startBgMusic(); window.removeEventListener("pointerdown", unlock); };
     window.addEventListener("pointerdown", unlock);
+    bindSettings();
+  }
+  function bindSettings() {
+    if (!window.CrystalSettings) return;
+    const $id = (id) => document.getElementById(id);
+    const paint = () => {
+      const s = CrystalSettings.load();
+      if ($id("set-master")) $id("set-master").value = String(s.master);
+      if ($id("set-sfx")) $id("set-sfx").checked = s.sfx !== false;
+      if ($id("set-music")) $id("set-music").checked = s.music !== false;
+      if ($id("set-haptics")) $id("set-haptics").checked = s.haptics !== false;
+      if ($id("set-reduce")) $id("set-reduce").checked = !!s.reduceEffects;
+      const hint = $id("settings-reduce-hint");
+      if (hint && CrystalSettings.osReduce()) {
+        hint.textContent = "Your device requested reduced motion. Extra effects stay off while that setting is on.";
+      }
+    };
+    const commit = () => {
+      const next = CrystalSettings.load();
+      if ($id("set-master")) next.master = Number($id("set-master").value);
+      if ($id("set-sfx")) next.sfx = $id("set-sfx").checked;
+      if ($id("set-music")) next.music = $id("set-music").checked;
+      if ($id("set-haptics")) next.haptics = $id("set-haptics").checked;
+      if ($id("set-reduce")) next.reduceEffects = $id("set-reduce").checked;
+      CrystalSettings.save(next);
+      musicMuted = !next.music;
+      if (!next.sfx) muted = true;
+      else if (muted && volume > 0) muted = false;
+      refreshReduce();
+      applyVolume();
+      if (typeof render === "function") render();
+    };
+    const btn = $id("btn-settings");
+    if (btn) btn.addEventListener("click", () => { paint(); openModal("settings"); });
+    const done = $id("btn-settings-done");
+    if (done) done.addEventListener("click", () => { commit(); closeModal("settings"); });
+    ["set-master", "set-sfx", "set-music", "set-haptics", "set-reduce"].forEach((id) => {
+      const el = $id(id);
+      if (!el) return;
+      el.addEventListener("change", commit);
+      if (el.type === "range") el.addEventListener("input", commit);
+    });
+    paint();
+    refreshReduce();
   }
   async function previewLines() {
     const tok = presentToken, n = lines();
@@ -2527,7 +2586,7 @@
   window.CrystalCasino = {
     api, money, toast, ensureAudio, applySnapshot,
     sfx, startBgMusic, stopBgMusic, setView, applySlotTheme, presentHoldSpin: playHoldSpin,
-    maybeTableTutorial,
+    maybeTableTutorial, celebrate,
     get config() { return { side: typeof SIDE !== "undefined" ? SIDE : {}, slot_themes: SLOT_THEMES }; },
     claimDaily, claimHourly,
     openShop: () => openModal("shop"),
@@ -2561,7 +2620,7 @@
     setTimeout(dismissSplash, 4000); // safety: never leave the splash stuck
     resizeCanvas(); decorate(); initReels(); renderBadges(); render(); initMw(); renderHistory(); wire(); updateAutoUI();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layoutBadges(); if (mwCols && !busy) setMwBoard(mwCols); });
-    if (REDUCE) document.documentElement.classList.add("reduce-motion");
+    refreshReduce();
     if (!REDUCE) setInterval(ambient, 420);
     if (!ageAccepted()) {
       ready = false;

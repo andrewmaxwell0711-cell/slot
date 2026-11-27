@@ -90,6 +90,7 @@
   async function apply() {
     const path = parsePath();
     const prev = currentPath;
+    if (prev && prev !== path && window.CrystalFX) CrystalFX.viewTransition();
     const tablePaths = new Set(["/roulette","/blackjack","/war","/highcard","/mines","/scratch","/dice","/videopoker","/threecard","/poker/video","/poker/three","/baccarat","/keno"]);
     if (tablePaths.has(prev) && prev !== path) await leaveTable();
     currentPath = path;
@@ -144,6 +145,7 @@
   }
 
   function openRoute(path) {
+    if (window.CrystalFX) CrystalFX.viewTransition();
     if (path === "/roulette") paintRoulette({});
     else if (path === "/blackjack") paintBJ({});
     else if (path === "/poker") paintPokerMenu();
@@ -240,7 +242,7 @@
 
   function cardHTML(c, i) {
     if (!c || c.hidden || c.suit === "back") {
-      return `<div class="pcard back" style="animation-delay:${(i||0)*70}ms"><img class="card-back-art" src="/assets/cards/back.webp" alt="" /></div>`;
+      return `<div class="pcard back fx-deal" style="--deal-i:${i||0};animation-delay:${(i||0)*70}ms"><img class="card-back-art" src="/assets/cards/back.webp" alt="" /></div>`;
     }
     const red = c.colour === "red" || c.suit === "hearts" || c.suit === "diamonds";
     const suit = SUIT[c.suit] || c.suit;
@@ -249,7 +251,7 @@
     const mid = court
       ? `<img class="court-art" src="/assets/cards/royal-${rank}.webp" alt="" />`
       : `<span class="pip">${suit}</span>`;
-    return `<div class="pcard ${red ? "red" : "black"}${court ? " court" : ""}" style="animation-delay:${(i||0)*70}ms">
+    return `<div class="pcard fx-deal ${red ? "red" : "black"}${court ? " court" : ""}" style="--deal-i:${i||0};animation-delay:${(i||0)*70}ms">
       <span class="corner tl"><b class="r">${rank}</b><i class="s">${suit}</i></span>
       ${mid}
       <span class="corner br"><b class="r">${rank}</b><i class="s">${suit}</i></span>
@@ -274,6 +276,7 @@
     root.querySelectorAll("[data-chip]").forEach((b) => b.addEventListener("click", () => {
       chip = Number(b.dataset.chip);
       sfx("chip");
+      if (window.CrystalFX) CrystalFX.vibrate(CrystalFX.HAPTIC.chip);
       root.querySelectorAll("[data-chip]").forEach((x) => x.classList.toggle("on", Number(x.dataset.chip) === chip));
     }));
   }
@@ -606,6 +609,7 @@
       if (reduceMotion()) {
         setWheelPose(finalLocal, LAND_DEG, POCKET_Y);
         showResultBadge(result);
+        if (window.CrystalFX && result && result.number != null) CrystalFX.highlightRoulette(result.number);
         resolve();
         return;
       }
@@ -638,6 +642,7 @@
         else {
           setWheelPose(endW, endB, POCKET_Y);
           showResultBadge(result);
+          if (window.CrystalFX && result && result.number != null) CrystalFX.highlightRoulette(result.number);
           resolve();
         }
       };
@@ -1265,11 +1270,11 @@
         <div class="bac-seats">
           <div class="bac-seat ${winner === "player" ? "won" : winner === "tie" ? "push" : ""}">
             <div class="seat-label">Player ${st && st.player ? "· " + st.player_point : ""}</div>
-            <div class="hand">${(st && st.player ? st.player : []).map((c, i) => cardHTML(c, i)).join("")}</div>
+            <div class="hand">${(st && st.player ? st.player : []).map((c, i, arr) => cardHTML(c, i) /* squeeze last */.replace('class="pcard', i === arr.length-1 && st && st.done ? 'class="pcard fx-squeeze-pending' : 'class="pcard')).join("")}</div>
           </div>
           <div class="bac-seat ${winner === "banker" ? "won" : winner === "tie" ? "push" : ""}">
             <div class="seat-label">Banker ${st && st.banker ? "· " + st.banker_point : ""}</div>
-            <div class="hand">${(st && st.banker ? st.banker : []).map((c, i) => cardHTML(c, i)).join("")}</div>
+            <div class="hand">${(st && st.banker ? st.banker : []).map((c, i, arr) => cardHTML(c, i).replace('class="pcard', i === arr.length-1 && st && st.done ? 'class="pcard fx-squeeze-pending' : 'class="pcard')).join("")}</div>
           </div>
         </div>
         ${st && st.why ? resultBanner(st.why, winner === "tie" ? "push" : ((st.payout || 0) > (st.bet || 0) ? "win" : (st.payout || 0) === (st.bet || 0) && (st.bet || 0) > 0 ? "push" : "lose")) : ""}
@@ -1292,6 +1297,13 @@
       </div>`);
     bindChips(root);
     bindInfo(root);
+    root.querySelectorAll(".fx-squeeze-pending").forEach((el) => {
+      const reveal = () => {
+        el.classList.remove("fx-squeeze-pending");
+        if (window.CrystalFX) CrystalFX.squeezeCard(el);
+      };
+      el.addEventListener("click", reveal, { once: true });
+    });
     root.querySelectorAll("[data-bac]").forEach((b) => b.addEventListener("click", () => {
       const spot = b.dataset.bac;
       baccaratBets[spot] = (baccaratBets[spot] || 0) + chip;
@@ -1356,7 +1368,9 @@
           const picked = kenoPicks.includes(n);
           const isDrawn = drawn.has(n);
           const isHit = hits.has(n);
-          return `<button type="button" class="keno-ball${picked ? " picked" : ""}${isDrawn ? " drawn" : ""}${isHit ? " hit" : ""}" data-n="${n}">${n}</button>`;
+          const drawIdx = (st && Array.isArray(st.drawn)) ? st.drawn.indexOf(n) : -1;
+          const kenoStyle = drawIdx >= 0 ? ` style="--keno-i:${drawIdx}"` : "";
+          return `<button type="button" class="keno-ball${picked ? " picked" : ""}${isDrawn ? " drawn fx-keno-ball" : ""}${isHit ? " hit" : ""}" data-n="${n}"${kenoStyle}>${n}</button>`;
         }).join("")}</div>
         <div class="keno-side">
           ${kenoPayRows(kenoPicks.length || kenoCount)}

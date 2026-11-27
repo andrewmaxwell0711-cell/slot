@@ -284,13 +284,12 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
   function url(id, size) {
     if (RASTER.has(id)) {
       const theme = currentTheme();
-      if (theme && theme !== "crystal") {
-        const suffix = size === 128 ? "-128.webp" : ".webp";
-        return "/assets/themes/" + theme + "/" + id + suffix;
-      }
-      if (size === 512 && id === "greentea") return "/assets/symbols/greentea-512.webp";
-      if (size === 128) return "/assets/symbols/" + id + "-128.webp";
-      return "/assets/symbols/" + id + ".webp";
+      const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+      const want = size || (dpr >= 2 ? 512 : 256);
+      const folder = (theme && theme !== "crystal") ? ("/assets/themes/" + theme + "/") : "/assets/symbols/";
+      if (want >= 512) return folder + id + "-512.webp";
+      if (want <= 128) return folder + id + "-128.webp";
+      return folder + id + ".webp";
     }
     if (!urls[id]) urls[id] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg(id));
     return urls[id];
@@ -305,5 +304,8 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     });
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${b}${sparkle(60, 8, 7)}</svg>`);
   }
-  window.CrystalGems = { svg, url, currentTheme, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin"]) };
+  function srcset(id) {
+      return url(id, 128) + " 128w, " + url(id, 256) + " 256w, " + url(id, 512) + " 512w";
+    }
+  window.CrystalGems = { svg, url, srcset, currentTheme, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin"]) };
 })();
