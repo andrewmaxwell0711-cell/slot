@@ -376,7 +376,7 @@
   }
   function applyConfig(cfg) {
     stripeEnabled = !!cfg.stripe_enabled;
-    $("#stripe-key-banner").hidden = stripeEnabled;
+    updateSiteNotice({ stripe: stripeEnabled });
     if (Array.isArray(cfg.line_options)) LINE_OPTIONS = cfg.line_options;
     if (Array.isArray(cfg.bet_per_line) || Array.isArray(cfg.bet_per_line_aud)) BPL = cfg.bet_per_line || cfg.bet_per_line_aud;
     if (Array.isArray(cfg.packs)) PACKS = cfg.packs;
@@ -2116,11 +2116,11 @@
       badge.className = "vip-badge " + (profile.vip.id || "bronze");
     }
     const nick = $("#profile-nick"); if (nick && profile.nickname) nick.textContent = profile.nickname;
-    const wb = $("#weekend-banner");
-    if (wb) {
-      wb.hidden = !weekend.active;
-      if (weekend.active) wb.textContent = "Weekend tournament is on — biggest slot wins this weekend win a coin prize. Coins have no cash value.";
-    }
+    updateSiteNotice({
+      weekend: weekend && weekend.active
+        ? "Weekend tournament is on — biggest slot wins can earn a coin prize."
+        : "",
+    });
     const tracks = $("#coll-tracks");
     if (tracks) {
       const types = collection.types || ["ruby", "emerald", "sapphire"];
@@ -2896,11 +2896,39 @@
     setMsg(mode === "megaways" ? `MEGAWAYS · UP TO ${fmtWays(MW.max_ways)} WAYS` : "PLACE YOUR BET");
     ready = true;
   }
+
+  const NOTICE_KEY = "crystal-casino-notice-v12";
+  const noticeState = { stripe: true, weekend: "" };
+  function updateSiteNotice(partial) {
+    if (partial) Object.assign(noticeState, partial);
+    const extra = $("#notice-extra");
+    const bits = [];
+    if (noticeState.stripe === false) bits.push("Add a Stripe test key to enable the coin shop.");
+    if (noticeState.weekend) bits.push(noticeState.weekend);
+    if (extra) extra.textContent = bits.length ? " " + bits.join(" ") : "";
+    const bar = $("#site-notice");
+    if (!bar) return;
+    try { if (localStorage.getItem(NOTICE_KEY) === "1") bar.hidden = true; } catch (e) {}
+  }
+  function bindSiteNotice() {
+    const bar = $("#site-notice");
+    const btn = $("#site-notice-dismiss");
+    if (!bar) return;
+    try { if (localStorage.getItem(NOTICE_KEY) === "1") bar.hidden = true; } catch (e) {}
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      bar.hidden = true;
+      try { localStorage.setItem(NOTICE_KEY, "1"); } catch (e) {}
+    });
+  }
+
   async function boot() {
     let returning = false;
     try { returning = !!localStorage.getItem(AGE_KEY); } catch (e) {}
     const splashWait = REDUCE || returning ? 180 : 1200;
     setTimeout(dismissSplash, 4000); // safety: never leave the splash stuck
+    bindSiteNotice();
     resizeCanvas(); decorate(); initReels(); renderBadges(); render(); initMw(); renderHistory(); wire(); updateAutoUI();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { layoutBadges(); if (mwCols && !busy) setMwBoard(mwCols); });
     refreshReduce();
