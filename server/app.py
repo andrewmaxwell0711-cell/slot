@@ -37,9 +37,12 @@ import db as dbmod  # noqa: E402
 import game  # noqa: E402
 import ledger  # noqa: E402
 import prizes  # noqa: E402
+import errors  # noqa: E402
+import legal  # noqa: E402
+import prefs  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js", "casino.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -88,6 +91,7 @@ app = Flask(
     static_folder=None,
 )
 app.secret_key = _load_flask_secret()
+errors.init_sentry(app)
 ledger.init_db()
 print(f"Crystal Casino ledger: {dbmod.backend_name(ledger.DB_PATH)}", file=sys.stderr)
 
@@ -290,6 +294,12 @@ def _config_payload() -> dict:
         "progressive": ledger.progressive_public(),
         "side": __import__("side").catalogue(),
         "slot_themes": __import__("themes").catalogue(),
+        "simulated_gambling": game.SIMULATED_GAMBLING,
+        "age_limit": game.AGE_LIMIT,
+        "disclosure": legal.disclosure_block(),
+        "privacy_url": legal.PRIVACY_URL,
+        "terms_url": legal.TERMS_URL,
+        "sentry_dsn": errors.sentry_public_dsn() or None,
     }
 
     try:
@@ -308,6 +318,28 @@ def index():
     return send_from_directory(ROOT, "index.html")
 
 
+@app.get("/privacy")
+def privacy_page():
+    return render_template(
+        "legal.html",
+        title="Privacy Policy",
+        description="Crystal Casino privacy policy. Social casino, 18+, coins have no cash value.",
+        body=legal.privacy_html(),
+        notice=game.SIMULATED_GAMBLING,
+    )
+
+
+@app.get("/terms")
+def terms_page():
+    return render_template(
+        "legal.html",
+        title="Terms of Use",
+        description="Crystal Casino terms of use. Social casino, 18+, coins have no cash value.",
+        body=legal.terms_html(),
+        notice=game.SIMULATED_GAMBLING,
+    )
+
+
 @app.get("/styles.css")
 def styles():
     return send_from_directory(ROOT, "styles.css")
@@ -321,6 +353,11 @@ def gems_js():
 @app.get("/app.js")
 def app_js():
     return send_from_directory(ROOT, "app.js")
+
+
+@app.get("/errors.js")
+def errors_js():
+    return send_from_directory(ROOT, "errors.js")
 
 
 @app.get("/lobby.js")
@@ -444,6 +481,39 @@ def api_auth_delete():
     g.clear_session_cookie = True
     _become_fresh_guest()
     return jsonify(_public_snap(ledger.snapshot(g.player_id), include_config=True))
+
+
+@app.get("/api/prefs")
+def api_prefs_get():
+    with ledger.transaction() as conn:
+        prefs.ensure_schema(conn)
+        state = prefs.get_tutorial(conn, g.player_id)
+    return jsonify({"tutorial": state})
+
+
+@app.post("/api/prefs")
+def api_prefs_set():
+    data = request.get_json(silent=True) or {}
+    tut = data.get("tutorial") if isinstance(data.get("tutorial"), dict) else data
+    with ledger.transaction() as conn:
+        ledger.lock_player(conn, g.player_id)
+        prefs.ensure_schema(conn)
+        state = prefs.set_tutorial(conn, g.player_id, tut or {})
+    return jsonify({"tutorial": state})
+
+
+@app.post("/api/errors")
+def api_client_errors():
+    raw = request.get_data(cache=True) or b""
+    if len(raw) > errors.MAX_BODY:
+        return _json_error("Report too large", 413)
+    data = request.get_json(silent=True) or {}
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "unknown").split(",")[0].strip()
+    player = getattr(g, "player_id", "") or "anon"
+    if not errors.allow_report(f"ip:{ip}") or not errors.allow_report(f"p:{player}", limit=20):
+        return _json_error("Too many reports", 429)
+    errors.record_client_error(data if isinstance(data, dict) else {}, source=ip)
+    return jsonify({"ok": True})
 
 
 @app.get("/api/config")
@@ -911,6 +981,16 @@ def api_side(game: str):
         snap["coins"] = result["coins"]
     return jsonify(snap)
 
+
+
+@app.errorhandler(Exception)
+def on_uncaught(exc):
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(exc, HTTPException):
+        return exc
+    errors.capture(exc)
+    return _json_error("Something went wrong", 500)
 
 
 def main() -> None:

@@ -106,6 +106,12 @@ RESPONSIBLE_PLAY = (
     "Play for fun. This is a social casino, not real-money gambling. "
     "If you need a break, step away. 18+ only."
 )
+# Exact Google Play / simulated-gambling sentence — do not paraphrase.
+SIMULATED_GAMBLING = (
+    "Practice or success at social casino gaming does not imply future success "
+    "at real money gambling."
+)
+AGE_LIMIT = 18
 
 # Legacy aliases kept so older helpers/tests that still mention asset lists
 # do not break on import. The ledger no longer holds fiat or crypto.

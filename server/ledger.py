@@ -125,10 +125,17 @@ def init_db(conn: Any | None = None) -> None:
     auth.ensure_schema(c)
     import baccarat
     baccarat.ensure_schema(c)
+    import prefs
+    prefs.ensure_schema(c)
 
 
 @contextmanager
 def transaction() -> Iterator[Any]:
+    """Atomic write. SQLite uses BEGIN IMMEDIATE (reserved lock).
+
+    Postgres rewrites that to BEGIN; callers must also row-lock the player,
+    balance and house rows they are about to update (see lock_player).
+    """
     conn = get_conn()
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -137,6 +144,22 @@ def transaction() -> Iterator[Any]:
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+def lock_player(conn: Any, player_id: str) -> None:
+    """Row-level lock for the player (and rely on BEGIN IMMEDIATE on SQLite)."""
+    conn.execute("SELECT id FROM players WHERE id = ? FOR UPDATE", (player_id,)).fetchone()
+
+
+def lock_balance(conn: Any, player_id: str, asset: str = COIN_ASSET) -> None:
+    conn.execute(
+        "SELECT amount FROM balances WHERE player_id = ? AND asset = ? FOR UPDATE",
+        (player_id, asset),
+    ).fetchone()
+
+
+def lock_house(conn: Any) -> None:
+    conn.execute("SELECT id FROM house WHERE id = 1 FOR UPDATE").fetchone()
 
 
 def ensure_player(player_id: str) -> None:
@@ -302,8 +325,9 @@ def _debit(conn: Any, player_id: str, asset: str, amount: float) -> None:
     amount = clean_amount(asset, amount)
     if amount <= 0:
         raise ValueError("Debit amount must be positive")
+    lock_balance(conn, player_id, asset)
     row = conn.execute(
-        "SELECT amount FROM balances WHERE player_id = ? AND asset = ?",
+        "SELECT amount FROM balances WHERE player_id = ? AND asset = ? FOR UPDATE",
         (player_id, asset),
     ).fetchone()
     current = float(row["amount"]) if row else 0.0
@@ -342,6 +366,7 @@ def credit_coin_pack(
         raise ValueError("Coin pack price does not match the catalogue")
     ensure_player(player_id)
     with transaction() as conn:
+        lock_player(conn, player_id)
         existing = conn.execute(
             "SELECT session_id, player_id, asset, amount FROM processed_sessions WHERE session_id = ?",
             (session_id,),
@@ -349,31 +374,35 @@ def credit_coin_pack(
         if existing:
             already = True
         else:
-            already = False
-            _credit(conn, player_id, COIN_ASSET, coins)
             now = _utc_now()
-            conn.execute(
+            inserted = conn.execute(
                 """
                 INSERT INTO processed_sessions (session_id, player_id, asset, amount, created_at)
                 VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO NOTHING
                 """,
                 (session_id, player_id, COIN_ASSET, coins, now),
             )
-            conn.execute(
-                """
-                INSERT INTO ledger_entries
-                    (player_id, kind, asset, amount, stripe_session_id, note, created_at)
-                VALUES (?, 'shop_pack', ?, ?, ?, ?, ?)
-                """,
-                (
-                    player_id,
-                    COIN_ASSET,
-                    coins,
-                    session_id,
-                    f"Stripe test-mode coin pack {pack_id} — virtual coins, no cash value",
-                    now,
-                ),
-            )
+            if int(getattr(inserted, "rowcount", 0) or 0) == 0:
+                already = True
+            else:
+                already = False
+                _credit(conn, player_id, COIN_ASSET, coins)
+                conn.execute(
+                    """
+                    INSERT INTO ledger_entries
+                        (player_id, kind, asset, amount, stripe_session_id, note, created_at)
+                    VALUES (?, 'shop_pack', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        player_id,
+                        COIN_ASSET,
+                        coins,
+                        session_id,
+                        f"Stripe test-mode coin pack {pack_id} — virtual coins, no cash value",
+                        now,
+                    ),
+                )
     if already:
         return False, "already credited", snapshot(player_id)
     return True, "credited", snapshot(player_id)
@@ -406,6 +435,7 @@ def claim_daily(player_id: str) -> dict[str, Any]:
     ensure_player(player_id)
     today = datetime.now(PERTH).date().isoformat()
     with transaction() as conn:
+        lock_player(conn, player_id)
         status = _bonus_status(conn, player_id)
         if not status["daily_available"]:
             raise BonusUnavailable("Daily bonus already claimed — come back tomorrow")
@@ -433,6 +463,7 @@ def claim_hourly(player_id: str) -> dict[str, Any]:
     """Free hourly coin drop so play never requires a purchase."""
     ensure_player(player_id)
     with transaction() as conn:
+        lock_player(conn, player_id)
         status = _bonus_status(conn, player_id)
         if not status["hourly_available"]:
             raise BonusUnavailable(
@@ -575,6 +606,8 @@ def settle_round(
     roll = jackpot_roll or game_jackpot_roll
     ensure_player(player_id)
     with transaction() as conn:
+        lock_player(conn, player_id)
+        lock_house(conn)
         _take_stake(conn, player_id, total_bet_aud, "spin_bet", f"bet {to_coins(total_bet_aud)} coins")
         h = _house_row(conn)
         pool = h["pool_aud"] + total_bet_aud
@@ -786,6 +819,7 @@ def play_side(player_id: str, game: str, payload: dict | None = None) -> dict:
 
     def _run_side():
         with transaction() as conn:
+            lock_player(conn, player_id)
             row = conn.execute(
                 "SELECT game, state FROM side_sessions WHERE player_id = ?", (player_id,)
             ).fetchone()

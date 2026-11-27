@@ -386,7 +386,7 @@
       </div>
       <div class="privacy-note" id="privacy-note">
         <h3>Privacy</h3>
-        <p id="privacy-copy">If you sign in, we store your Google name, email and avatar, plus your game progress (coins, XP and VIP tier, trophies, themes, missions, bonus timers and coin-pack purchases). Coins have no cash value and cannot be cashed out. You can delete your account at any time; this permanently removes your account and progress.</p>
+        <p id="privacy-copy">If you sign in, we store your Google name, email and avatar, plus your game progress (coins, XP and VIP tier, trophies, themes, missions, bonus timers and coin-pack purchases). Coins have no cash value and cannot be cashed out. You can delete your account at any time; this permanently removes your account and progress. Read the full <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Use</a>.</p>
       </div>
       <div class="profile-delete" id="profile-delete" hidden>
         <button type="button" class="btn btn-outline btn-danger" id="btn-delete-account">Delete my account</button>
@@ -556,8 +556,8 @@
         <button class="icon-btn" type="button" data-close="shop" aria-label="Close">✕</button>
       </header>
       <div class="modal-body">
-        <p class="legal-note" id="shop-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
-        <p class="hint" id="shop-hint">TEST MODE. Use Stripe test card 4242 4242 4242 4242. You can also claim free daily and hourly coins — buying is never required to play.</p>
+        <p class="legal-note" id="shop-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Practice or success at social casino gaming does not imply future success at real money gambling. Coins have no real-world value and cannot be redeemed. 18+ only.</p>
+        <p class="hint" id="shop-hint">TEST MODE. Web coin packs use Stripe test card 4242 4242 4242 4242. On a future Android app, coin packs will use Google Play Billing only. You can also claim free daily and hourly coins — buying is never required to play.</p>
         <div class="pack-grid" id="pack-grid"></div>
         <p class="modal-note" id="shop-note"></p>
       </div>
@@ -612,10 +612,26 @@
   </nav>
 
   <footer class="site-footer">
-    <p id="footer-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
+    <p id="footer-legal">Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Coins have no real-world value and cannot be redeemed. 18+ only.</p>
+    <p id="footer-simulated">Practice or success at social casino gaming does not imply future success at real money gambling.</p>
     <p id="footer-responsible">Play for fun. This is a social casino, not real-money gambling. If you need a break, step away. 18+ only. DEMO · TEST MODE.</p>
-    <p id="footer-privacy">Signed-in accounts store your Google name, email, avatar and game progress. You can review or delete this from your profile.</p>
+    <p id="footer-privacy">Signed-in accounts store your Google name, email, avatar and game progress. You can review or delete this from your profile. <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Use</a>.</p>
   </footer>
+
+  <!-- First-time tutorial (skippable coach marks) -->
+  <div id="tutorial" class="tutorial" hidden>
+    <div class="tut-dim" aria-hidden="true"></div>
+    <div class="tut-spot" id="tut-spot" aria-hidden="true"></div>
+    <div class="tut-card" id="tut-card" role="dialog" aria-labelledby="tut-title" aria-modal="true">
+      <p class="tut-kicker" id="tut-kicker">TUTORIAL</p>
+      <h2 id="tut-title">Welcome</h2>
+      <p id="tut-body"></p>
+      <div class="tut-actions">
+        <button type="button" class="btn btn-outline" id="tut-skip">Skip</button>
+        <button type="button" class="btn btn-gold" id="tut-next">Next</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 18+ age gate -->
   <div class="modal age-gate" id="modal-age" hidden>
@@ -624,8 +640,11 @@
       <div class="modal-body">
         <div class="age-badge">18+</div>
         <h2 id="age-title">Are you 18 or older?</h2>
-        <p>Crystal Casino is a social casino for entertainment. Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.</p>
+        <p>Crystal Casino is a social casino for entertainment. You must be 18 or older to play.</p>
+        <p>Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes. Coins have no real-world value and cannot be redeemed.</p>
+        <p id="age-simulated">Practice or success at social casino gaming does not imply future success at real money gambling.</p>
         <p class="hint">Play for fun. This is not real-money gambling. If you need a break, step away.</p>
+        <p class="legal-links">By continuing you also agree to our <a href="/terms">Terms of Use</a> and <a href="/privacy">Privacy Policy</a>.</p>
         <div class="age-actions">
           <button id="age-yes" class="btn btn-gold" type="button">I am 18 or older</button>
           <button id="age-no" class="btn btn-outline" type="button">Leave</button>
@@ -681,6 +700,7 @@
   </div>
   <div id="toast" class="toast" hidden></div>
   <script src="gems.js"></script>
+  <script src="errors.js"></script>
   <script src="app.js"></script>
   <script src="lobby.js"></script>
   <script src="casino.js"></script>

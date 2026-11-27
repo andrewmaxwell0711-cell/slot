@@ -125,7 +125,12 @@
 
     if (view === "lobby") renderLobby();
     if (view === "home") renderHomeFeatures();
-    if (view === "table") openRoute(path);
+    if (view === "table") {
+      openRoute(path);
+      if (path !== "/poker" && CC() && CC().maybeTableTutorial) {
+        setTimeout(() => { try { CC().maybeTableTutorial(); } catch (e) { /* tutorial only */ } }, 450);
+      }
+    }
     if (view === "slots") {
       if (CC() && CC().applySlotTheme) CC().applySlotTheme(SLOT_PATHS[path] || "crystal");
       if (CC() && CC().relayout) {

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>{{ title }} — Crystal Casino</title>
+  <meta name="theme-color" content="#2a0c48" />
+  <meta name="description" content="{{ description }}" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/ui/icon-192.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="legal-page">
+  <header class="legal-top">
+    <a class="brand" href="/">
+      <img class="brand-gem" src="/assets/ui/logo.webp" width="44" height="44" alt="" />
+      <div class="brand-text">
+        <h1>Crystal Casino</h1>
+        <span class="demo-badge">SOCIAL CASINO · 18+</span>
+      </div>
+    </a>
+    <nav class="legal-nav">
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/">Play</a>
+    </nav>
+  </header>
+  <main class="legal-body">
+    {{ body | safe }}
+    <aside class="legal-notice" role="note">
+      <p>{{ notice }}</p>
+      <p>Coins have no real-world value and cannot be redeemed. 18+ only.</p>
+    </aside>
+  </main>
+</body>
+</html>

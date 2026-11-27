@@ -2473,3 +2473,69 @@ body[data-slot-theme="neon"] .marquee-title { color: #7af0ff; text-shadow: 0 0 1
   .keno-ball.hit { animation: none; }
   .lobby-tile, .feature-tile { transition: none; }
 }
+
+/* ========== v11 legal pages, disclosure, tutorial ========== */
+.legal-page {
+  min-height: 100vh;
+  background: radial-gradient(120% 80% at 50% 0%, #3a1468, #120422 55%);
+  color: #f4e8ff;
+  font-family: Inter, system-ui, sans-serif;
+}
+.legal-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: .8rem 1.1rem; border-bottom: 1px solid rgba(243,196,65,.25);
+}
+.legal-nav { display: flex; gap: .9rem; }
+.legal-nav a { color: #f3c441; text-decoration: none; font-weight: 700; }
+.legal-body {
+  max-width: 760px; margin: 0 auto; padding: 1.4rem 1.1rem 3rem;
+  line-height: 1.55;
+}
+.legal-body h1 { font-family: Cinzel, serif; color: #fff4c8; font-size: 2rem; margin: 0 0 .4rem; }
+.legal-body h2 { font-family: Cinzel, serif; color: #ffe08a; font-size: 1.2rem; margin: 1.4rem 0 .4rem; }
+.legal-body h3 { color: #f3c441; font-size: 1rem; margin: 1rem 0 .3rem; }
+.legal-body a { color: #f3c441; }
+.legal-updated { color: #cbb8e0; font-size: .85rem; }
+.legal-notice {
+  margin-top: 2rem; padding: 1rem 1.1rem;
+  border: 1px solid rgba(243,196,65,.45);
+  border-radius: 12px;
+  background: rgba(20, 4, 40, .55);
+}
+.legal-notice p { margin: .3rem 0; }
+#age-simulated, #footer-simulated {
+  font-weight: 600; color: #ffe08a;
+}
+.age-card .legal-links { font-size: .85rem; }
+.age-card .legal-links a { color: #f3c441; }
+
+.tutorial { position: fixed; inset: 0; z-index: 80; }
+.tut-dim {
+  position: absolute; inset: 0;
+  background: rgba(6, 0, 16, .62);
+  pointer-events: auto;
+}
+.tut-spot {
+  position: absolute; z-index: 81; display: none;
+  border: 2px solid #f3c441; border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(6, 0, 16, .62), 0 0 24px rgba(243,196,65,.45);
+  pointer-events: none;
+}
+.tut-card {
+  position: absolute; z-index: 82;
+  left: 50%; bottom: 96px; transform: translateX(-50%);
+  width: min(340px, calc(100vw - 24px));
+  background: linear-gradient(180deg, #3a1468, #160428);
+  border: 1px solid #f3c441; border-radius: 16px;
+  padding: 1rem 1.05rem 1.05rem;
+  box-shadow: 0 16px 40px rgba(0,0,0,.5);
+  color: #fff;
+}
+.tut-kicker { margin: 0 0 .2rem; font-size: .68rem; letter-spacing: .16em; color: #f3c441; font-weight: 800; }
+.tut-card h2 { margin: 0 0 .4rem; font-family: Cinzel, serif; font-size: 1.2rem; color: #fff4c8; }
+.tut-card p { margin: 0 0 .9rem; font-size: .92rem; line-height: 1.45; }
+.tut-actions { display: flex; justify-content: space-between; gap: .5rem; }
+body.tutorial-on { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .tut-spot, .tut-card { transition: none; }
+}

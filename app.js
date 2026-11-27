@@ -49,6 +49,12 @@
   let MINIS = { pick_tiles: 12, pick_prizes: [], wheel_wedges: [], wheel_min_scatters: { classic: 2, megaways: 3 } };
   let PACKS = [];
   let LEGAL = LEGAL_DEFAULT;
+  let SIMULATED = "Practice or success at social casino gaming does not imply future success at real money gambling.";
+  let DISCLOSURE = "";
+  const TUT_KEY = "crystal-casino-tutorial-v1";
+  let tutorialState = { status: "pending", slots: false, table: false };
+  let tutorialStep = -1;
+  const TUTORIAL_STEPS = [];
   let RESPONSIBLE = "Play for fun. This is a social casino, not real-money gambling. If you need a break, step away. 18+ only.";
   const lineColor = (n) => `hsl(${((n - 1) * 137.5) % 360}, 95%, 62%)`;
   const SYM_COLORS = { quartz: ["#ffc2e6", "#ff7fc8"], citrine: ["#fff1a6", "#f3c441"], topaz: ["#ffd0a0", "#ff9a3d"], amethyst: ["#e0c2ff", "#a855f7"],
@@ -200,9 +206,7 @@
     if (s.bonuses) bonuses = { ...bonuses, ...s.bonuses };
     if (s.account) {
       account = { ...account, ...s.account };
-      if (s.account.privacy) {
-        const el = $("#privacy-copy"); if (el) el.textContent = s.account.privacy;
-      }
+      if (s.account.privacy) setPrivacyCopy(s.account.privacy);
     }
     if (s.profile) {
       profile = { ...profile, ...s.profile };
@@ -235,12 +239,141 @@
       renderAccount();
     } catch (e) { /* ignore */ }
   }
+
+  function setPrivacyCopy(text) {
+    const el = $("#privacy-copy");
+    if (!el) return;
+    el.textContent = text || "";
+    el.append(" ");
+    const a1 = document.createElement("a"); a1.href = "/privacy"; a1.textContent = "Privacy Policy";
+    const a2 = document.createElement("a"); a2.href = "/terms"; a2.textContent = "Terms of Use";
+    el.append(a1, document.createTextNode(" and "), a2, document.createTextNode("."));
+  }
+  async function loadTutorialState() {
+    try {
+      const raw = localStorage.getItem(TUT_KEY);
+      if (raw) tutorialState = { ...tutorialState, ...JSON.parse(raw) };
+    } catch (e) { /* ignore */ }
+    try {
+      const data = await api("/api/prefs");
+      if (data && data.tutorial) tutorialState = { ...tutorialState, ...data.tutorial };
+    } catch (e) { /* prefs are optional */ }
+  }
+  function persistTutorial() {
+    try { localStorage.setItem(TUT_KEY, JSON.stringify(tutorialState)); } catch (e) { /* ignore */ }
+    api("/api/prefs", { method: "POST", body: JSON.stringify({ tutorial: tutorialState }) }).catch(() => {});
+  }
+  function hideTutorial() {
+    const root = $("#tutorial");
+    if (root) root.hidden = true;
+    document.body.classList.remove("tutorial-on");
+    tutorialStep = -1;
+  }
+  function placeTutorialSpot(sel) {
+    const spot = $("#tut-spot");
+    if (!spot) return;
+    const el = sel ? document.querySelector(sel) : null;
+    if (!el) { spot.style.display = "none"; return; }
+    const r = el.getBoundingClientRect();
+    const pad = 8;
+    spot.style.display = "block";
+    spot.style.top = Math.max(0, r.top - pad) + "px";
+    spot.style.left = Math.max(0, r.left - pad) + "px";
+    spot.style.width = (r.width + pad * 2) + "px";
+    spot.style.height = (r.height + pad * 2) + "px";
+  }
+  function slotsTutorialSteps() {
+    return [
+      { title: "Welcome to Crystal Casino", body: "This is a social casino for entertainment. Coins have no real-world value and cannot be redeemed. " + SIMULATED + " You can skip this tour at any time.", target: null, route: "/home" },
+      { title: "Your first spin", body: "Every spin is decided on the server. Tap Spin when you are ready — buying coins is never required to play.", target: "#btn-spin", route: "/slots" },
+      { title: "Your bet and balance", body: "Set your bet here. Free daily and hourly coins are on the home screen so you can keep playing without a purchase.", target: ".console .meters", route: "/slots" },
+      { title: "Try a table game", body: "When you are ready, open Games and pick a table such as Baccarat or Keno. We will show a short tip the first time you sit down.", target: "#bnav-games", route: "/slots" },
+    ];
+  }
+  function tableTutorialSteps() {
+    return [
+      { title: "Your first table", body: "Table games use the same virtual coins. Place a listed stake, then deal or draw. Outcomes come from the server. Coins cannot be cashed out.", target: ".felt-table", route: null },
+      { title: "Chips and actions", body: "Choose a coin chip, then Deal or Draw. Rules are behind the ? button. You can leave any time with the Games back button.", target: ".chip-rack", route: null },
+    ];
+  }
+  function paintTutorial() {
+    const root = $("#tutorial");
+    if (!root) return;
+    const steps = (tutorialState._kind === "table") ? tableTutorialSteps() : slotsTutorialSteps();
+    const step = steps[tutorialStep];
+    if (!step) { finishTutorial("done"); return; }
+    if (step.route && window.CrystalShell && window.CrystalShell.go) {
+      const path = (location.hash || "").replace(/^#/, "") || "/home";
+      if (path !== step.route) window.CrystalShell.go(step.route);
+    }
+    root.hidden = false;
+    document.body.classList.add("tutorial-on");
+    $("#tut-title").textContent = step.title;
+    $("#tut-body").textContent = step.body;
+    $("#tut-next").textContent = tutorialStep >= steps.length - 1 ? "Done" : "Next";
+    requestAnimationFrame(() => placeTutorialSpot(step.target));
+  }
+  function startTutorial(kind) {
+    if (!ageAccepted()) return;
+    if (tutorialState.status === "done" || tutorialState.status === "skipped") return;
+    if (kind === "slots" && tutorialState.slots) return;
+    if (kind === "table" && tutorialState.table) return;
+    tutorialState._kind = kind || "slots";
+    tutorialStep = 0;
+    paintTutorial();
+  }
+  function advanceTutorial() {
+    const steps = (tutorialState._kind === "table") ? tableTutorialSteps() : slotsTutorialSteps();
+    if (tutorialStep >= steps.length - 1) { finishTutorial("done"); return; }
+    tutorialStep += 1;
+    paintTutorial();
+  }
+  function finishTutorial(status) {
+    const kind = tutorialState._kind;
+    hideTutorial();
+    if (kind === "table") tutorialState.table = true;
+    else tutorialState.slots = true;
+    if (status === "skipped") {
+      tutorialState.status = "skipped";
+      tutorialState.slots = true;
+      tutorialState.table = true;
+    } else if (tutorialState.slots && tutorialState.table) {
+      tutorialState.status = "done";
+    }
+    delete tutorialState._kind;
+    persistTutorial();
+  }
+  function maybeStartTutorial() {
+    if (!ageAccepted()) return;
+    if (tutorialState.status === "done" || tutorialState.status === "skipped") return;
+    if (!tutorialState.slots) startTutorial("slots");
+  }
+  function maybeTableTutorial() {
+    if (!ageAccepted()) return;
+    if (tutorialState.status === "done" || tutorialState.status === "skipped") return;
+    if (tutorialState.table) return;
+    startTutorial("table");
+  }
+
+  function applyDisclosure(cfg) {
+    if (cfg && cfg.legal) LEGAL = cfg.legal;
+    if (cfg && cfg.simulated_gambling) SIMULATED = cfg.simulated_gambling;
+    if (cfg && cfg.disclosure) DISCLOSURE = cfg.disclosure;
+    const shopText = DISCLOSURE || (LEGAL + " " + SIMULATED + " Coins have no real-world value and cannot be redeemed. 18+ only.");
+    const shop = $("#shop-legal"); if (shop) shop.textContent = shopText;
+    const foot = $("#footer-legal"); if (foot) foot.textContent = LEGAL + " Coins have no real-world value and cannot be redeemed. 18+ only.";
+    const sim = $("#footer-simulated"); if (sim) sim.textContent = SIMULATED;
+    const ageSim = $("#age-simulated"); if (ageSim) ageSim.textContent = SIMULATED;
+    const resp = $("#footer-responsible");
+    if (resp && cfg && cfg.responsible_play) resp.textContent = cfg.responsible_play + " DEMO · TEST MODE.";
+  }
   function applyConfig(cfg) {
     stripeEnabled = !!cfg.stripe_enabled;
     $("#stripe-key-banner").hidden = stripeEnabled;
     if (Array.isArray(cfg.line_options)) LINE_OPTIONS = cfg.line_options;
     if (Array.isArray(cfg.bet_per_line) || Array.isArray(cfg.bet_per_line_aud)) BPL = cfg.bet_per_line || cfg.bet_per_line_aud;
     if (Array.isArray(cfg.packs)) PACKS = cfg.packs;
+    applyDisclosure(cfg);
     if (cfg.legal) LEGAL = cfg.legal;
     if (cfg.responsible_play) RESPONSIBLE = cfg.responsible_play;
     if (cfg.jackpot_mult) JACKPOT_MULT = cfg.jackpot_mult;
@@ -260,9 +393,7 @@
     if (cfg.side) SIDE = cfg.side;
     if (cfg.google_client_id) googleClientId = cfg.google_client_id;
     if (typeof cfg.google_enabled === "boolean") account.google_enabled = cfg.google_enabled;
-    if (cfg.privacy) {
-      const el = $("#privacy-copy"); if (el) el.textContent = cfg.privacy;
-    }
+    if (cfg.privacy) setPrivacyCopy(cfg.privacy);
     setupGoogleSignIn();
     renderAccount();
     if (Array.isArray(cfg.symbols)) SYMBOLS = cfg.symbols.map((s) => ({ ...s, pays: Object.fromEntries(Object.entries(s.pays || {}).map(([k, v]) => [Number(k), v])) }));
@@ -288,8 +419,7 @@
         coins: credit, profile, bonuses, progressive: progressiveCoins, weekend, account,
       });
     }
-    const legalEl = $("#shop-legal"); if (legalEl) legalEl.textContent = LEGAL;
-    const foot = $("#footer-legal"); if (foot) foot.textContent = LEGAL;
+    applyDisclosure();
     const resp = $("#footer-responsible"); if (resp) resp.textContent = RESPONSIBLE + " DEMO · TEST MODE.";
     cabinetEl.classList.toggle("mw", mode === "megaways");
     cabinetEl.classList.toggle("classic", mode === "classic");
@@ -1965,7 +2095,7 @@
   function renderShop() {
     const grid = $("#pack-grid");
     if (!grid) return;
-    const legalEl = $("#shop-legal"); if (legalEl) legalEl.textContent = LEGAL;
+    applyDisclosure();
     const note = $("#shop-note");
     if (note) {
       note.textContent = stripeEnabled
@@ -2009,7 +2139,7 @@
     closeModal("age");
     const blocked = $("#age-blocked"); if (blocked) blocked.hidden = true;
     document.body.classList.remove("age-blocked-on");
-    startGame();
+    Promise.resolve(startGame()).then(async () => { await loadTutorialState(); maybeStartTutorial(); });
   }
   function declineAge() {
     closeModal("age");
@@ -2028,6 +2158,11 @@
   }
   function wire() {
     btnSpin.addEventListener("click", spin);
+    const tutSkip = $("#tut-skip");
+    if (tutSkip) tutSkip.addEventListener("click", () => finishTutorial("skipped"));
+    const tutNext = $("#tut-next");
+    if (tutNext) tutNext.addEventListener("click", () => advanceTutorial());
+    window.addEventListener("resize", () => { if (tutorialStep >= 0) placeTutorialSpot((tutorialState._kind === "table" ? tableTutorialSteps() : slotsTutorialSteps())[tutorialStep] && (tutorialState._kind === "table" ? tableTutorialSteps() : slotsTutorialSteps())[tutorialStep].target); });
     btnAuto.addEventListener("click", () => { if (auto.running) return stopAuto("Auto spin stopped"); if (!busy) openModal("auto"); });
     btnTurbo.addEventListener("click", () => { turbo = !turbo; savePrefs(); render(); updateAutoUI(); });
     btnGamble.addEventListener("click", openGamble);
@@ -2392,6 +2527,7 @@
   window.CrystalCasino = {
     api, money, toast, ensureAudio, applySnapshot,
     sfx, startBgMusic, stopBgMusic, setView, applySlotTheme, presentHoldSpin: playHoldSpin,
+    maybeTableTutorial,
     get config() { return { side: typeof SIDE !== "undefined" ? SIDE : {}, slot_themes: SLOT_THEMES }; },
     claimDaily, claimHourly,
     openShop: () => openModal("shop"),
@@ -2433,7 +2569,9 @@
       return;
     }
     await startGame();
+    await loadTutorialState();
     setTimeout(dismissSplash, splashWait);
+    setTimeout(maybeStartTutorial, splashWait + 200);
   }
   boot();
 })();

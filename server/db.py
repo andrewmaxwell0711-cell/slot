@@ -62,7 +62,8 @@ def _safe_ident(name: str) -> str:
 
 def adapt_sql(sql: str, postgres: bool) -> str:
     if not postgres:
-        return sql
+        # SQLite rejects FOR UPDATE; BEGIN IMMEDIATE already serialises writers.
+        return re.sub(r"\s+FOR UPDATE\b", "", sql, flags=re.I)
     stripped = sql.strip()
     if stripped.upper().startswith("PRAGMA "):
         return ""
@@ -258,7 +259,7 @@ def connect(sqlite_path: Path | str | None = None) -> CompatConn:
     raw.row_factory = sqlite3.Row
     raw.execute("PRAGMA foreign_keys = ON")
     raw.execute("PRAGMA journal_mode = WAL")
-    raw.execute("PRAGMA busy_timeout = 5000")
+    raw.execute("PRAGMA busy_timeout = 20000")
     return CompatConn(raw, postgres=False)
 
 
