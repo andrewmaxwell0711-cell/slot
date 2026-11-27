@@ -42,10 +42,11 @@ import errors  # noqa: E402
 import legal  # noqa: E402
 import prefs  # noqa: E402
 import clubs  # noqa: E402
+import season  # noqa: E402
 import events  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js", "clubs.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js", "clubs.js", "season.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -267,6 +268,7 @@ def _config_payload() -> dict:
         "prizes": prizes.catalogue(),
         "prize_legal": prizes.PRIZE_LEGAL,
         "clubs": clubs.catalogue(),
+        "season": season.catalogue(),
         "google_client_id": auth.google_client_id() or None,
         "google_enabled": auth.google_enabled(),
         "privacy": auth.PRIVACY_NOTE,
@@ -368,7 +370,7 @@ def index():
 SPA_PAGES = {
     "home", "lobby", "games", "slots", "dragon", "pharaoh", "neon", "profile",
     "baccarat", "keno", "roulette", "blackjack", "poker", "war", "highcard",
-    "mines", "scratch", "dice", "videopoker", "threecard", "clubs",
+    "mines", "scratch", "dice", "videopoker", "threecard", "clubs", "season",
 }
 
 
@@ -454,6 +456,11 @@ def fx_js():
 @app.get("/clubs.js")
 def clubs_js():
     return send_from_directory(ROOT, "clubs.js")
+
+@app.get("/season.js")
+def season_js():
+    return send_from_directory(ROOT, "season.js")
+
 
 
 
@@ -945,6 +952,55 @@ def api_clubs_chat_post():
     except clubs.ClubError as exc:
         return _json_error(str(exc))
     return jsonify(_club_payload())
+
+
+
+def _season_payload(extra: dict | None = None) -> dict:
+    data = season.season_state(g.player_id)
+    if extra:
+        data.update(extra)
+    if data.get("snapshot"):
+        data["snapshot"] = _public_snap(data["snapshot"])
+        data.setdefault("coins", data["snapshot"].get("coins"))
+    return data
+
+
+@app.get("/api/season")
+def api_season_get():
+    return jsonify(_season_payload())
+
+
+@app.post("/api/season/claim")
+def api_season_claim():
+    data = request.get_json(silent=True) or {}
+    try:
+        out = season.claim_tier(
+            g.player_id,
+            int(data.get("tier") or 0),
+            str(data.get("track") or "free"),
+        )
+    except season.SeasonError as exc:
+        payload = _season_payload({
+            "error": str(exc),
+            "awarded": 0,
+            "already_claimed": "already" in str(exc).lower(),
+            "celebrate": False,
+        })
+        status = 429 if "already" in str(exc).lower() else 400
+        return jsonify(payload), status
+    payload = _season_payload({
+        "awarded": int(out.get("awarded") or 0),
+        "already_claimed": bool(out.get("already_claimed")),
+        "reward": out.get("reward"),
+        "celebrate": bool(out.get("celebrate")),
+        "bonus": "season",
+    })
+    if out.get("snapshot"):
+        payload["snapshot"] = _public_snap(out["snapshot"])
+        payload["coins"] = payload["snapshot"].get("coins")
+    if out.get("error"):
+        payload["error"] = out["error"]
+    return jsonify(payload)
 
 
 @app.post("/api/stripe/webhook")
