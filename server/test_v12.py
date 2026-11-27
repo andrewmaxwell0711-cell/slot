@@ -130,6 +130,7 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertIn('defer src="app.js"', html)
         self.assertIn("Recently played", (ROOT / "casino.js").read_text())
         self.assertIn("celebrate-open", (ROOT / "app.js").read_text())
+        self.assertIn("formatCelebrateSub", (ROOT / "app.js").read_text() + (ROOT / "fx.js").read_text())
         # Full styles.css remains a fallback, but is not render-blocking for modern clients.
         head, _, _ = html.partition("<body")
         # styles.css is only a noscript fallback, not a render-blocking stylesheet.

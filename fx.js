@@ -49,6 +49,18 @@
     level: [14, 30, 14, 30, 24],
   };
 
+
+  const MAX_LIVE = 64;
+
+  function formatCelebrateSub(sub, current, final) {
+    sub = sub || "";
+    const m = /^(\d+)\s*× your total bet$/.exec(sub);
+    if (!m) return (!final || current >= final) ? sub : "";
+    if (!final || current <= 0) return "";
+    const shown = Math.max(1, Math.round(Number(m[1]) * (current / final)));
+    return shown + "× your total bet";
+  }
+
   /* ---- particle pool (DOM) ---- */
   let layer;
   const pool = [];
@@ -82,15 +94,39 @@
     if (!on()) return;
     const host = fxLayer();
     if (!host) return;
-    const count = Math.max(0, Math.min(n || 24, 48));
-    const cx = x != null ? x : (root.innerWidth || 390) / 2;
-    const cy = y != null ? y : (root.innerHeight || 700) * 0.42;
+    const room = Math.max(0, MAX_LIVE - host.childElementCount);
+    const count = Math.max(0, Math.min(n || 24, 48, room));
+    const panel = document.querySelector("#celebrate .celebrate-panel") || document.querySelector(".celebrate-inner");
+    const r = panel && panel.getBoundingClientRect();
+    const cx = x != null ? x : (r ? r.left + r.width / 2 : (root.innerWidth || 390) / 2);
+    const cy = y != null ? y : (r ? r.top + r.height * 0.35 : (root.innerHeight || 700) * 0.42);
     for (let i = 0; i < count; i++) {
       const el = alloc("fx-coin");
-      const dx = (Math.random() - 0.5) * 180;
-      const dy = -80 - Math.random() * 160;
-      el.style.left = cx + "px";
-      el.style.top = cy + "px";
+      let ox = cx, oy = cy, dx, dy;
+      const slot = Math.random();
+      if (r && x == null && y == null) {
+        if (slot < 0.28) {
+          ox = r.left + r.width * (0.12 + Math.random() * 0.76);
+          oy = r.top + 6;
+          dx = (Math.random() - 0.5) * 160;
+          dy = -90 - Math.random() * 150;
+        } else if (slot < 0.64) {
+          ox = r.left + (Math.random() * 16 - 8);
+          oy = r.top + r.height * (0.1 + Math.random() * 0.8);
+          dx = -50 - Math.random() * 160;
+          dy = -80 - Math.random() * 110;
+        } else {
+          ox = r.right + (Math.random() * 16 - 8);
+          oy = r.top + r.height * (0.1 + Math.random() * 0.8);
+          dx = 50 + Math.random() * 160;
+          dy = -80 - Math.random() * 110;
+        }
+      } else {
+        dx = (Math.random() - 0.5) * 260;
+        dy = -80 - Math.random() * 160;
+      }
+      el.style.left = ox + "px";
+      el.style.top = oy + "px";
       el.style.setProperty("--dx", dx + "px");
       el.style.setProperty("--dy", dy + "px");
       el.style.setProperty("--rot", (Math.random() * 360) + "deg");
@@ -237,7 +273,7 @@
   }
 
   const api = {
-    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber,
+    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber, formatCelebrateSub,
     bindGemParallax, setGem, dealCard, flipCard, tossChip, highlightRoulette,
     squeezeCard, kenoBall, viewTransition, openChest, fxLayer,
   };

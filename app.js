@@ -1206,14 +1206,44 @@
   }
   function coinBurst(n = 80, origin = null) {
     n = pcount(n);
+    const around = origin && origin.getBoundingClientRect ? origin : null;
+    const r = around ? around.getBoundingClientRect() : null;
     let ox = 0, oy = 0;
-    if (origin) { const r = origin.getBoundingClientRect(); ox = r.left + r.width / 2; oy = r.top + r.height / 2; }
+    if (r && around.dataset && around.dataset.burst === "center") {
+      ox = r.left + r.width / 2; oy = r.top + r.height / 2;
+    }
     for (let i = 0; i < n; i++) {
+      let x, y, vx, vy;
+      if (r && !(around.dataset && around.dataset.burst === "center")) {
+        const slot = Math.random();
+        if (slot < 0.3) {
+          x = r.left + Math.random() * r.width;
+          y = r.top + Math.random() * 20;
+          vx = (Math.random() - 0.5) * 3.2;
+          vy = -2.2 - Math.random() * 5;
+        } else if (slot < 0.65) {
+          x = r.left + (Math.random() - 0.35) * 22;
+          y = r.top + Math.random() * r.height;
+          vx = -1.6 - Math.random() * 4.2;
+          vy = -1.2 - Math.random() * 3.8;
+        } else {
+          x = r.right + (Math.random() - 0.65) * 22;
+          y = r.top + Math.random() * r.height;
+          vx = 1.6 + Math.random() * 4.2;
+          vy = -1.2 - Math.random() * 3.8;
+        }
+      } else if (around && around.dataset && around.dataset.burst === "center") {
+        x = ox; y = oy;
+        vx = (Math.random() - 0.5) * 8;
+        vy = -3 - Math.random() * 6;
+      } else {
+        x = Math.random() * innerWidth;
+        y = -20 - Math.random() * innerHeight * 0.35;
+        vx = (Math.random() - 0.5) * 1.6;
+        vy = 2.2 + Math.random() * 3.5;
+      }
       addP({
-        x: origin ? ox : Math.random() * innerWidth,
-        y: origin ? oy : -20 - Math.random() * innerHeight * 0.35,
-        vx: (Math.random() - 0.5) * (origin ? 8 : 1.6),
-        vy: origin ? -3 - Math.random() * 6 : 2.2 + Math.random() * 3.5,
+        x, y, vx, vy,
         life: 1, decay: 0.006 + Math.random() * 0.006,
         size: 5 + Math.random() * 5,
         color: ["#fff3b0", "#f3c441", "#fbe08a", "#ffd37a"][(Math.random() * 4) | 0],
@@ -1277,7 +1307,15 @@
         kickEl.hidden = !kick;
       }
       $("#celebrate-title").textContent = title;
-      $("#celebrate-sub").textContent = sub;
+      const subEl = $("#celebrate-sub");
+      const setSub = (current) => {
+        const label = (window.CrystalFX && CrystalFX.formatCelebrateSub)
+          ? CrystalFX.formatCelebrateSub(sub, current, payout)
+          : ((payout == null || current >= payout) ? sub : "");
+        subEl.textContent = label;
+        subEl.hidden = !label;
+      };
+      setSub(0);
       const amtEl = $("#celebrate-amount");
       amtEl.textContent = payout == null ? "" : money(0);
       const coinsTotal = totalCoins();
@@ -1300,10 +1338,11 @@
       else if (tier === "mega") sfx.mega();
       else sfx.big();
       rain(rainN, tea);
-      if (kind === "jackpot") { coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); }
-      else if (tier === "epic") coinBurst(150);
-      else if (tier === "mega") coinBurst(100);
-      else if (kind !== "bonus" && kind !== "pick") coinBurst(70);
+      const panel = celebrateEl.querySelector(".celebrate-panel") || celebrateEl;
+      if (kind === "jackpot") { coinBurst(140, panel); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); }
+      else if (tier === "epic") coinBurst(150, panel);
+      else if (tier === "mega") coinBurst(100, panel);
+      else if (kind !== "bonus" && kind !== "pick") coinBurst(70, panel);
       if (window.CrystalFX) {
         const hap = CrystalFX.HAPTIC || {};
         CrystalFX.vibrate(kind === "jackpot" ? hap.jackpot : tier === "epic" ? hap.epic : tier === "mega" ? hap.mega : hap.big || hap.win);
@@ -1318,6 +1357,7 @@
       let r = null;
       const settle = () => {
         if (payout != null) amtEl.textContent = money(payout);
+        setSub(payout == null ? 0 : payout);
         if (sync) {
           pendingWinAud = 0;
           winMeter.textContent = moneyShort(payout);
@@ -1330,6 +1370,7 @@
           const k = Math.min(1, dur <= 0 ? 1 : (t - t0) / dur);
           const v = payoutCoins(payout * (1 - Math.pow(1 - k, 3)));
           amtEl.textContent = money(v);
+          setSub(v);
           if (sync) {
             winMeter.textContent = moneyShort(v);
             pendingWinAud = Math.max(0, payout - v);

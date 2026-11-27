@@ -42,4 +42,11 @@ assert(fx.shouldAnticipate(1, [1, 1], 3) === false, "too early (only 1 landed)")
 assert(fx.shouldAnticipate(0, [1, 1, 1], 3) === false, "nothing genuine landed yet");
 assert(fx.shouldAnticipate(3, [0], 3) === false, "already complete");
 assert(fx.shouldAnticipate(2, [0, 1], 3) === true, "will complete on a later reel");
+// celebrate multiplier must never disagree with the visible count-up
+assert(fx.formatCelebrateSub("149× your total bet", 0, 59777) === "", "hide multiplier at 0");
+assert(fx.formatCelebrateSub("149× your total bet", 43155, 59777) === "108× your total bet", "multiplier scales with count");
+assert(fx.formatCelebrateSub("149× your total bet", 59777, 59777) === "149× your total bet", "final multiplier");
+assert(fx.formatCelebrateSub("Progressive jackpot — the live ticker pot", 100, 500) === "", "non-mult sub hidden mid-count");
+assert(fx.formatCelebrateSub("Progressive jackpot — the live ticker pot", 500, 500) === "Progressive jackpot — the live ticker pot", "non-mult sub at end");
 console.log("settings and anticipation tests ok");
+
