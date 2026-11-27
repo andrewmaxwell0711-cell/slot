@@ -74,6 +74,47 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertIn("bindGemParallax", js)
         self.assertIn("navigator.vibrate", js)
 
+    def test_celebrate_overlay_and_sound_bank(self):
+        html = (ROOT / "index.html").read_text()
+        self.assertIn("celebrate-scrim", html)
+        self.assertIn("celebrate-panel", html)
+        self.assertIn("celebrate-legal", html)
+        self.assertIn("A social-casino win — coins have no cash value", html)
+        css = (ROOT / "fx.css").read_text()
+        self.assertIn("celebrate-scrim", css)
+        self.assertIn("medal-glow", css)
+        js = (ROOT / "app.js").read_text()
+        for token in (
+            "function celebrate",
+            "syncMeters",
+            "payoutCoins",
+            "setCreditDisplay",
+            "sfx.epic()",
+            "sfx.mega()",
+            "cardDeal",
+            "cardFlip",
+            "startBgMusic",
+        ):
+            self.assertIn(token, js)
+        # Celebrated amount is the rounded server payout, not a display-only figure.
+        self.assertIn("amountAud: totalWin", js)
+
+
+
+    def test_gzip_and_lazy_heroes(self):
+        import app as app_module
+
+        client = app_module.app.test_client()
+        r = client.get("/styles.css", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.headers.get("Content-Encoding"), "gzip")
+        html = (ROOT / "index.html").read_text()
+        self.assertIn('loading="lazy"', html)
+        self.assertIn("celebrate-scrim", html)
+        self.assertGreater(html.count('loading="lazy"'), 2)
+
+
+
 
 if __name__ == "__main__":
     unittest.main()

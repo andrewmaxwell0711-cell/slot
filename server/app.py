@@ -9,6 +9,7 @@ withdrawn, redeemed or exchanged for money or prizes. Live Stripe keys
 
 from __future__ import annotations
 
+import gzip
 import os
 import secrets
 import sys
@@ -156,6 +157,49 @@ def ensure_player() -> None:
     else:
         g.player_id = g.guest_id
         # already ensured above
+
+
+_GZIP_TYPES = (
+    "text/",
+    "javascript",
+    "json",
+    "xml",
+    "svg+xml",
+    "manifest",
+    "x-javascript",
+)
+
+
+@app.after_request
+def gzip_response(response):
+    """Compress text responses when the client accepts gzip."""
+    if response.status_code < 200 or response.status_code >= 300:
+        return response
+    if "gzip" not in (request.headers.get("Accept-Encoding") or "").lower():
+        return response
+    if response.headers.get("Content-Encoding"):
+        return response
+    mime = (response.mimetype or "").lower()
+    if not any(token in mime for token in _GZIP_TYPES):
+        return response
+    try:
+        if response.direct_passthrough:
+            response.direct_passthrough = False
+        data = response.get_data()
+    except Exception:
+        return response
+    if not data or len(data) < 400:
+        return response
+    compressed = gzip.compress(data, compresslevel=5)
+    if len(compressed) >= len(data):
+        return response
+    response.set_data(compressed)
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers["Content-Length"] = str(len(compressed))
+    vary = response.headers.get("Vary", "")
+    if "Accept-Encoding" not in vary:
+        response.headers["Vary"] = (vary + ", Accept-Encoding").lstrip(", ").strip()
+    return response
 
 
 @app.after_request
