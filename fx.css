@@ -1,0 +1,347 @@
+/* v12 motion + amethyst interior background. Transform/opacity only. */
+
+/* ===== Inside a giant amethyst ===== */
+.gem-bg {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  isolation: isolate;
+  --gem-x: 0; --gem-y: 0; --gem-scroll: 0;
+}
+.gem-bg-core {
+  position: absolute; inset: -8%;
+  background:
+    radial-gradient(45% 40% at 50% 58%, rgba(8, 0, 18, 0.15) 0%, rgba(8, 0, 18, 0.55) 55%, rgba(6, 0, 14, 0.85) 100%),
+    radial-gradient(80% 60% at 50% 0%, rgba(170, 90, 255, 0.28), transparent 70%),
+    #0a0218;
+  transform: translate3d(calc(var(--gem-x) * -8px), calc(var(--gem-y) * -8px + var(--gem-scroll) * 10px), 0);
+  will-change: transform;
+}
+.gem-bg-photo {
+  position: absolute; inset: -6%;
+  background-color: transparent;
+  background-image: image-set(
+    url("/assets/ui/gem-interior-sm.webp") 1x,
+    url("/assets/ui/gem-interior.webp") 2x
+  );
+  background-size: cover;
+  background-position: center 40%;
+  opacity: 0.72;
+  transform: translate3d(calc(var(--gem-x) * 12px), calc(var(--gem-y) * 10px + var(--gem-scroll) * 16px), 0) scale(1.06);
+  will-change: transform;
+  mix-blend-mode: normal;
+}
+@media (min-aspect-ratio: 1/1) {
+  .gem-bg-photo {
+    background-image: url("/assets/ui/gem-interior-wide.webp");
+    background-position: center center;
+  }
+}
+.gem-bg-facets {
+  position: absolute; inset: -4%;
+  width: 108%; height: 108%;
+  opacity: 0.34;
+  transform: translate3d(calc(var(--gem-x) * 18px), calc(var(--gem-y) * 14px + var(--gem-scroll) * 22px), 0);
+  will-change: transform;
+  mix-blend-mode: screen;
+}
+.gem-bg-caustics {
+  position: absolute; inset: -20%;
+  background: url("/assets/ui/gem-caustics.webp") center / 70% 70% repeat;
+  opacity: 0.28;
+  mix-blend-mode: screen;
+  transform: translate3d(calc(var(--gem-x) * 24px), calc(var(--gem-y) * 18px), 0);
+  animation: gem-caustic-drift 28s linear infinite;
+  will-change: transform, opacity;
+}
+.gem-bg-sweep {
+  position: absolute; inset: -10%;
+  background: linear-gradient(115deg,
+    transparent 30%,
+    rgba(255, 240, 255, 0.07) 42%,
+    rgba(255, 220, 180, 0.16) 50%,
+    rgba(200, 160, 255, 0.08) 58%,
+    transparent 70%);
+  background-size: 220% 100%;
+  animation: gem-sweep 16s ease-in-out infinite;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.gem-bg-glow {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(50% 42% at 50% 38%, rgba(200, 140, 255, 0.18), transparent 62%),
+    radial-gradient(40% 30% at 15% 80%, rgba(140, 60, 220, 0.16), transparent 70%),
+    radial-gradient(40% 30% at 90% 20%, rgba(255, 210, 160, 0.1), transparent 70%);
+  animation: gem-glow 9s ease-in-out infinite alternate;
+  will-change: opacity;
+}
+.gem-bg-vignette {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(80% 70% at 50% 40%, transparent 20%, rgba(6, 0, 14, 0.28) 70%, rgba(6, 0, 14, 0.62) 100%),
+    linear-gradient(180deg, rgba(8, 0, 18, 0.2) 0%, transparent 18%, transparent 62%, rgba(6, 0, 14, 0.7) 100%);
+}
+@keyframes gem-sweep {
+  0% { transform: translate3d(-18%, 0, 0); opacity: 0.35; }
+  50% { transform: translate3d(10%, 0, 0); opacity: 0.8; }
+  100% { transform: translate3d(22%, 0, 0); opacity: 0.3; }
+}
+@keyframes gem-caustic-drift {
+  0% { transform: translate3d(-8%, -4%, 0) scale(1.05); }
+  50% { transform: translate3d(6%, 5%, 0) scale(1.12); }
+  100% { transform: translate3d(-8%, -4%, 0) scale(1.05); }
+}
+@keyframes gem-glow { from { opacity: 0.65; } to { opacity: 1; } }
+
+/* Hide the old flat cavern under the gem world; keep aurora very soft */
+.bg-cavern { opacity: 0 !important; }
+.bg-aurora { opacity: 0.22; mix-blend-mode: screen; }
+.side-crystals { opacity: 0.28; filter: drop-shadow(0 0 24px rgba(190, 110, 255, 0.45)); }
+
+html.reduce-motion .gem-bg-sweep,
+html.reduce-motion .gem-bg-caustics,
+html.reduce-motion .gem-bg-glow,
+html.reduce-effects .gem-bg-sweep,
+html.reduce-effects .gem-bg-caustics,
+html.reduce-effects .gem-bg-glow { animation: none !important; }
+html.reduce-motion .gem-bg-core,
+html.reduce-motion .gem-bg-photo,
+html.reduce-motion .gem-bg-facets,
+html.reduce-motion .gem-bg-caustics,
+html.reduce-effects .gem-bg-core,
+html.reduce-effects .gem-bg-photo,
+html.reduce-effects .gem-bg-facets,
+html.reduce-effects .gem-bg-caustics { transform: none !important; }
+
+/* ===== Splash logo reveal ===== */
+.splash-logo {
+  animation: splash-logo-in 0.9s cubic-bezier(.2, 1.2, .3, 1) both;
+  filter: drop-shadow(0 0 18px rgba(200, 130, 255, .7));
+}
+.splash h1 { animation: splash-fade 0.8s ease 0.15s both; }
+.splash p { animation: splash-fade 0.8s ease 0.28s both; }
+@keyframes splash-logo-in {
+  from { transform: scale(0.72); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes splash-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+html.reduce-motion .splash-logo, html.reduce-motion .splash h1, html.reduce-motion .splash p,
+html.reduce-effects .splash-logo, html.reduce-effects .splash h1, html.reduce-effects .splash p {
+  animation: none !important; opacity: 1; transform: none;
+}
+
+/* ===== Win symbols: glow, shine sweep, bounce ===== */
+.fx-win, .symbol.win, .mw-cell.win {
+  animation: fx-win-bounce 0.55s cubic-bezier(.2, 1.5, .4, 1);
+  filter: drop-shadow(0 0 10px var(--lc, #ffe07a));
+  position: relative;
+}
+.fx-win::after, .symbol.win::after, .mw-cell.win::after {
+  content: ""; position: absolute; inset: -8%;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: fx-shine 0.9s ease 0.1s both;
+  pointer-events: none; mix-blend-mode: screen;
+}
+@keyframes fx-win-bounce {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@keyframes fx-shine { to { transform: translateX(120%); } }
+
+/* Hold & Spin lock-in */
+.hold-cell.locked.fx-lock, .hold-cell.locked.new {
+  animation: fx-lock-in 0.5s cubic-bezier(.2, 1.4, .4, 1);
+  box-shadow: 0 0 0 2px #f3c441, 0 0 18px rgba(243, 196, 65, .7);
+}
+@keyframes fx-lock-in {
+  0% { transform: scale(0.7); opacity: 0.4; }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Coin fountain + flying chips */
+#fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 120; overflow: hidden; }
+.fx-coin {
+  position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  background: url("/assets/ui/coin-fx.webp") center / contain no-repeat;
+  animation: fx-fountain 0.95s ease-out forwards;
+  will-change: transform, opacity;
+}
+@keyframes fx-fountain {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(0.6); opacity: 1; }
+  100% { transform: translate3d(var(--dx, 0), calc(var(--dy, -120px) + 160px), 0) rotate(var(--rot, 180deg)) scale(0.9); opacity: 0; }
+}
+.fx-fly-chip {
+  position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #d4a017 40%, #7a4a00 80%);
+  box-shadow: 0 6px 10px rgba(0,0,0,.4);
+  animation: fx-toss 0.5s cubic-bezier(.2, .7, .3, 1) forwards;
+  will-change: transform, opacity;
+}
+@keyframes fx-toss {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  50% { transform: translate3d(calc(var(--tx) * 0.5), calc(var(--ty) * 0.5 - 36px), 0) scale(1.08); }
+  100% { transform: translate3d(var(--tx), var(--ty), 0) scale(0.85); opacity: 0.2; }
+}
+
+/* Cards: arc deal, flip, squeeze, shadow */
+.pcard.fx-deal {
+  animation: fx-deal-arc 0.45s cubic-bezier(.2, .8, .3, 1) both;
+  animation-delay: calc(var(--deal-i, 0) * 70ms);
+  transform-origin: 50% 100%;
+}
+@keyframes fx-deal-arc {
+  0% { transform: translate3d(40px, -70px, 0) rotate(-18deg) scale(0.85); opacity: 0; box-shadow: 0 18px 24px rgba(0,0,0,.15); }
+  70% { transform: translate3d(-4px, 4px, 0) rotate(2deg) scale(1.02); opacity: 1; box-shadow: 0 14px 20px rgba(0,0,0,.45); }
+  100% { transform: none; box-shadow: 0 8px 14px rgba(0,0,0,.35); }
+}
+.pcard.fx-flip { animation: fx-card-flip 0.5s ease; }
+@keyframes fx-card-flip {
+  0% { transform: rotateY(0); }
+  49% { transform: rotateY(90deg); }
+  51% { transform: rotateY(-90deg); }
+  100% { transform: rotateY(0); }
+}
+.pcard.fx-squeeze { animation: fx-squeeze 0.7s ease; }
+@keyframes fx-squeeze {
+  0% { clip-path: inset(0 0 0 88%); transform: rotate(-8deg) translateY(6px); }
+  55% { clip-path: inset(0 0 0 20%); transform: rotate(-2deg); }
+  100% { clip-path: inset(0 0 0 0); transform: none; }
+}
+.pcard.face-down.squeeze-ready { cursor: pointer; }
+
+/* Roulette winning number */
+#felt button.felt-hit {
+  animation: fx-felt-hit 0.9s ease;
+  box-shadow: 0 0 0 3px #fff3b0, 0 0 18px rgba(255, 220, 120, .85);
+  z-index: 2;
+}
+@keyframes fx-felt-hit {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* Keno ball draw */
+.fx-keno-ball, .keno-ball.drawn, .keno-draw .ball {
+  animation: fx-keno 0.45s cubic-bezier(.2, 1.4, .4, 1) both;
+  animation-delay: calc(var(--keno-i, 0) * 60ms);
+}
+@keyframes fx-keno {
+  0% { transform: translate3d(0, -24px, 0) scale(0.5); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* Lobby tiles */
+.lobby-tile, .feature-tile, .hero {
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.lobby-tile:hover, .feature-tile:hover { transform: translateY(-3px); }
+.lobby-tile:active, .feature-tile:active, .hero:active { transform: translateY(1px) scale(0.985); }
+.lobby-tile .tile-media, .feature-tile .tile-media {
+  box-shadow: 0 0 0 1px rgba(243, 196, 65, .35), 0 0 16px rgba(243, 196, 65, .15);
+}
+.jackpot-plaque, .prog-ticker, #home-ticker, #prog-ticker, #hdr-prog {
+  text-shadow: 0 0 10px rgba(243, 196, 65, .45);
+}
+.jackpot-plaque, .home-ticker {
+  position: relative; overflow: hidden;
+}
+.jackpot-plaque::after, .home-ticker::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 40%, rgba(255,255,255,.22) 50%, transparent 60%);
+  transform: translateX(-120%);
+  animation: fx-ticker-shine 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes fx-ticker-shine { 0%, 40% { transform: translateX(-120%); } 70%, 100% { transform: translateX(120%); } }
+
+/* Screen transitions */
+body.fx-view-in .home, body.fx-view-in .lobby, body.fx-view-in .game-stage, body.fx-view-in .cabinet-wrap {
+  animation: fx-view-in 0.32s ease both;
+}
+@keyframes fx-view-in { from { opacity: 0; transform: translate3d(0, 8px, 0); } to { opacity: 1; transform: none; } }
+
+/* Chest + buttons */
+.daily-chest.fx-chest-open .chest-icon, .daily-chest.fx-chest-open {
+  animation: fx-chest 0.8s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes fx-chest {
+  0% { transform: scale(1) rotate(0); }
+  30% { transform: scale(1.15) rotate(-8deg); }
+  60% { transform: scale(1.2) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+button.press, .btn:active, .cbtn:active, .icon-btn:active, .chip:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/* Chip decals */
+.chip .chip-inlay { position: relative; z-index: 1; }
+.chip.c100 { background-image: url("/assets/chips/chip-100.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c500 { background-image: url("/assets/chips/chip-500.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c1000 { background-image: url("/assets/chips/chip-1000.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c5000 { background-image: url("/assets/chips/chip-5000.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c10000 { background-image: url("/assets/chips/chip-10000.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c25000 { background-image: url("/assets/chips/chip-25000.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip.c50000 { background-image: url("/assets/chips/chip-50000.webp"); background-size: cover; background-position: center; color: transparent; }
+.chip .chip-inlay { color: #fff8dc; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+
+/* Settings modal */
+.modal-settings .settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+  padding: .55rem 0; border-bottom: 1px solid rgba(255,210,120,.12);
+}
+.modal-settings .settings-row:last-child { border-bottom: 0; }
+.modal-settings label { font-weight: 700; font-size: .88rem; }
+.modal-settings .hint { margin: 0; }
+.modal-settings input[type="range"] { width: 42%; }
+.switch { appearance: none; width: 44px; height: 26px; border-radius: 99px; background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,210,120,.35); position: relative; cursor: pointer; flex: 0 0 auto; }
+.switch:checked { background: linear-gradient(180deg, #b26bff, #6a1fd1); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; transition: transform .16s ease; }
+.switch:checked::after { transform: translateX(18px); }
+
+/* Celebrate tiers */
+.celebrate.tier-mega .celebrate-title { letter-spacing: .14em; }
+.celebrate.tier-epic .celebrate-title { text-shadow: 0 0 24px rgba(255, 210, 120, .9); }
+
+html.reduce-motion .fx-win::after, html.reduce-motion .symbol.win::after,
+html.reduce-motion .fx-coin, html.reduce-motion .fx-fly-chip,
+html.reduce-motion .jackpot-plaque::after, html.reduce-motion .home-ticker::after,
+html.reduce-effects .fx-win::after, html.reduce-effects .symbol.win::after,
+html.reduce-effects .fx-coin, html.reduce-effects .fx-fly-chip,
+html.reduce-effects .jackpot-plaque::after, html.reduce-effects .home-ticker::after {
+  animation: none !important; display: none;
+}
+html.reduce-motion .pcard.fx-deal, html.reduce-motion .pcard.fx-flip, html.reduce-motion .pcard.fx-squeeze,
+html.reduce-effects .pcard.fx-deal, html.reduce-effects .pcard.fx-flip, html.reduce-effects .pcard.fx-squeeze,
+html.reduce-motion body.fx-view-in .home, html.reduce-effects body.fx-view-in .home {
+  animation: none !important; transform: none; opacity: 1;
+}
+
+.pcard.fx-squeeze-pending {
+  clip-path: inset(0 0 0 82%);
+  cursor: pointer;
+  transform: rotate(-8deg);
+  box-shadow: -6px 8px 16px rgba(0,0,0,.45);
+}
+.pcard.fx-squeeze-pending::after {
+  content: "Tap to squeeze";
+  position: absolute; left: 100%; top: 50%; transform: translate(8px, -50%);
+  font-size: .55rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--gold-4); white-space: nowrap; pointer-events: none;
+}
+html.reduce-motion .pcard.fx-squeeze-pending,
+html.reduce-effects .pcard.fx-squeeze-pending { clip-path: none; transform: none; }
+
+@media (max-width: 380px) {
+  .top-bar { padding: .55rem .45rem; gap: .3rem; }
+  .brand-text { display: none; }
+  .header-actions { gap: .22rem; }
+  .top-bar .hud-shop-btn { font-size: 0 !important; padding: .4rem .55rem; max-width: 4.4rem; }
+  .top-bar .hud-shop-btn::after { content: "Shop"; font-size: .72rem; font-weight: 800; color: #3a2200; }
+}

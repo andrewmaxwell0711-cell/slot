@@ -42,7 +42,7 @@ import legal  # noqa: E402
 import prefs  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -368,6 +368,21 @@ def lobby_js():
 @app.get("/casino.js")
 def casino_js():
     return send_from_directory(ROOT, "casino.js")
+
+
+@app.get("/settings.js")
+def settings_js():
+    return send_from_directory(ROOT, "settings.js")
+
+
+@app.get("/fx.js")
+def fx_js():
+    return send_from_directory(ROOT, "fx.js")
+
+
+@app.get("/fx.css")
+def fx_css():
+    return send_from_directory(ROOT, "fx.css")
 
 
 @app.get("/manifest.webmanifest")
