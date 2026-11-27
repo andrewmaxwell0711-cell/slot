@@ -2273,21 +2273,8 @@ body.view-slots[data-slot-theme="neon"] .cabinet-wrap {
   padding: 10px 8px 16px;
 }
 .slot-theme-bg { display: none; }
-body.view-slots[data-slot-theme="dragon"] .bezel,
-body.view-slots[data-slot-theme="pharaoh"] .bezel,
-body.view-slots[data-slot-theme="neon"] .bezel {
-  position: relative;
-}
-body.view-slots[data-slot-theme="dragon"] .bezel::after,
-body.view-slots[data-slot-theme="pharaoh"] .bezel::after,
-body.view-slots[data-slot-theme="neon"] .bezel::after {
-  content: "";
-  position: absolute;
-  inset: -46px -28px -22px;
-  background: var(--slot-frame) center / 100% 100% no-repeat;
-  pointer-events: none;
-  z-index: 6;
-}
+/* Reel-frame art is portrait; stretching it over the wide reel window covers
+   the symbols, so themed cabinets use color, glow, background and symbols. */
 body[data-slot-theme="dragon"] .cabinet {
   border-color: #e0b84a;
   box-shadow:

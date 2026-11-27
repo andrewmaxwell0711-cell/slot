@@ -129,7 +129,9 @@
     if (view === "slots") {
       if (CC() && CC().applySlotTheme) CC().applySlotTheme(SLOT_PATHS[path] || "crystal");
       if (CC() && CC().relayout) {
-        requestAnimationFrame(() => { try { CC().relayout(); } catch (e) { /* layout only */ } });
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { try { CC().relayout(); } catch (e) { /* layout only */ } });
+        });
       }
     } else if (CC() && CC().applySlotTheme) {
       CC().applySlotTheme("crystal");
