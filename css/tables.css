@@ -583,7 +583,7 @@ body.view-table .felt-eu { grid-auto-rows: minmax(22px, auto); }
   body.view-table .felt-eu { grid-auto-rows: minmax(18px, auto); gap: 2px; font-size: .56rem; }
   body.view-table .felt-eu button { min-height: 18px; }
   body.view-table .chip-rack { margin: .3rem 0 .15rem; max-width: calc(4 * 46px + 3 * 6px); gap: 6px; }
-  body.view-table .chip { width: 44px; height: 44px; font-size: .6rem; }
+  body.view-table .chip { width: 48px; height: 48px; min-width: 48px; min-height: 48px; font-size: .6rem; }
   body.view-table .table-msg, body.view-table .step-prompt { margin: .15rem 0; font-size: .75rem; }
   body.view-table .actions-row { margin-top: .15rem; display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; }
   body.view-table .bet-circle { width: 76px; height: 76px; margin: .35rem auto; }
@@ -751,3 +751,28 @@ body.view-slots .cabinet-wrap {
 .keno-ball.hit { animation: none; }
 }
 
+
+/* r5 felt 48: keep 48px targets, scroll the board rather than shrink cells */
+.felt-eu,
+.felt-eu {
+  overflow-x: auto;
+  grid-template-columns: 48px repeat(12, minmax(48px, 1fr)) 48px;
+  grid-template-rows: repeat(5, minmax(48px, auto));
+}
+.felt-eu button,
+.felt-eu > button,
+.felt-eu .felt-num,
+.felt-eu .nout,
+.felt-eu .n0,
+.felt-eu .ncol {
+  min-height: 48px !important;
+  min-width: 48px !important;
+}
+@media (max-width: 800px) {
+  .felt-eu {
+    grid-template-columns: repeat(3, minmax(48px, 1fr));
+    grid-auto-rows: minmax(48px, auto);
+  }
+}
+.keno-board { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); }
+.keno-ball { min-width: 48px; min-height: 48px; }

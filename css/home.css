@@ -325,3 +325,36 @@ body.view-slots #game-stage { display: none !important; }
 .lobby-tile, .feature-tile { transition: none; }
 }
 
+
+/* r5: 48px hit area, small visible pip */
+.hero-dots button {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  background: transparent;
+  box-shadow: none;
+  position: relative;
+}
+.hero-dots button::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.45);
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+.hero-dots button.is-on {
+  width: 48px;
+  background: transparent;
+  box-shadow: none;
+}
+.hero-dots button.is-on::after {
+  width: 18px;
+  height: 10px;
+  border-radius: 99px;
+  background: #f3c441;
+  box-shadow: 0 0 8px #f3c441;
+}

@@ -112,6 +112,12 @@
     document.body.classList.toggle("view-slots", view === "slots");
     document.body.classList.toggle("view-table", view === "table");
     document.body.classList.toggle("view-profile", view === "profile");
+    const html = document.documentElement;
+    html.classList.toggle("view-home", view === "home");
+    html.classList.toggle("view-lobby", view === "lobby");
+    html.classList.toggle("view-slots", view === "slots");
+    html.classList.toggle("view-table", view === "table");
+    html.classList.toggle("view-profile", view === "profile");
     if (window.loadViewCss) window.loadViewCss(view);
     const gameId = (SLOT_PATHS[path] || (path || "").replace(/^\//, "")).replace(/[^a-z0-9-]/g, "");
     if (view === "slots") noteRecent({ "/slots": "slots", "/dragon": "dragon", "/pharaoh": "pharaoh", "/neon": "neon" }[path] || "slots");
@@ -235,7 +241,7 @@
   function tilePreview(g) {
     const srcs = TILE_PREVIEWS[g && g.id];
     if (!srcs) return "";
-    return `<span class="tile-preview" aria-hidden="true">${srcs.map((s) => `<img src="${s}" width="28" height="28" alt="" loading="lazy" decoding="async" />`).join("")}</span>`;
+    return `<span class="tile-preview" aria-hidden="true">${srcs.map((s) => `<img src="${s}" width="44" height="44" alt="" loading="lazy" decoding="async" />`).join("")}</span>`;
   }
   function tileArt(g, cls) {
     if (!g) return "";
@@ -319,6 +325,12 @@
       if (window.CrystalFX) CrystalFX.vibrate(CrystalFX.HAPTIC.chip);
       root.querySelectorAll("[data-chip]").forEach((x) => x.classList.toggle("on", Number(x.dataset.chip) === chip));
     }));
+  }
+
+  function tossFromChip(toEl) {
+    if (!toEl || !window.CrystalFX || !CrystalFX.tossChip) return;
+    const from = document.querySelector(".chip-rack .chip.on, .chip.on");
+    if (from) CrystalFX.tossChip(from, toEl);
   }
 
   function infoPanel(id, title, body) {
@@ -471,6 +483,7 @@
       applyCoins(res);
       if (action === "deal") lastBJ = betAmt || chip;
       const bjSt = res.result || res.session || res;
+      if (action === "deal") tossFromChip(document.getElementById("bj-circle") || document.querySelector(".bj-table"));
       paintBJ(bjSt);
       if (bjSt && bjSt.done) maybeTableWinBeat(bjSt, "BLACKJACK");
     } catch (err) { toast(err.message || "Failed", true); }
@@ -727,10 +740,10 @@
       const colM = ((n - 1) % 3) + 1;
       const rowM = 1 + Math.ceil(n / 3);
       const cls = REDS.has(n) ? "nr" : "nb";
-      nums.push(`<button type="button" class="${cls} felt-num" style="--dc:${colD};--dr:${rowD};--mc:${colM};--mr:${rowM}" data-kind="straight" data-n="${n}">${n}</button>`);
+      nums.push(`<button type="button" class="${cls} felt-num" style="--dc:${colD};--dr:${rowD};--mc:${colM};--mr:${rowM}" data-kind="straight" data-n="${n}" aria-label="Bet on ${n}">${n}</button>`);
     }
     return `<div class="felt-eu" id="felt">
-      <button type="button" class="n0" style="--dc:1;--dr:1;--mc:1;--mr:1" data-kind="straight" data-n="0">0</button>
+      <button type="button" class="n0" style="--dc:1;--dr:1;--mc:1;--mr:1" data-kind="straight" data-n="0" aria-label="Bet on 0">0</button>
       ${nums.join("")}
       <button type="button" class="ncol c3" style="--dc:14;--dr:1;--mc:1;--mr:14" data-kind="column" data-n="3" data-label="col3">2:1<span class="col-hint">3–36</span></button>
       <button type="button" class="ncol c2" style="--dc:14;--dr:2;--mc:2;--mr:14" data-kind="column" data-n="2">2:1<span class="col-hint">2–35</span></button>
@@ -963,6 +976,7 @@
       const res = await api("/api/side/videopoker", { action: "deal", bet: chip });
       applyCoins(res);
       sfx("card");
+      tossFromChip(document.querySelector(".vp-table, .felt-table"));
       paintVP(res.result || res);
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
@@ -976,6 +990,11 @@
       sfx("card");
       const vpSt = res.result || res;
       paintVP(vpSt);
+      if (window.CrystalFX && CrystalFX.flipCard) {
+        document.querySelectorAll(".vp-table .pcard, .felt-table .pcard").forEach((el, i) => {
+          if (!vpHolds[i]) CrystalFX.flipCard(el);
+        });
+      }
       maybeTableWinBeat(vpSt, "VIDEO POKER");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
@@ -1067,13 +1086,16 @@
       const res = await api("/api/side/threecard", body);
       applyCoins(res);
       const st = res.result || res;
+      if (action === "deal") tossFromChip(document.getElementById("tcp-ante") || document.querySelector(".tcp-table"));
       paintTCP(st);
       if (st.done) {
         document.querySelectorAll(".tcp-table .dealer-spot .pcard:not(.back)").forEach((el, i) => {
           el.classList.add("flip");
           el.style.animationDelay = (i * 90) + "ms";
           sfx("cardFlip");
+          if (window.CrystalFX && CrystalFX.flipCard) CrystalFX.flipCard(el);
         });
+        maybeTableWinBeat(st, "THREE CARD");
       }
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
@@ -1175,6 +1197,7 @@
       const res = await api("/api/side/war", body);
       applyCoins(res);
       const warSt = res.result || res;
+      if (action === "deal") tossFromChip(document.querySelector(".war-table .bet-circle, .felt-table"));
       paintWar(warSt);
       maybeTableWinBeat(warSt, "CASINO WAR");
     } catch (err) { toast(err.message || "Failed", true); }
@@ -1387,6 +1410,7 @@
       const spot = b.dataset.bac;
       baccaratBets[spot] = (baccaratBets[spot] || 0) + chip;
       sfx("chip");
+      tossFromChip(b);
       paintBaccarat(st && st.done ? null : st);
     }));
     const clear = $("#bac-clear");
@@ -1405,6 +1429,7 @@
         applyCoins(res);
         const r = res.result || res;
         if (Array.isArray(r.road)) baccaratRoad = r.road;
+        tossFromChip(document.querySelector(".bac-spot.on, .bac-spots"));
         paintBaccarat(r);
         maybeTableWinBeat(r, "BACCARAT");
         const net = (r.payout || 0) - (r.bet || 0);
@@ -1450,7 +1475,7 @@
           const isHit = hits.has(n);
           const drawIdx = (st && Array.isArray(st.drawn)) ? st.drawn.indexOf(n) : -1;
           const kenoStyle = drawIdx >= 0 ? ` style="--keno-i:${drawIdx}"` : "";
-          return `<button type="button" class="keno-ball${picked ? " picked" : ""}${isDrawn ? " drawn fx-keno-ball" : ""}${isHit ? " hit" : ""}" data-n="${n}"${kenoStyle}>${n}</button>`;
+          return `<button type="button" class="keno-ball${picked ? " picked" : ""}${isDrawn ? " drawn fx-keno-ball" : ""}${isHit ? " hit" : ""}" data-n="${n}" aria-label="Keno number ${n}${picked ? ", selected" : ""}${isDrawn ? ", drawn" : ""}${isHit ? ", hit" : ""}"${kenoStyle}>${n}</button>`;
         }).join("")}</div>
         <div class="keno-side">
           ${kenoPayRows(kenoPicks.length || kenoCount)}
@@ -1489,6 +1514,7 @@
         if (kenoPicks.length >= kenoCount) { toast("Clear a number, or raise the pick count", true); return; }
         kenoPicks.push(n);
         kenoPicks.sort((a, c) => a - c);
+        tossFromChip(b);
       }
       paintKeno(null);
     }));
@@ -1535,6 +1561,7 @@
             if (el) {
               el.classList.add("drawn");
               if ((r.hits || []).includes(n)) el.classList.add("hit");
+              if (window.CrystalFX && CrystalFX.kenoBall) CrystalFX.kenoBall(el, shown.length - 1);
             }
             sfx("tick");
             await sleep(70);
