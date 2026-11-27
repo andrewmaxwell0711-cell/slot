@@ -394,3 +394,21 @@ body.view-slots #game-stage { display: none !important; }
 .home-season-banner img { width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto; }
 .home-season-banner strong { display: block; font-family: Cinzel, serif; }
 .home-season-banner span { font-size: .8rem; color: #d7c8ef; }
+
+/* Live events entry banner on the home floor */
+.home-events-banner {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: .4rem 0 1rem;
+  padding: .55rem .85rem;
+  min-height: 48px;
+  border-radius: 16px;
+  border: 1px solid rgba(232, 201, 122, .35);
+  background: linear-gradient(90deg, rgba(42,12,72,.85), rgba(18,4,42,.85));
+  color: inherit;
+  text-decoration: none;
+}
+.home-events-banner img { width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto; }
+.home-events-banner strong { display: block; font-family: Cinzel, serif; }
+.home-events-banner span { font-size: .8rem; color: #d7c8ef; }

@@ -31,7 +31,7 @@
   }
 
   function icon(type) {
-    if (type === "tournament") return "/assets/symbols/crown.webp";
+    if (type === "tournament") return "/assets/ui/logo.webp";
     if (type === "xp_boost") return "/assets/symbols/shard.webp";
     if (type === "club_boost") return "/assets/symbols/ruby.webp";
     if (type === "collect") return "/assets/symbols/coin.webp";
@@ -67,7 +67,7 @@
   }
 
   function progressHtml(ev) {
-    if (ev.type === "challenge") {
+    if (ev.type === "challenge" && (ev.status === "active" || Number(ev.plays || 0) > 0)) {
       const target = Number(ev.target || ev.target_plays || 0);
       const plays = Number(ev.plays || 0);
       const pct = target <= 0 ? 0 : Math.max(0, Math.min(100, Math.round(plays / target * 100)));
@@ -76,7 +76,7 @@
           <span style="width:${pct}%"></span>
         </div>`;
     }
-    if (ev.type === "happy_hour") {
+    if (ev.type === "happy_hour" && (ev.status === "active" || Number(ev.plays || ev.bonus_coins || 0) > 0)) {
       const target = Number(ev.target || ev.cap_plays || 0);
       const plays = Math.min(Number(ev.plays || 0), target);
       const pct = target <= 0 ? 0 : Math.max(0, Math.min(100, Math.round(plays / target * 100)));
