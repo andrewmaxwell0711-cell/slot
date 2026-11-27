@@ -241,7 +241,7 @@
   function tilePreview(g) {
     const srcs = TILE_PREVIEWS[g && g.id];
     if (!srcs) return "";
-    return `<span class="tile-preview" aria-hidden="true">${srcs.map((s) => `<img src="${s}" width="44" height="44" alt="" loading="lazy" decoding="async" />`).join("")}</span>`;
+    return `<span class="tile-preview" aria-hidden="true">${srcs.map((s) => `<img src="${s}" width="22" height="22" alt="" loading="lazy" decoding="async" />`).join("")}</span>`;
   }
   function tileArt(g, cls) {
     if (!g) return "";
@@ -275,6 +275,22 @@
       const tiles = TILES.filter((t) => t.cat === cat).map((g) => tileArt(g, "lobby-card lobby-tile"));
       return `<div class="lobby-cat"><h3 class="cat-label">${cat}</h3><div class="lobby-grid">${tiles.join("")}</div></div>`;
     }).join("");
+    bindLobbyPreviewPress();
+  }
+
+  let lobbyPreviewBound = false;
+  function bindLobbyPreviewPress() {
+    const root = $("#lobby") || $("#lobby-grid");
+    if (!root || lobbyPreviewBound) return;
+    lobbyPreviewBound = true;
+    const mark = (el, on) => {
+      const tile = el && el.closest && el.closest(".lobby-tile, .lobby-card");
+      if (tile) tile.classList.toggle("is-press", !!on);
+    };
+    root.addEventListener("pointerdown", (e) => mark(e.target, true));
+    root.addEventListener("pointerup", (e) => mark(e.target, false));
+    root.addEventListener("pointerleave", (e) => mark(e.target, false));
+    root.addEventListener("pointercancel", (e) => mark(e.target, false));
   }
 
   function stage(title, html, backHref) {
@@ -656,7 +672,9 @@
   function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 
   function reduceMotion() {
-    return document.documentElement.classList.contains("reduce-motion")
+    const html = document.documentElement;
+    return html.classList.contains("reduce-motion")
+      || html.classList.contains("reduce-effects")
       || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
 
@@ -817,10 +835,15 @@
       return $("#stage-body");
     }
     const root = stage("European Roulette", `
-      <div class="felt-table rl-table">
+      <div class="felt-table rl-table" data-rl-view="split">
+        <div class="rl-view-toggle" role="tablist" aria-label="Roulette views">
+          <button type="button" class="on" data-rl-view="split" role="tab" aria-selected="true">Both</button>
+          <button type="button" data-rl-view="wheel" role="tab" aria-selected="false">Wheel</button>
+          <button type="button" data-rl-view="table" role="tab" aria-selected="false">Table</button>
+        </div>
         ${historyHTML()}
         <div class="roulette-wrap">
-          <div class="wheel-box">${wheelHTML()}
+          <div class="wheel-box" id="rl-wheel-box">${wheelHTML()}
             <div class="rl-result" id="rl-result" hidden></div>
           </div>
           <div class="felt-col">
@@ -836,6 +859,7 @@
         </div>`)}
       </div>`);
     bindChips(root);
+    bindRlViews(root);
     bindFelt(root);
     markFelt(root);
     if (result && result.number != null) landRouletteImmediate(result);
@@ -849,6 +873,23 @@
     const wrap = document.createElement("div");
     wrap.innerHTML = historyHTML();
     old.replaceWith(wrap.firstElementChild);
+  }
+
+  function setRlView(view) {
+    const table = document.querySelector(".rl-table");
+    if (!table || !view) return;
+    table.setAttribute("data-rl-view", view);
+    table.querySelectorAll(".rl-view-toggle [data-rl-view]").forEach((btn) => {
+      const on = btn.getAttribute("data-rl-view") === view;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+
+  function bindRlViews(root) {
+    root.querySelectorAll(".rl-view-toggle [data-rl-view]").forEach((btn) => {
+      btn.addEventListener("click", () => setRlView(btn.getAttribute("data-rl-view")));
+    });
   }
 
   function bindFelt(root) {
@@ -895,6 +936,7 @@
       rouletteBets = [];
       const badge = $("#rl-result"); if (badge) { badge.hidden = true; badge.classList.remove("show"); }
       const stg = $("#wheel-stage"); if (stg) stg.classList.remove("settled");
+      if (window.innerHeight < 760) setRlView("wheel");
       historyMount();
       markFelt(document);
       const msg = $("#side-msg");

@@ -206,10 +206,12 @@ html.reduce-effects .splash-logo, html.reduce-effects .splash h1, html.reduce-ef
 }
 .pcard.fx-squeeze { animation: fx-squeeze 0.7s ease; }
 @keyframes fx-squeeze {
-  0% { clip-path: inset(0 0 0 88%); transform: rotate(-8deg) translateY(6px); }
-  55% { clip-path: inset(0 0 0 20%); transform: rotate(-2deg); }
+  0% { clip-path: inset(0 0 0 92%); transform: rotateY(-68deg) rotate(-8deg) translateX(16px); }
+  42% { clip-path: inset(0 0 0 38%); transform: rotateY(-24deg) rotate(-3deg); }
   100% { clip-path: inset(0 0 0 0); transform: none; }
 }
+.hand, .dealer-spot, .player-spot { perspective: 640px; }
+.pcard.fx-squeeze { transform-origin: left center; }
 .pcard.face-down.squeeze-ready { cursor: pointer; }
 
 /* Roulette winning number */
@@ -230,7 +232,8 @@ html.reduce-effects .splash-logo, html.reduce-effects .splash h1, html.reduce-ef
   animation-delay: calc(var(--keno-i, 0) * 60ms);
 }
 @keyframes fx-keno {
-  0% { transform: translate3d(0, -24px, 0) scale(0.5); opacity: 0; }
+  0% { transform: translate3d(32px, -72px, 0) scale(0.3) rotate(-18deg); opacity: 0; }
+  58% { transform: translate3d(-5px, 7px, 0) scale(1.14) rotate(8deg); opacity: 1; }
   100% { transform: none; opacity: 1; }
 }
 
@@ -609,9 +612,9 @@ html.reduce-effects .celebrate-rays { animation: none; opacity: .16; }
   body.view-lobby .tile-copy { padding: .4rem .55rem .5rem; }
   body.view-lobby .lobby-tile h3, body.view-lobby .feature-tile h3 { font-size: 1rem; }
 
-  body.view-table .wheel-box { max-width: 150px; padding-bottom: 14px; }
-  body.view-table .felt-eu { grid-auto-rows: minmax(16px, auto); gap: 1px; font-size: .5rem; }
-  body.view-table .felt-eu button { min-height: 16px; }
+  body.view-table .wheel-box { max-width: 100%; padding-bottom: 8px; }
+  /* r6: felt sizing lives in tables.css */
+  
   body.view-table .chip-rack { margin: .2rem 0 .1rem; gap: 4px; }
   body.view-table .chip { width: 48px; height: 48px; min-width: 48px; min-height: 48px; font-size: .52rem; }
   body.view-table .actions-row { margin-top: .1rem; gap: .28rem; }
@@ -632,10 +635,10 @@ html.reduce-effects .celebrate-rays { animation: none; opacity: .16; }
   body.view-lobby .lobby-tile .tile-media,
   body.view-lobby .feature-tile .tile-media { aspect-ratio: 16 / 6.2; }
 
-  body.view-table .wheel-box { max-width: 118px; padding-bottom: 10px; }
+  body.view-table .wheel-box { max-width: 100%; padding-bottom: 6px; }
   body.view-table .felt-table { padding: .3rem .3rem .4rem; }
-  body.view-table .felt-eu { grid-auto-rows: minmax(14px, auto); font-size: .46rem; }
-  body.view-table .felt-eu button { min-height: 14px; }
+  
+  
   body.view-table .chip { width: 48px; height: 48px; min-width: 48px; min-height: 48px; }
   body.view-table .bet-circle { width: 60px; height: 60px; }
   body.view-table .stage-head { margin: 0 0 .1rem; }
@@ -916,19 +919,39 @@ html.reduce-effects body.fx-view-in .view-table .game-stage {
 
 /* Quiet 2–3 symbol previews on slot tiles */
 .tile-preview {
-  position: absolute; left: 8px; bottom: 8px; z-index: 2;
-  display: flex; gap: 6px; pointer-events: none;
-  padding: 6px 8px;
+  position: absolute; left: 6px; bottom: 6px; z-index: 2;
+  display: flex; gap: 3px; pointer-events: none;
+  padding: 3px 5px;
   border-radius: 999px;
-  background: rgba(10, 4, 22, .72);
-  box-shadow: 0 0 0 1px rgba(255, 236, 180, .28), 0 6px 14px rgba(0,0,0,.45);
-  backdrop-filter: blur(6px);
+  background: rgba(10, 4, 22, .62);
+  box-shadow: 0 0 0 1px rgba(255, 236, 180, .22), 0 3px 8px rgba(0,0,0,.4);
+  backdrop-filter: blur(5px);
+  max-width: 46%;
 }
 .tile-preview img {
-  width: 44px; height: 44px; object-fit: contain;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,.65));
+  width: 22px; height: 22px; object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.6));
   animation: tile-preview-idle 3.6s ease-in-out infinite;
-  opacity: 1;
+  opacity: .95;
+}
+.lobby-tile:hover .tile-preview,
+.lobby-tile:focus-within .tile-preview,
+.lobby-tile.is-press .tile-preview,
+.lobby-card:hover .tile-preview,
+.lobby-card:focus-within .tile-preview,
+.lobby-card.is-press .tile-preview {
+  max-width: none;
+  padding: 5px 7px;
+  gap: 5px;
+  background: rgba(10, 4, 22, .82);
+}
+.lobby-tile:hover .tile-preview img,
+.lobby-tile:focus-within .tile-preview img,
+.lobby-tile.is-press .tile-preview img,
+.lobby-card:hover .tile-preview img,
+.lobby-card:focus-within .tile-preview img,
+.lobby-card.is-press .tile-preview img {
+  width: 32px; height: 32px;
 }
 .tile-preview img:nth-child(2) { animation-delay: .4s; }
 .tile-preview img:nth-child(3) { animation-delay: .8s; }
@@ -1182,4 +1205,26 @@ html.reduce-motion .table-win-toast,
 html.reduce-effects .table-win-toast { transition: none; opacity: 1; transform: translateX(-50%); }
 @media (prefers-reduced-motion: no-preference) {
   .table-win-toast { transition: opacity .2s ease, transform .2s ease; }
+}
+
+html.reduce-motion .fx-keno-ball,
+html.reduce-effects .fx-keno-ball,
+html.reduce-motion .keno-ball.drawn,
+html.reduce-effects .keno-ball.drawn { animation: none !important; transform: none; }
+html.reduce-motion .pcard.fx-squeeze,
+html.reduce-effects .pcard.fx-squeeze { animation: none !important; clip-path: none; transform: none; }
+
+/* r6 chip-rack: keep 48px chips, scroll instead of clipping at 360px */
+@media (max-width: 800px) {
+  body.view-table .chip-rack,
+  .rl-table .chip-rack {
+    max-width: 100% !important;
+    width: 100%;
+    box-sizing: border-box;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    justify-content: flex-start !important;
+    padding: 4px 8px;
+    scrollbar-width: thin;
+  }
 }
