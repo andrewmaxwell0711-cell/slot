@@ -157,6 +157,37 @@ class LaunchSurfaceTests(unittest.TestCase):
 
 
 
+    def test_r5_slot_cls_previews_table_motion_a11y(self):
+        html = (ROOT / "index.html").read_text()
+        core = (ROOT / "css/core.css").read_text()
+        fx = (ROOT / "fx.css").read_text()
+        casino = (ROOT / "casino.js").read_text()
+        # First-paint slot layout is locked before slots.css arrives.
+        packed = html.replace(" ", "").replace("\n", "")
+        self.assertIn("html.view-slots.layout,body.view-slots.layout", packed)
+        self.assertIn("margin:.9remauto2rem", packed)
+        self.assertIn('document.documentElement.classList.add("view-" + view)', html)
+        self.assertIn('document.write(\'<link rel="stylesheet" href="\'+viewCss+\'" data-view-css="\'+viewCss+\'">\')', html)
+        self.assertIn('html.classList.toggle("view-slots"', casino.replace(" ", ""))
+        # Lobby previews stay quiet but readable.
+        self.assertIn('width="44"', casino)
+        self.assertIn("tile-preview", fx)
+        self.assertIn("44px", fx[fx.find(".tile-preview img"):fx.find(".tile-preview img")+280])
+        # Table motion and three-card win beat (wins only, via maybeTableWinBeat).
+        self.assertIn("function tossFromChip", casino)
+        self.assertIn("CrystalFX.kenoBall", casino)
+        self.assertIn('maybeTableWinBeat(st, "THREE CARD")', casino)
+        self.assertIn('maybeTableWinBeat(r, "BACCARAT")', casino)
+        self.assertIn('maybeTableWinBeat(vpSt, "VIDEO POKER")', casino)
+        self.assertIn('maybeTableWinBeat(warSt, "CASINO WAR")', casino)
+        # Accessibility: 48px targets, focus rings, labeled icon buttons.
+        self.assertIn(":focus-visible", core)
+        self.assertIn("min-height: 48px", core)
+        self.assertIn("min-width: 48px", core)
+        self.assertGreater(html.count("aria-label="), 8)
+        self.assertIn('aria-label="Open settings"', html)
+        self.assertIn('aria-label="Bet on ${n}"', casino)
+
 
 if __name__ == "__main__":
     unittest.main()
