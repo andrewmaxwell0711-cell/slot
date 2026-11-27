@@ -1293,7 +1293,7 @@
       inner.querySelector(".celebrate-art")?.remove();
       const art = document.createElement("div");
       art.className = "celebrate-art";
-      art.innerHTML = kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="" /></div>`;
+      art.innerHTML = kind === "chest" ? `<div class="celebrate-tea celebrate-chest" aria-hidden="true"><span class="chest-icon">🍵</span></div>` : kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="" /></div>`;
       inner.prepend(art);
       const cls = ["celebrate"];
       if (kind === "bonus" || kind === "pick") cls.push("bonus");
@@ -1332,7 +1332,8 @@
       shakeCabinet(heavy);
       const burstN = kind === "jackpot" ? 48 : tier === "epic" ? 44 : tier === "mega" ? 36 : (kind === "bonus" || kind === "pick") ? 24 : 28;
       const rainN = kind === "jackpot" ? 240 : tier === "epic" ? 200 : tier === "mega" ? 160 : (kind === "bonus" || kind === "pick") ? 90 : 140;
-      if (kind === "bonus" || kind === "pick") sfx.bonus();
+      if (kind === "chest") sfx.chest();
+      else if (kind === "bonus" || kind === "pick") sfx.bonus();
       else if (kind === "jackpot") sfx.jackpot();
       else if (tier === "epic") sfx.epic();
       else if (tier === "mega") sfx.mega();
@@ -1408,13 +1409,65 @@
       stingResolve = done;
     });
   }
+  let levelUpResolve = null;
   function showLevelUp(lv) {
-    const el = $("#level-up");
-    $("#level-up-val").textContent = String(lv);
-    el.hidden = false;
-    sfx.levelUp();
-    if (!REDUCE) { rain(80, ["#c792ff", "#fff3b0", "#ffffff", "#f3c441"]); burst(innerWidth / 2, innerHeight * 0.45, 40); }
-    setTimeout(() => { el.hidden = true; }, REDUCE || turbo ? 900 : 1800);
+    return new Promise((resolve) => {
+      const el = $("#level-up");
+      if (!el) { resolve(); return; }
+      const val = $("#level-up-val");
+      if (val) val.textContent = String(lv);
+      el.hidden = false;
+      document.body.classList.add("celebrate-open");
+      sfx.levelUp();
+      if (!REDUCE) {
+        rain(80, ["#c792ff", "#fff3b0", "#ffffff", "#f3c441"]);
+        burst(innerWidth / 2, innerHeight * 0.42, 40);
+        if (window.CrystalFX && CrystalFX.fountain) CrystalFX.fountain(28);
+      }
+      const done = () => {
+        el.hidden = true;
+        document.body.classList.remove("celebrate-open");
+        clearTimeout(timer);
+        el.onclick = null;
+        levelUpResolve = null;
+        resolve();
+      };
+      const timer = setTimeout(done, REDUCE || turbo ? 900 : 2800);
+      el.onclick = done;
+      levelUpResolve = done;
+    });
+  }
+
+  function tableWinBeat({ amountAud, net = 0, title = "YOU WIN", hold = 2200 } = {}) {
+    const payout = payoutCoins(amountAud);
+    if (!(payout > 0) || !(net > 0)) return Promise.resolve();
+    const from = document.querySelector(".felt-table, .wheel-box, .game-stage, #stage-body");
+    const to = document.querySelector(".hdr-chip, #hdr-credit");
+    if (!REDUCE && window.CrystalFX && CrystalFX.payoutSlide && from && to) CrystalFX.payoutSlide(from, to, 4);
+    return celebrate({
+      kind: "big",
+      tier: "big",
+      title,
+      amountAud: payout,
+      kicker: "TABLE",
+      sub: "A social-casino win — coins have no cash value",
+      hold: REDUCE || turbo ? Math.min(hold, 900) : hold,
+      syncMeters: true,
+    });
+  }
+
+  function celebrateChest({ amountAud, title = "DAILY CHEST", kicker = "FREE COINS", sub = "Daily bonus credited" } = {}) {
+    const payout = payoutCoins(amountAud);
+    if (!(payout > 0)) return Promise.resolve();
+    return celebrate({
+      kind: "chest",
+      title,
+      amountAud: payout,
+      kicker,
+      sub,
+      hold: REDUCE || turbo ? 900 : 3200,
+      syncMeters: true,
+    });
   }
 
   function renderEngage() {
@@ -1498,8 +1551,9 @@
     try {
       applySnapshot(await api("/api/bonus/daily", { method: "POST", body: "{}" }));
       render();
+      const dailyAmt = bonuses.daily_coins || 0;
       if (!REDUCE && btn) { burstAt(btn, 36); coinBurst(40, btn); }
-      toast(`Daily bonus: ${money(bonuses.daily_coins || 0)} credited`);
+      await celebrateChest({ amountAud: dailyAmt, title: "DAILY CHEST", kicker: "FREE COINS", sub: "Daily coins for entertainment only — coins have no cash value" });
       addXp(20);
     } catch (e) {
       toast((e && e.message) || "Daily bonus unavailable", true);
@@ -1517,8 +1571,9 @@
     try {
       applySnapshot(await api("/api/bonus/hourly", { method: "POST", body: "{}" }));
       render();
+      const hourlyAmt = bonuses.hourly_coins || 0;
       if (!REDUCE && btn) { burstAt(btn, 28); coinBurst(24, btn); }
-      toast(`Hourly bonus: ${money(bonuses.hourly_coins || 0)} credited`);
+      await celebrateChest({ amountAud: hourlyAmt, title: "HOURLY CHEST", kicker: "FREE COINS", sub: "Hourly coins for entertainment only — coins have no cash value" });
       addXp(8);
     } catch (e) {
       toast((e && e.message) || "Hourly bonus not ready yet", true);
@@ -2781,7 +2836,7 @@
   window.CrystalCasino = {
     api, money, toast, ensureAudio, applySnapshot,
     sfx, startBgMusic, stopBgMusic, setView, applySlotTheme, presentHoldSpin: playHoldSpin,
-    maybeTableTutorial, celebrate,
+    maybeTableTutorial, celebrate, tableWinBeat, celebrateChest, showLevelUp,
     get config() { return { side: typeof SIDE !== "undefined" ? SIDE : {}, slot_themes: SLOT_THEMES }; },
     claimDaily, claimHourly,
     openShop: () => openModal("shop"),

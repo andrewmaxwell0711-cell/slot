@@ -227,6 +227,23 @@
     el.classList.add("fx-flip");
     if (on()) vibrate(HAPTIC.card);
   }
+
+  function payoutSlide(fromEl, toEl, n) {
+    if (!on() || !fromEl || !toEl) return;
+    const a = fromEl.getBoundingClientRect();
+    const b = toEl.getBoundingClientRect();
+    const count = Math.max(1, Math.min(n || 3, 6));
+    for (let i = 0; i < count; i++) {
+      const el = alloc("fx-payout-chip");
+      el.style.left = (a.left + a.width / 2) + "px";
+      el.style.top = (a.top + a.height / 2) + "px";
+      el.style.setProperty("--tx", ((b.left + b.width / 2) - (a.left + a.width / 2)) + "px");
+      el.style.setProperty("--ty", ((b.top + b.height / 2) - (a.top + a.height / 2)) + "px");
+      el.style.animationDelay = (i * 70) + "ms";
+      window.setTimeout(() => release(el), 900 + i * 70);
+    }
+  }
+
   function tossChip(fromEl, toEl) {
     if (!on() || !fromEl || !toEl) return;
     const a = fromEl.getBoundingClientRect();
@@ -273,7 +290,7 @@
   }
 
   const api = {
-    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber, formatCelebrateSub,
+    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber, formatCelebrateSub, payoutSlide,
     bindGemParallax, setGem, dealCard, flipCard, tossChip, highlightRoulette,
     squeezeCard, kenoBall, viewTransition, openChest, fxLayer,
   };

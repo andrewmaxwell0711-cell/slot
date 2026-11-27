@@ -226,6 +226,17 @@
   function recentIds() {
     try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (e) { return []; }
   }
+  const TILE_PREVIEWS = {
+    slots: ["/assets/symbols/emerald.webp", "/assets/symbols/sapphire.webp", "/assets/symbols/greentea.webp"],
+    dragon: ["/assets/themes/dragon/wild.webp", "/assets/themes/dragon/scatter.webp", "/assets/themes/dragon/emerald.webp"],
+    pharaoh: ["/assets/themes/pharaoh/wild.webp", "/assets/themes/pharaoh/scatter.webp", "/assets/themes/pharaoh/emerald.webp"],
+    neon: ["/assets/themes/neon/wild.webp", "/assets/themes/neon/scatter.webp", "/assets/themes/neon/emerald.webp"],
+  };
+  function tilePreview(g) {
+    const srcs = TILE_PREVIEWS[g && g.id];
+    if (!srcs) return "";
+    return `<span class="tile-preview" aria-hidden="true">${srcs.map((s) => `<img src="${s}" width="28" height="28" alt="" loading="lazy" decoding="async" />`).join("")}</span>`;
+  }
   function tileArt(g, cls) {
     if (!g) return "";
     const ribbon = g.ribbon ? `<span class="ribbon ${g.ribbon}">${g.ribbonLabel || g.ribbon.toUpperCase()}</span>` : "";
@@ -233,7 +244,7 @@
       ? `<img class="tile-art" src="${g.artSm || g.art}" srcset="${g.artSm ? g.artSm + " 400w" : g.art + " 800w"}" sizes="180px" width="400" height="250" alt="" loading="lazy" decoding="async" />`
       : `<span class="glyph">${g.glyph}</span>`;
     return `<a class="${cls}" href="#/${g.id}" data-game="${g.id}">
-        <div class="tile-media">${img}<span class="tile-shine" aria-hidden="true"></span>${ribbon}</div>
+        <div class="tile-media">${img}<span class="tile-shine" aria-hidden="true"></span>${tilePreview(g)}${ribbon}</div>
         <div class="tile-copy"><h3>${g.name}</h3><p>${g.tag}</p></div>
       </a>`;
   }
@@ -253,7 +264,7 @@
     const rec = recentIds().map((id) => TILES.find((t) => t.id === id)).filter(Boolean);
     const recent = rec.length
       ? `<div class="recent-row"><h3>Recently played</h3><div class="recent-scroller">${rec.map((g) => tileArt(g, "lobby-card lobby-tile")).join("")}</div></div>`
-      : "";
+      : `<div class="recent-row recent-empty"><h3>Recently played</h3><p>Play a game and it will show up here. Coins have no cash value.</p></div>`;
     grid.innerHTML = recent + CATS.map((cat) => {
       const tiles = TILES.filter((t) => t.cat === cat).map((g) => tileArt(g, "lobby-card lobby-tile"));
       return `<div class="lobby-cat"><h3 class="cat-label">${cat}</h3><div class="lobby-grid">${tiles.join("")}</div></div>`;
@@ -332,6 +343,18 @@
     root.querySelectorAll(".game-info").forEach((el) => el.addEventListener("click", (e) => {
       if (e.target === el) el.hidden = true;
     }));
+  }
+
+
+  function maybeTableWinBeat(st, title) {
+    if (!st) return;
+    const payout = Number(st.payout || 0);
+    const spent = Number(st.bet != null ? st.bet : 0) + Number(st.ante || 0) + Number(st.play || 0) + Number(st.pair_plus || 0);
+    const net = st.net != null ? Number(st.net) : (payout - spent);
+    if (!(net > 0 && payout > 0)) return; // never celebrate a loss or a push
+    if (window.CrystalCasino && typeof CrystalCasino.tableWinBeat === "function") {
+      CrystalCasino.tableWinBeat({ amountAud: payout, net, title: title || "YOU WIN" });
+    }
   }
 
   function resultBanner(text, kind, sub) {
@@ -433,7 +456,9 @@
       const res = await api("/api/side/blackjack", body);
       applyCoins(res);
       if (action === "deal") lastBJ = betAmt || chip;
-      paintBJ(res.result || res.session || res);
+      const bjSt = res.result || res.session || res;
+      paintBJ(bjSt);
+      if (bjSt && bjSt.done) maybeTableWinBeat(bjSt, "BLACKJACK");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
@@ -803,6 +828,8 @@
     root.querySelectorAll("#felt button").forEach((btn) => btn.addEventListener("click", () => {
       rouletteBets.push(buildRouletteBet(btn));
       sfx("chip");
+      const chipBtn = root.querySelector(".chip.on") || document.querySelector(".chip.on");
+      if (window.CrystalFX && CrystalFX.tossChip && chipBtn) CrystalFX.tossChip(chipBtn, btn);
       markFelt(root);
       const msg = $("#side-msg");
       if (msg) msg.textContent = money(rouletteBets.reduce((s, b) => s + b.amount, 0)) + " on the table";
@@ -847,6 +874,7 @@
       if (msg) msg.textContent = "Spinning…";
       await animateRoulette(st);
       if (msg) msg.textContent = "Winning number " + st.number + " · payout " + money(st.payout || 0);
+      maybeTableWinBeat(st, "ROULETTE");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
@@ -932,7 +960,9 @@
       const res = await api("/api/side/videopoker", { action: "draw", holds: vpHolds });
       applyCoins(res);
       sfx("card");
-      paintVP(res.result || res);
+      const vpSt = res.result || res;
+      paintVP(vpSt);
+      maybeTableWinBeat(vpSt, "VIDEO POKER");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
@@ -1130,7 +1160,9 @@
       const body = action === "deal" ? { action: "deal", bet: chip } : { action };
       const res = await api("/api/side/war", body);
       applyCoins(res);
-      paintWar(res.result || res);
+      const warSt = res.result || res;
+      paintWar(warSt);
+      maybeTableWinBeat(warSt, "CASINO WAR");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
@@ -1165,6 +1197,7 @@
       const res = await api("/api/side/highcard", body);
       applyCoins(res);
       paintHigh(res.result);
+      maybeTableWinBeat(res.result, "HIGH CARD");
     } catch (err) { toast(err.message || "Failed", true); }
     finally { busy = false; }
   }
@@ -1188,6 +1221,7 @@
         const res = await api("/api/side/dice", { bet: chip });
         applyCoins(res);
         paintDice(res.result);
+        maybeTableWinBeat(res.result, "LUCKY DICE");
       } catch (err) { toast(err.message || "Failed", true); }
       finally { busy = false; }
     });
@@ -1358,6 +1392,7 @@
         const r = res.result || res;
         if (Array.isArray(r.road)) baccaratRoad = r.road;
         paintBaccarat(r);
+        maybeTableWinBeat(r, "BACCARAT");
         const net = (r.payout || 0) - (r.bet || 0);
         if (net > 0) sfx("win");
         else if (net === 0) sfx("chip");
@@ -1492,6 +1527,7 @@
           }
         }
         paintKeno(r);
+        maybeTableWinBeat(r, "KENO");
         const net = (r.payout || 0) - (r.bet || 0);
         if (net > 0) sfx("win");
         else if (net === 0) sfx("chip");
