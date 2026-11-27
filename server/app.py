@@ -41,9 +41,11 @@ import prizes  # noqa: E402
 import errors  # noqa: E402
 import legal  # noqa: E402
 import prefs  # noqa: E402
+import clubs  # noqa: E402
+import events  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js", "clubs.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -264,6 +266,7 @@ def _config_payload() -> dict:
         "jackpot_mult": game.JACKPOT_MULT,
         "prizes": prizes.catalogue(),
         "prize_legal": prizes.PRIZE_LEGAL,
+        "clubs": clubs.catalogue(),
         "google_client_id": auth.google_client_id() or None,
         "google_enabled": auth.google_enabled(),
         "privacy": auth.PRIVACY_NOTE,
@@ -365,7 +368,7 @@ def index():
 SPA_PAGES = {
     "home", "lobby", "games", "slots", "dragon", "pharaoh", "neon", "profile",
     "baccarat", "keno", "roulette", "blackjack", "poker", "war", "highcard",
-    "mines", "scratch", "dice", "videopoker", "threecard",
+    "mines", "scratch", "dice", "videopoker", "threecard", "clubs",
 }
 
 
@@ -447,6 +450,11 @@ def settings_js():
 @app.get("/fx.js")
 def fx_js():
     return send_from_directory(ROOT, "fx.js")
+
+@app.get("/clubs.js")
+def clubs_js():
+    return send_from_directory(ROOT, "clubs.js")
+
 
 
 @app.get("/fx.css")
@@ -834,6 +842,109 @@ def api_missions_claim():
     except ValueError as exc:
         return _json_error(str(exc))
     return jsonify(_public_snap(snap))
+
+
+def _club_payload(extra: dict | None = None) -> dict:
+    player = g.player_id
+    data = clubs.club_state(player)
+    data["open"] = clubs.list_open_clubs()
+    data["board"] = clubs.leaderboard()
+    if extra:
+        data.update(extra)
+    if data.get("snapshot"):
+        data["snapshot"] = _public_snap(data["snapshot"])
+        # Flatten common wallet fields for applySnapshot.
+        data.setdefault("coins", data["snapshot"].get("coins"))
+    return data
+
+
+@app.get("/api/clubs")
+def api_clubs_get():
+    return jsonify(_club_payload())
+
+
+@app.post("/api/clubs")
+def api_clubs_create():
+    data = request.get_json(silent=True) or {}
+    try:
+        clubs.create_club(
+            g.player_id,
+            str(data.get("name") or ""),
+            str(data.get("emblem") or ""),
+            str(data.get("visibility") or "open"),
+        )
+    except clubs.ClubError as exc:
+        return _json_error(str(exc))
+    return jsonify(_club_payload())
+
+
+@app.post("/api/clubs/join")
+def api_clubs_join():
+    data = request.get_json(silent=True) or {}
+    try:
+        clubs.join_club(
+            g.player_id,
+            club_id=str(data.get("club_id") or "") or None,
+            invite_code=str(data.get("invite_code") or "") or None,
+        )
+    except clubs.ClubError as exc:
+        return _json_error(str(exc))
+    return jsonify(_club_payload())
+
+
+@app.post("/api/clubs/leave")
+def api_clubs_leave():
+    try:
+        clubs.leave_club(g.player_id)
+    except clubs.ClubError as exc:
+        return _json_error(str(exc))
+    return jsonify(_club_payload())
+
+
+@app.get("/api/clubs/mine")
+def api_clubs_mine():
+    return jsonify(_club_payload())
+
+
+@app.get("/api/clubs/leaderboard")
+def api_clubs_leaderboard():
+    return jsonify(clubs.leaderboard())
+
+
+@app.post("/api/clubs/claim")
+def api_clubs_claim():
+    try:
+        out = clubs.claim_reward(g.player_id)
+    except clubs.ClubError as exc:
+        payload = _club_payload({"error": str(exc), "awarded": 0, "already_claimed": "already" in str(exc).lower()})
+        status = 429 if "already" in str(exc).lower() or "not reached" in str(exc).lower() else 400
+        return jsonify(payload), status
+    payload = _club_payload({
+        "awarded": int(out.get("awarded") or 0),
+        "already_claimed": bool(out.get("already_claimed")),
+        "bonus": "club",
+    })
+    if out.get("snapshot"):
+        payload["snapshot"] = _public_snap(out["snapshot"])
+        payload["coins"] = payload["snapshot"].get("coins")
+    if out.get("error"):
+        payload["error"] = out["error"]
+    return jsonify(payload)
+
+
+@app.get("/api/clubs/chat")
+def api_clubs_chat_get():
+    return jsonify(_club_payload())
+
+
+@app.post("/api/clubs/chat")
+def api_clubs_chat_post():
+    data = request.get_json(silent=True) or {}
+    try:
+        clubs.post_chat(g.player_id, str(data.get("phrase_id") or ""))
+    except clubs.ClubError as exc:
+        return _json_error(str(exc))
+    return jsonify(_club_payload())
 
 
 @app.post("/api/stripe/webhook")

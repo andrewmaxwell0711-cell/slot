@@ -127,6 +127,8 @@ def init_db(conn: Any | None = None) -> None:
     baccarat.ensure_schema(c)
     import prefs
     prefs.ensure_schema(c)
+    import clubs
+    clubs.ensure_schema(c)
 
 
 @contextmanager
