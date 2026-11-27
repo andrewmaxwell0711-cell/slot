@@ -131,6 +131,13 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertIn("Recently played", (ROOT / "casino.js").read_text())
         self.assertIn("celebrate-open", (ROOT / "app.js").read_text())
         self.assertIn("formatCelebrateSub", (ROOT / "app.js").read_text() + (ROOT / "fx.js").read_text())
+        self.assertIn("/assets/fonts/cinzel-900.woff2", html)
+        self.assertNotIn("fonts.googleapis.com", html)
+        self.assertIn("[hidden]", html)
+        self.assertIn("recent-empty", (ROOT / "casino.js").read_text())
+        self.assertIn("tableWinBeat", (ROOT / "app.js").read_text())
+        self.assertIn("level-up-overlay", html)
+        self.assertIn("tile-preview", (ROOT / "casino.js").read_text())
         # Full styles.css remains a fallback, but is not render-blocking for modern clients.
         head, _, _ = html.partition("<body")
         # styles.css is only a noscript fallback, not a render-blocking stylesheet.
