@@ -167,12 +167,12 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertIn("html.view-slots.layout,body.view-slots.layout", packed)
         self.assertIn("margin:.9remauto2rem", packed)
         self.assertIn('document.documentElement.classList.add("view-" + view)', html)
-        self.assertIn('document.write(\'<link rel="stylesheet" href="\'+viewCss+\'" data-view-css="\'+viewCss+\'">\')', html)
+        self.assertIn('document.write(\'<link rel="preload" as="style" href="\'+viewCss+\'">\')', html)
         self.assertIn('html.classList.toggle("view-slots"', casino.replace(" ", ""))
         # Lobby previews stay quiet but readable.
-        self.assertIn('width="44"', casino)
+        self.assertIn('width="22"', casino)
         self.assertIn("tile-preview", fx)
-        self.assertIn("44px", fx[fx.find(".tile-preview img"):fx.find(".tile-preview img")+280])
+        self.assertIn("22px", fx[fx.find(".tile-preview img"):fx.find(".tile-preview img")+280])
         # Table motion and three-card win beat (wins only, via maybeTableWinBeat).
         self.assertIn("function tossFromChip", casino)
         self.assertIn("CrystalFX.kenoBall", casino)
@@ -187,6 +187,33 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertGreater(html.count("aria-label="), 8)
         self.assertIn('aria-label="Open settings"', html)
         self.assertIn('aria-label="Bet on ${n}"', casino)
+
+    def test_r6_roulette_felt_lobby_notice(self):
+        html = (ROOT / "index.html").read_text()
+        casino = (ROOT / "casino.js").read_text()
+        tables = (ROOT / "css/tables.css").read_text()
+        core = (ROOT / "css/core.css").read_text()
+        fx = (ROOT / "fx.css").read_text()
+        app = (ROOT / "app.js").read_text()
+        # Classic 14-column felt, not a 3-wide 48px stack.
+        self.assertIn('data-rl-view="split"', casino)
+        self.assertIn("function bindRlViews", casino)
+        self.assertIn("grid-template-columns: 1.2fr repeat(12, minmax(0, 1fr)) 1.1fr", tables)
+        self.assertNotIn("minmax(48px, 1fr));\n    grid-auto-rows: minmax(48px, auto)", tables)
+        self.assertIn("rl-view-toggle", tables)
+        self.assertIn("chip-badge", tables)
+        # Lobby chrome
+        self.assertIn("site-notice", html)
+        self.assertIn("site-notice-dismiss", html)
+        self.assertIn("Coins have no cash value and cannot be redeemed.", html)
+        self.assertIn("function updateSiteNotice", app)
+        self.assertIn("a.btn { text-decoration: none; }", core)
+        self.assertIn("width: 22px", fx)
+        self.assertIn("is-press", casino)
+        self.assertIn('reduce-effects', casino[casino.find("function reduceMotion"):casino.find("function reduceMotion")+400])
+        self.assertIn('rel="preload" as="style" href="css/core.css"', html)
+        self.assertIn("fetchpriority=\"high\"", html)
+
 
 
 if __name__ == "__main__":
