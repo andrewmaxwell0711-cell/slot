@@ -650,7 +650,7 @@ body.view-slots .console-row.engage { display: none; }
   :root { --mw-h: calc(var(--mw-col) * 2.85); --mw-top: calc(var(--mw-col) * .58); }
   body.view-slots .btn-spin { width: 58px; height: 58px; max-width: 58px; }
   body.view-slots .marquee { padding-top: 6px; padding-bottom: 4px; }
-  body.view-slots .cbtn { height: 32px; font-size: .55rem; }
+  body.view-slots .cbtn { height: 48px; min-height: 48px; font-size: .55rem; }
 
   /* Tables: hide duplicate coin chip, tighten chrome, clear the nav */
   .stage-balance { display: none; }
