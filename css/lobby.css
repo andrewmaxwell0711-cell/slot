@@ -99,7 +99,7 @@ body.view-slots #game-stage { display: none !important; }
 
 /* ----- Page transitions ----- */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .35s ease;
+  /* first paint stays visible; body.fx-view-in handles later moves */
 }
 
 .hero, .lobby-tile, .home, .lobby, .cabinet, .top-bar, .bottom-nav { max-width: 100%; }
@@ -142,7 +142,7 @@ body.view-slots #game-stage { display: none !important; }
 
 /* Smoother view-in */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .45s cubic-bezier(.22, .9, .3, 1);
+  /* view-in only on body.fx-view-in */
 }
 
 @media (prefers-reduced-motion: reduce) {

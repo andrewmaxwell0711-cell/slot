@@ -104,9 +104,7 @@ body.view-slots #game-stage { display: none !important; }
 
 .lobby-tile p, .feature-tile p { margin: 0; font-size: .78rem; color: var(--muted); }
 
-@media (max-width: 720px) {
-.home-title { font-size: 2.2rem; }
-}
+
 
 
 .hud-coins-copy strong, .hdr-chip strong, #hdr-credit, #hdr-prog, #home-credit, #credit {
@@ -209,7 +207,7 @@ body.view-slots #game-stage { display: none !important; }
 
 /* ----- Page transitions ----- */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .35s ease;
+  /* first paint stays visible; body.fx-view-in handles later moves */
 }
 
 .hero, .lobby-tile, .home, .lobby, .cabinet, .top-bar, .bottom-nav { max-width: 100%; }
@@ -228,7 +226,7 @@ body.view-slots #game-stage { display: none !important; }
 @media (max-width: 800px) {
 .home { padding-top: .55rem; padding-bottom: 1rem; }
 .home-marquee { padding: .7rem .75rem .75rem; margin-bottom: .55rem; }
-.home-title { font-size: 1.55rem !important; }
+.home-title { font-size: 1.4rem !important; }
 .home-sub { display: none; }
 .home-kicker { font-size: .62rem; }
 .home-hud { margin: .55rem 0 .6rem; gap: .5rem; }
@@ -247,7 +245,7 @@ body.view-slots #game-stage { display: none !important; }
     position: fixed; top: 0; left: 0; right: 0;
     z-index: 40;
   }
-  body.v8 { padding-top: calc(var(--hud-h) + env(safe-area-inset-top, 0px)); }
+  body.v8 { padding-top: 0; }
 
   /* Home: drop duplicate balance / shop / prizes so the hero fits */
   .home-balance { display: none; }
@@ -320,7 +318,7 @@ body.view-slots #game-stage { display: none !important; }
 
 /* Smoother view-in */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .45s cubic-bezier(.22, .9, .3, 1);
+  /* view-in only on body.fx-view-in */
 }
 
 @media (prefers-reduced-motion: reduce) {

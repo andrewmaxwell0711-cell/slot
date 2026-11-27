@@ -205,8 +205,8 @@
 .console-row.meters { flex-wrap: wrap; }
 .console-row.meters .meter { flex: 1 1 30%; }
 .meter strong { font-size: .85rem; }
-.console-row.buttons { flex-wrap: wrap; justify-content: center; }
-.btn-spin { order: -1; width: 92px; height: 92px; margin: 0 auto 4px; flex-basis: 100%; max-width: 92px; }
+.console-row.buttons { flex-wrap: nowrap; justify-content: flex-start; align-items: center; }
+body.view-slots .btn-spin, .btn-spin { order: 0; width: 58px; height: 58px; margin: 0 2px 0 0; flex: 0 0 auto; flex-basis: auto; max-width: 58px; }
 }
 
 
@@ -594,7 +594,7 @@ body.view-profile .layout { display: none !important; }
 
 /* ----- Page transitions ----- */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .35s ease;
+  /* first paint stays visible; body.fx-view-in handles later moves */
 }
 
 .hero, .lobby-tile, .home, .lobby, .cabinet, .top-bar, .bottom-nav { max-width: 100%; }
@@ -615,10 +615,10 @@ body.view-slots .marquee-title { font-size: 1.45rem; }
 
 /* Fit the megaways window and spin console above the mobile bottom nav */
 @media (max-width: 800px) {
-  :root { --mw-h: calc(var(--mw-col) * 3.8); --mw-top: calc(var(--mw-col) * .72); }
+  :root { --mw-h: calc(var(--mw-col) * 2.85); --mw-top: calc(var(--mw-col) * .58); }
   body.view-slots .collection-meter { display: none; }
   body.view-slots .console { padding: 6px; }
-  body.view-slots .btn-spin { width: 80px; height: 80px; max-width: 80px; }
+  body.view-slots .btn-spin { width: 58px; height: 58px; max-width: 58px; }
 }
 
 @media (max-width: 800px) {
@@ -633,7 +633,7 @@ body.view-slots .console-row.engage { display: none; }
     position: fixed; top: 0; left: 0; right: 0;
     z-index: 40;
   }
-  body.v8 { padding-top: calc(var(--hud-h) + env(safe-area-inset-top, 0px)); }
+  body.v8 { padding-top: 0; }
 
   /* Home: drop duplicate balance / shop / prizes so the hero fits */
   .home-balance { display: none; }
@@ -647,10 +647,10 @@ body.view-slots .console-row.engage { display: none; }
   .home-profile { padding: .45rem .7rem; }
 
   /* Slots: keep SPIN above the bottom nav on shorter phones */
-  :root { --mw-h: calc(var(--mw-col) * 3.25); --mw-top: calc(var(--mw-col) * .66); }
-  body.view-slots .btn-spin { width: 70px; height: 70px; max-width: 70px; }
+  :root { --mw-h: calc(var(--mw-col) * 2.85); --mw-top: calc(var(--mw-col) * .58); }
+  body.view-slots .btn-spin { width: 58px; height: 58px; max-width: 58px; }
   body.view-slots .marquee { padding-top: 6px; padding-bottom: 4px; }
-  body.view-slots .cbtn { height: 34px; font-size: .58rem; }
+  body.view-slots .cbtn { height: 32px; font-size: .55rem; }
 
   /* Tables: hide duplicate coin chip, tighten chrome, clear the nav */
   .stage-balance { display: none; }
@@ -685,10 +685,6 @@ body.view-slots .cabinet-wrap {
 body.view-slots[data-slot-theme="dragon"] .cabinet-wrap,
 body.view-slots[data-slot-theme="pharaoh"] .cabinet-wrap,
 body.view-slots[data-slot-theme="neon"] .cabinet-wrap {
-  background-image: var(--slot-bg);
-  background-size: cover;
-  background-position: center top;
-  background-repeat: no-repeat;
   border-radius: 24px;
   padding: 10px 8px 16px;
 }
@@ -729,7 +725,7 @@ body[data-slot-theme="neon"] .marquee-title { color: #7af0ff; text-shadow: 0 0 1
 
 /* Smoother view-in */
 .view-home .home, .view-lobby .lobby, .view-slots .cabinet-wrap, .view-table .game-stage {
-  animation: view-in .45s cubic-bezier(.22, .9, .3, 1);
+  /* view-in only on body.fx-view-in */
 }
 
 /* Cabinet glow lift */
