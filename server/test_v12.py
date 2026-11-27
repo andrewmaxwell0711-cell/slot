@@ -115,6 +115,29 @@ class LaunchSurfaceTests(unittest.TestCase):
 
 
 
+    def test_split_css_and_deferred_js(self):
+        import app as app_module
+
+        client = app_module.app.test_client()
+        for path in ("/css/core.css", "/css/home.css", "/css/lobby.css", "/css/slots.css", "/css/tables.css", "/neon", "/lobby"):
+            r = client.get(path)
+            self.assertEqual(r.status_code, 200, path)
+        self.assertEqual(client.get("/not-a-page").status_code, 404)
+        html = (ROOT / "index.html").read_text()
+        self.assertIn('id="critical-css"', html)
+        self.assertIn("css/core.css", html)
+        self.assertIn("css/home.css", html)
+        self.assertIn('defer src="app.js"', html)
+        self.assertIn("Recently played", (ROOT / "casino.js").read_text())
+        self.assertIn("celebrate-open", (ROOT / "app.js").read_text())
+        # Full styles.css remains a fallback, but is not render-blocking for modern clients.
+        head, _, _ = html.partition("<body")
+        # styles.css is only a noscript fallback, not a render-blocking stylesheet.
+        self.assertIn("<noscript>", head)
+        self.assertNotIn('rel="stylesheet" href="styles.css"', head.split("<noscript>")[0])
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
