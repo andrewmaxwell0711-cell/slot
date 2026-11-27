@@ -362,6 +362,20 @@ def index():
     return send_from_directory(ROOT, "index.html")
 
 
+SPA_PAGES = {
+    "home", "lobby", "games", "slots", "dragon", "pharaoh", "neon", "profile",
+    "baccarat", "keno", "roulette", "blackjack", "poker", "war", "highcard",
+    "mines", "scratch", "dice", "videopoker", "threecard",
+}
+
+
+@app.get("/<page>")
+def spa_page(page: str):
+    if page not in SPA_PAGES:
+        return ("Not found", 404)
+    return send_from_directory(ROOT, "index.html")
+
+
 @app.get("/privacy")
 def privacy_page():
     return render_template(
@@ -387,6 +401,17 @@ def terms_page():
 @app.get("/styles.css")
 def styles():
     return send_from_directory(ROOT, "styles.css")
+
+
+CSS_DIR = ROOT / "css"
+
+
+@app.get("/css/<path:filename>")
+def css_file(filename: str):
+    if not filename.endswith(".css") or "/" in filename or "\\" in filename:
+        return ("Not found", 404)
+    return send_from_directory(CSS_DIR, filename, max_age=7 * 24 * 3600)
+
 
 
 @app.get("/gems.js")

@@ -65,7 +65,11 @@
 
   function parsePath() {
     const raw = (location.hash || "").replace(/^#/, "");
-    const path = raw.startsWith("/") ? raw : "/" + raw;
+    let path = raw.startsWith("/") ? raw : (raw ? "/" + raw : "");
+    if (!path || path === "/") {
+      const pn = (location.pathname || "/").replace(/\/+$/, "") || "/";
+      if (pn && pn !== "/") path = pn;
+    }
     if (!path || path === "/") return "/home";
     return path.replace(/\/+$/, "") || "/home";
   }
@@ -108,6 +112,10 @@
     document.body.classList.toggle("view-slots", view === "slots");
     document.body.classList.toggle("view-table", view === "table");
     document.body.classList.toggle("view-profile", view === "profile");
+    if (window.loadViewCss) window.loadViewCss(view);
+    const gameId = (SLOT_PATHS[path] || (path || "").replace(/^\//, "")).replace(/[^a-z0-9-]/g, "");
+    if (view === "slots") noteRecent({ "/slots": "slots", "/dragon": "dragon", "/pharaoh": "pharaoh", "/neon": "neon" }[path] || "slots");
+    else if (view === "table" && gameId && gameId !== "home") noteRecent(gameId);
 
     const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page");
     if (home) home.hidden = view !== "home";
@@ -125,7 +133,12 @@
     });
 
     if (view === "lobby") renderLobby();
-    if (view === "home") renderHomeFeatures();
+    if (view === "home") {
+      document.querySelectorAll("#hero-carousel img.hero-bg").forEach(function (img) {
+        if (img.dataset.src && !img.getAttribute("src")) img.src = img.dataset.src;
+      });
+      renderHomeFeatures();
+    }
     if (view === "table") {
       openRoute(path);
       if (path !== "/poker" && CC() && CC().maybeTableTutorial) {
@@ -162,8 +175,7 @@
   }
 
   function start() {
-    if (!location.hash) location.hash = "#/home";
-    else apply();
+    apply();
   }
 
   function refreshHud(s) {
@@ -202,10 +214,23 @@
     }
   }
 
+  const RECENT_KEY = "crystal-casino-recent-v12";
+  function noteRecent(id) {
+    if (!id) return;
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    list = [id, ...list.filter((x) => x !== id)].slice(0, 8);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
+  }
+  function recentIds() {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch (e) { return []; }
+  }
   function tileArt(g, cls) {
+    if (!g) return "";
     const ribbon = g.ribbon ? `<span class="ribbon ${g.ribbon}">${g.ribbonLabel || g.ribbon.toUpperCase()}</span>` : "";
     const img = g.artSm || g.art
-      ? `<img class="tile-art" src="${g.artSm || g.art}" srcset="${g.artSm ? g.artSm + " 400w, " : ""}${g.art} 800w" sizes="(max-width: 720px) 50vw, 280px" alt="" loading="lazy" decoding="async" />`
+      ? `<img class="tile-art" src="${g.artSm || g.art}" srcset="${g.artSm ? g.artSm + " 400w" : g.art + " 800w"}" sizes="180px" width="400" height="250" alt="" loading="lazy" decoding="async" />`
       : `<span class="glyph">${g.glyph}</span>`;
     return `<a class="${cls}" href="#/${g.id}" data-game="${g.id}">
         <div class="tile-media">${img}<span class="tile-shine" aria-hidden="true"></span>${ribbon}</div>
@@ -225,7 +250,11 @@
   function renderLobby() {
     const grid = $("#lobby-grid");
     if (!grid) return;
-    grid.innerHTML = CATS.map((cat) => {
+    const rec = recentIds().map((id) => TILES.find((t) => t.id === id)).filter(Boolean);
+    const recent = rec.length
+      ? `<div class="recent-row"><h3>Recently played</h3><div class="recent-scroller">${rec.map((g) => tileArt(g, "lobby-card lobby-tile")).join("")}</div></div>`
+      : "";
+    grid.innerHTML = recent + CATS.map((cat) => {
       const tiles = TILES.filter((t) => t.cat === cat).map((g) => tileArt(g, "lobby-card lobby-tile"));
       return `<div class="lobby-cat"><h3 class="cat-label">${cat}</h3><div class="lobby-grid">${tiles.join("")}</div></div>`;
     }).join("");

@@ -11,21 +11,71 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="https://fonts.gstatic.com/s/cinzel/v26/8vIU7ww63mVu7gtR-kwKxNvkNOjw-n_gfY3lDWxaZqQ.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2" crossorigin />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/ui/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/ui/icon-192.png" />
-  <link rel="preload" as="image" href="/assets/ui/logo.webp" />
-  <link rel="preload" as="image" href="/assets/ui/hero-slots-sm.webp" />
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="fx.css" />
+  <script>
+    (function () {
+      var h = (location.hash || "").replace(/^#/, ""); if (!h || h === "/" || h === "/home") { var pn = (location.pathname || "/").replace(/\/$/, "") || "/"; if (pn && pn !== "/") h = pn; } if (!h || h === "/") h = "/home";
+      var theme = { "/neon": "neon", "/dragon": "dragon", "/pharaoh": "pharaoh" }[h];
+      var lcp = theme ? "/assets/themes/" + theme + "/bg-sm.webp"
+        : (h === "/" || h === "/home" || h === "" ? "/assets/ui/hero-slots-sm.webp" : null);
+      if (!lcp) return;
+      var l = document.createElement("link");
+      l.id = "lcp-pre"; l.rel = "preload"; l.as = "image"; l.href = lcp; l.fetchPriority = "high";
+      document.head.appendChild(l);
+    })();
+  </script>
   <link rel="preload" as="image" href="/assets/ui/gem-interior-sm.webp" />
+  <style id="critical-css">@font-face{font-family:Cinzel;font-style:normal;font-weight:900;font-display:swap;src:url(https://fonts.gstatic.com/s/cinzel/v26/8vIU7ww63mVu7gtR-kwKxNvkNOjw-n_gfY3lDWxaZqQ.woff2) format("woff2")}@font-face{font-family:Inter;font-style:normal;font-weight:400;font-display:swap;src:url(https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2) format("woff2")}:root{--bg:#12042a;--text:#fbf4ff;--muted:#c6b0e6;--gold-4:#fbe08a;--gold:linear-gradient(180deg,#fff3b0 0%,#f3c441 38%,#b9800f 52%,#f6cf55 70%,#fff0a8 100%);--font:"Inter",system-ui,sans-serif;--display:"Cinzel",Georgia,serif;--hud-h:76px;--nav-h:64px;--border:rgba(255,210,120,.22);--sym-h:min(100px,calc((100vw - 112px)/5));--gap:3px}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:var(--font)}
+body{overflow-x:hidden}
+img{max-width:100%;height:auto;-webkit-user-drag:none}
+html.returning #splash{display:none!important;visibility:hidden!important}
+.splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0c021c;color:#fbe08a}
+.splash.is-done,.splash[hidden]{display:none!important}
+.top-bar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;min-height:var(--hud-h);padding:.45rem .55rem;background:rgba(18,4,42,.86)}
+@media(max-width:800px){.top-bar{position:fixed;left:0;right:0}.body-pad,body.v8{padding-top:calc(var(--hud-h) + env(safe-area-inset-top,0px));padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px))}}
+.bottom-nav{display:none}
+@media(max-width:800px){.bottom-nav{display:grid;position:fixed;left:0;right:0;bottom:0;z-index:45;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));grid-template-columns:repeat(4,1fr);background:#12042a;border-top:1px solid var(--border)}}
+#home,#lobby,#game-stage,#profile-page{display:none}
+body.view-home #home{display:block!important}
+body.view-lobby #lobby{display:block!important}
+body.view-table #game-stage{display:block!important}
+body.view-profile #profile-page{display:block!important}
+body.view-home .layout,body.view-lobby .layout,body.view-table .layout,body.view-profile .layout{display:none!important}
+.home{max-width:1100px;margin:0 auto;padding:.55rem 1rem 1rem}
+.home-title{margin:0;min-height:1.15em;font-family:var(--display);font-weight:900;font-size:1.4rem;background:var(--gold);-webkit-background-clip:text;background-clip:text;color:transparent}@media(max-width:720px){.home-title{font-size:2.2rem;min-height:1.2em}}.home-feature-row{display:grid;grid-template-columns:repeat(2,1fr);gap:.85rem;margin:1.2rem 0;min-height:28rem}.tile-media{aspect-ratio:8/5;overflow:hidden;border-radius:12px;background:#1a0834}
+.home-marquee{min-height:7.5rem;padding:.55rem .7rem .6rem;border-radius:24px;border:1px solid var(--border)}
+.hero-carousel{position:relative;margin:0 0 1rem;min-height:200px}
+.hero-carousel .hero,.hero{display:none;position:relative;aspect-ratio:16/9;min-height:200px;border-radius:18px;overflow:hidden;background:#1a0834}
+.hero-carousel .hero.is-on{display:grid}
+.hero-bg{width:100%;height:100%;object-fit:cover;display:block}
+.brand{display:flex;align-items:center;gap:.5rem;color:inherit;text-decoration:none}
+.brand-gem{width:44px;height:44px}
+.cabinet-wrap{position:relative;min-height:70vh}#slot-theme-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;z-index:0;pointer-events:none;border-radius:24px;display:none}body.view-slots #slot-theme-photo{display:block}
+body.view-slots[data-slot-theme] .cabinet-wrap{background-image:var(--slot-bg);background-size:cover;background-position:center top;background-repeat:no-repeat;min-height:70vh}
+.reels{display:grid;grid-template-columns:repeat(5,var(--sym-h));gap:var(--gap)}
+.reel{height:calc(var(--sym-h)* 3);overflow:hidden}
+.symbol{width:var(--sym-h);height:var(--sym-h)}.classic-only{display:none}.cabinet.classic .classic-only{display:block}.cabinet.classic .mw-only{display:none}@media(max-width:800px){:root{--mw-col:calc((100vw - 74px)/6);--mw-h:calc(var(--mw-col)* 3.25);--mw-top:calc(var(--mw-col)* .66)}#mw-top{min-height:var(--mw-top)}#mw-reels,.mw-reel{min-height:var(--mw-h)}.mw-frame{min-height:calc(var(--mw-h) + var(--mw-top) + 12px)}body.view-slots .collection-meter,body.view-slots .console-row.engage{display:none}body.view-slots .btn-spin{width:70px;height:70px;max-width:70px}}
+.mode-banners{min-height:2.6rem}</style>
+  <link rel="stylesheet" href="css/core.css" />
+  <link rel="stylesheet" href="fx.css" media="print" onload="this.media='all'" />
+  <noscript>
+    <link rel="stylesheet" href="css/core.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="fx.css" />
+  </noscript>
 </head>
 <body class="v8">
   <script>
     (function () {
       try { if (localStorage.getItem("crystal-casino-age-ok-v1")) document.documentElement.classList.add("returning"); } catch (e) {}
-      var h = (location.hash || "#/home").replace(/^#/, "") || "/home";
+      var h = (location.hash || "").replace(/^#/, ""); if (!h || h === "/" || h === "/home") { var pn = (location.pathname || "/").replace(/\/$/, "") || "/"; if (pn && pn !== "/") h = pn; } if (!h || h === "/") h = "/home";
       var view = "home";
       if (h === "/lobby" || h === "/games") view = "lobby";
       else if (h === "/slots" || h === "/dragon" || h === "/pharaoh" || h === "/neon") view = "slots";
@@ -34,14 +84,27 @@
       document.body.classList.add("view-" + view);
       var theme = { "/neon": "neon", "/dragon": "dragon", "/pharaoh": "pharaoh" }[h];
       if (theme) {
-        var pre = document.createElement("link");
-        pre.rel = "preload"; pre.as = "image"; pre.href = "/assets/themes/" + theme + "/bg.webp";
-        document.head.appendChild(pre);
+        document.body.setAttribute("data-slot-theme", theme);
+        var bg = "/assets/themes/" + theme + "/bg-sm.webp";
+        document.body.style.setProperty("--slot-bg", 'url("' + bg + '")');
+        var photo = document.getElementById("slot-theme-photo");
+        if (photo) { photo.src = bg; photo.hidden = false; photo.fetchPriority = "high"; }
       }
+      window.loadViewCss = function (v) {
+        var map = { home: "css/home.css", lobby: "css/lobby.css", slots: "css/slots.css", table: "css/tables.css", profile: "css/core.css" };
+        var href = map[v];
+        if (!href || document.querySelector('link[data-view-css="'+href+'"]')) return;
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = href;
+        l.setAttribute("data-view-css", href);
+        document.head.appendChild(l);
+      };
+      window.loadViewCss(view);
     })();
   </script>
   <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading Crystal Casino">
-    <img class="splash-logo" src="/assets/ui/logo.webp" width="168" height="168" alt="Crystal Casino" />
+    <img class="splash-logo" src="/assets/ui/logo.webp" width="168" height="168" alt="Crystal Casino" loading="lazy" decoding="async" />
     <h1>Crystal Casino</h1>
     <p>SOCIAL CASINO · TEST MODE · 18+</p>
     <div class="splash-bar" aria-hidden="true"><span></span></div>
@@ -164,7 +227,19 @@
     </div>
     <div class="hero-carousel" id="hero-carousel">
       <a class="hero is-on" href="#/slots" id="hero-slots">
-        <img class="hero-bg" src="/assets/ui/hero-slots-sm.webp" width="800" height="450" fetchpriority="high" decoding="async" alt="" />
+        <img class="hero-bg" data-src="/assets/ui/hero-slots-sm.webp" width="800" height="450" decoding="async" alt="" />
+        <script>
+          (function () {
+            var img = document.querySelector("#hero-slots img.hero-bg");
+            if (!img) return;
+            if (document.body.classList.contains("view-home")) {
+              img.src = img.getAttribute("data-src");
+              img.fetchPriority = "high";
+            } else {
+              img.loading = "lazy";
+            }
+          })();
+        </script>
         <div class="hero-shade" aria-hidden="true"></div>
         <div class="hero-copy">
           <span class="hero-tag">FEATURED</span>
@@ -225,7 +300,12 @@
         <button type="button" class="dot" data-hero="4" aria-label="European Roulette"></button>
       </div>
     </div>
-    <div class="home-feature-row" id="home-features"></div>
+    <div class="home-feature-row" id="home-features">
+      <div class="skel-tile feature-tile" aria-hidden="true"></div>
+      <div class="skel-tile feature-tile" aria-hidden="true"></div>
+      <div class="skel-tile feature-tile" aria-hidden="true"></div>
+      <div class="skel-tile feature-tile" aria-hidden="true"></div>
+    </div>
     <div class="home-browse">
       <a class="btn btn-outline" href="#/lobby">Browse all games</a>
     </div>
@@ -234,16 +314,27 @@
   <main class="layout">
     <section class="cabinet-wrap">
       <div class="slot-theme-bg" aria-hidden="true"></div>
-      <div class="cabinet" id="cabinet">
+      <img id="slot-theme-photo" class="slot-theme-photo" alt="" width="720" height="1280" decoding="async" />
+      <script>
+        (function () {
+          var t = document.body.getAttribute("data-slot-theme");
+          if (!t) return;
+          var p = document.getElementById("slot-theme-photo");
+          if (!p) return;
+          p.src = "/assets/themes/" + t + "/bg-sm.webp";
+          p.fetchPriority = "high";
+        })();
+      </script>
+      <div class="cabinet mw" id="cabinet">
         <div class="frame-lights" aria-hidden="true"></div>
         <div class="marquee">
           <div class="bulbs" aria-hidden="true"></div>
           <div class="marquee-crystals" id="marquee-crystals" aria-hidden="true"></div>
           <h2 class="marquee-title">Crystal Casino</h2>
           <div class="jackpot-sign" id="jackpot-sign">
-            <img src="/assets/symbols/greentea.webp" alt="" />
+            <img src="/assets/symbols/greentea.webp" alt="" width="40" height="40" />
             <span>GREEN TEA JACKPOT · 5,000×</span>
-            <img src="/assets/symbols/greentea.webp" alt="" />
+            <img src="/assets/symbols/greentea.webp" alt="" width="40" height="40" />
           </div>
           <div class="prog-ticker" id="prog-ticker" aria-live="polite">
             <small>CRYSTAL CROWN</small>
@@ -387,7 +478,14 @@
       </div>
       <a class="btn btn-outline" href="#/home" id="btn-lobby-back">← Home</a>
     </div>
-    <div class="lobby-cats" id="lobby-grid"></div>
+    <div class="lobby-cats" id="lobby-grid">
+      <div class="lobby-skel" aria-hidden="true">
+        <div class="skel-title"></div>
+        <div class="skel-row"><div class="skel-tile"></div><div class="skel-tile"></div></div>
+        <div class="skel-title"></div>
+        <div class="skel-row"><div class="skel-tile"></div><div class="skel-tile"></div></div>
+      </div>
+    </div>
   </section>
 
   <!-- Profile / account -->
@@ -775,12 +873,12 @@
     </div>
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script src="gems.js"></script>
-  <script src="settings.js"></script>
-  <script src="fx.js"></script>
-  <script src="errors.js"></script>
-  <script src="app.js"></script>
-  <script src="lobby.js"></script>
-  <script src="casino.js"></script>
+  <script defer src="gems.js"></script>
+  <script defer src="settings.js"></script>
+  <script defer src="fx.js"></script>
+  <script defer src="errors.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="lobby.js"></script>
+  <script defer src="casino.js"></script>
 </body>
 </html>

@@ -529,7 +529,7 @@
     d.className = "symbol" + (HI_SYMBOLS.has(id) ? " hi" : "") + (id === "wild" ? " wild" : "");
     d.dataset.id = id;
     const img = document.createElement("img");
-    img.src = Gems.url(id, 256); if (Gems.srcset) { img.srcset = Gems.srcset(id); img.sizes = "96px"; } img.alt = ""; img.draggable = false; img.decoding = "async";
+    img.src = Gems.url(id, 256); if (Gems.srcset) { img.srcset = Gems.srcset(id); img.sizes = "96px"; } img.width = 128; img.height = 128; img.alt = ""; img.draggable = false; img.decoding = "async";
     d.appendChild(img);
     return d;
   }
@@ -553,7 +553,7 @@
     sfx.spin();
     if (window.CrystalFX) CrystalFX.vibrate(CrystalFX.HAPTIC.spin);
     let scatters = 0, extra = 0, landedScat = 0;
-    const base = speed(800), gap = speed(220);
+    const base = speed(800), gap = speed(280);
     await Promise.all(reels.map((reel, col) => {
       const strip = reel.querySelector(".reel-strip");
       const pad = turbo ? 8 : 18 + col * 4;
@@ -712,7 +712,7 @@
     sfx.spin();
     scrambleWays();
     let scat = 0, extra = 0, landed = 0;
-    const base = speed(700), gap = speed(190);
+    const base = speed(700), gap = speed(250);
     // top reel: whole strip slides right-to-left during the spin
     mwTopEl.classList.add("spinning");
     await Promise.all(cols.map((col, c) => {
@@ -1288,14 +1288,33 @@
         setCreditDisplay(coinsTotal - payout);
       }
       celebrateEl.hidden = false;
+      document.body.classList.add("celebrate-open");
       const tea = ["#8ff06b", "#eaffd0", "#fff3b0", "#f3c441", "#ffffff"];
       const heavy = kind === "jackpot" || tier === "mega" || tier === "epic";
       shakeCabinet(heavy);
-      if (kind === "bonus" || kind === "pick") { sfx.bonus(); rain(90); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.win); CrystalFX.fountain(24); } }
-      else if (kind === "jackpot") { sfx.jackpot(); rain(240, tea); coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.jackpot); CrystalFX.fountain(48); } }
-      else if (tier === "epic") { sfx.epic(); rain(200, tea); coinBurst(150); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.epic); CrystalFX.fountain(44); } }
-      else if (tier === "mega") { sfx.mega(); rain(160, tea); coinBurst(100); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.mega); CrystalFX.fountain(36); } }
-      else { sfx.big(); rain(140, tea); coinBurst(70); if (window.CrystalFX) { CrystalFX.vibrate(CrystalFX.HAPTIC.big); CrystalFX.fountain(28); } }
+      const burstN = kind === "jackpot" ? 48 : tier === "epic" ? 44 : tier === "mega" ? 36 : (kind === "bonus" || kind === "pick") ? 24 : 28;
+      const rainN = kind === "jackpot" ? 240 : tier === "epic" ? 200 : tier === "mega" ? 160 : (kind === "bonus" || kind === "pick") ? 90 : 140;
+      if (kind === "bonus" || kind === "pick") sfx.bonus();
+      else if (kind === "jackpot") sfx.jackpot();
+      else if (tier === "epic") sfx.epic();
+      else if (tier === "mega") sfx.mega();
+      else sfx.big();
+      rain(rainN, tea);
+      if (kind === "jackpot") { coinBurst(140); burst(innerWidth / 2, innerHeight * 0.42, 50, tea, 8); }
+      else if (tier === "epic") coinBurst(150);
+      else if (tier === "mega") coinBurst(100);
+      else if (kind !== "bonus" && kind !== "pick") coinBurst(70);
+      if (window.CrystalFX) {
+        const hap = CrystalFX.HAPTIC || {};
+        CrystalFX.vibrate(kind === "jackpot" ? hap.jackpot : tier === "epic" ? hap.epic : tier === "mega" ? hap.mega : hap.big || hap.win);
+        if (CrystalFX.fountain) {
+          CrystalFX.fountain(burstN);
+          if (!REDUCE && (tier === "epic" || kind === "jackpot")) {
+            setTimeout(() => CrystalFX.fountain(Math.round(burstN * 0.7)), 450);
+            setTimeout(() => CrystalFX.fountain(Math.round(burstN * 0.5)), 900);
+          }
+        }
+      }
       let r = null;
       const settle = () => {
         if (payout != null) amtEl.textContent = money(payout);
@@ -1322,7 +1341,7 @@
         };
         r = requestAnimationFrame(step);
       }
-      const done = () => { if (r) cancelAnimationFrame(r); settle(); celebrateEl.hidden = true; clearTimeout(timer); celebrateResolve = null; resolve(); };
+      const done = () => { if (r) cancelAnimationFrame(r); settle(); celebrateEl.hidden = true; document.body.classList.remove("celebrate-open"); clearTimeout(timer); celebrateResolve = null; resolve(); };
       const timer = setTimeout(done, auto.running || turbo || REDUCE ? Math.min(hold, 1800) : hold);
       celebrateResolve = done;
     });
@@ -1995,7 +2014,11 @@
     if (cabinetEl) cabinetEl.setAttribute("data-slot-theme", slotTheme);
     const wrap = document.querySelector(".cabinet-wrap");
     if (wrap) {
-      if (t.background) wrap.style.setProperty("--slot-bg", "url(\"" + t.background + "\")");
+      if (t.background) {
+        var bg = t.background;
+        if (window.innerWidth <= 800) bg = t.background.replace(/\/bg\.webp$/, "/bg-sm.webp");
+        wrap.style.setProperty("--slot-bg", "url(\"" + bg + "\")");
+      }
       else wrap.style.removeProperty("--slot-bg");
       if (t.frame) wrap.style.setProperty("--slot-frame", "url(\"" + t.frame + "\")");
       else wrap.style.removeProperty("--slot-frame");
