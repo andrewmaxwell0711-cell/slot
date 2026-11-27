@@ -48,5 +48,25 @@ assert(fx.formatCelebrateSub("149× your total bet", 43155, 59777) === "108× yo
 assert(fx.formatCelebrateSub("149× your total bet", 59777, 59777) === "149× your total bet", "final multiplier");
 assert(fx.formatCelebrateSub("Progressive jackpot — the live ticker pot", 100, 500) === "", "non-mult sub hidden mid-count");
 assert(fx.formatCelebrateSub("Progressive jackpot — the live ticker pot", 500, 500) === "Progressive jackpot — the live ticker pot", "non-mult sub at end");
+
+// table win presentation: small wins toast, big/natural overlay, themed art
+assert(fx.TABLE_OVERLAY_X === 5, "overlay threshold is 5x");
+assert(fx.tableWinPresentation({ payout: 0, net: 0, bet: 400 }).mode === "none", "zero is none");
+assert(fx.tableWinPresentation({ payout: 400, net: 0, bet: 400 }).mode === "none", "push is none");
+assert(fx.tableWinPresentation({ payout: 800, net: 400, bet: 400 }).mode === "toast", "even money is a toast");
+assert(fx.tableWinPresentation({ payout: 1996, net: 1596, bet: 400 }).mode === "toast", "just under 5x is a toast");
+assert(fx.tableWinPresentation({ payout: 2000, net: 1600, bet: 400 }).mode === "overlay", "5x is an overlay");
+const bj = fx.tableWinPresentation({ payout: 1000, net: 600, bet: 400, natural: true, game: "blackjack", title: "BLACKJACK" });
+assert(bj.mode === "overlay", "blackjack natural is an overlay even under 5x");
+assert(bj.kicker === "NATURAL", "natural kicker");
+assert(bj.game === "blackjack", "blackjack game id");
+assert(fx.tableWinPresentation({ payout: 800, net: 400, bet: 400, game: "blackjack" }).mode === "toast", "plain blackjack even-money stays a toast");
+const art = fx.tableMedallion("blackjack");
+assert(art.indexOf("greentea") < 0 && art.indexOf("Green Tea") < 0, "no tea bag on blackjack");
+assert(art.indexOf("/assets/chips/") >= 0 && art.indexOf("/assets/cards/") >= 0, "blackjack uses chips and cards");
+assert(fx.tableMedallion("roulette").indexOf("art-wheel") >= 0, "roulette wheel art");
+assert(fx.tableMedallion("keno").indexOf("art-keno-ball") >= 0, "keno ball art");
+assert(fx.normalizeTableGame("", "CASINO WAR") === "war", "title maps to war");
+
 console.log("settings and anticipation tests ok");
 

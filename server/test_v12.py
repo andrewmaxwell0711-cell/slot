@@ -136,6 +136,17 @@ class LaunchSurfaceTests(unittest.TestCase):
         self.assertIn("[hidden]", html)
         self.assertIn("recent-empty", (ROOT / "casino.js").read_text())
         self.assertIn("tableWinBeat", (ROOT / "app.js").read_text())
+        app_js = (ROOT / "app.js").read_text()
+        fx_js = (ROOT / "fx.js").read_text()
+        casino_js = (ROOT / "casino.js").read_text()
+        self.assertIn("tableWinPresentation", fx_js)
+        self.assertIn("tableMedallion", fx_js)
+        self.assertIn("table-win-toast", (ROOT / "index.html").read_text() + app_js)
+        self.assertIn("kind: \"table\"", app_js)
+        self.assertIn("isTableNatural", casino_js)
+        self.assertIn("natural:", casino_js)
+        self.assertNotIn("greentea", fx_js[fx_js.find("function tableMedallion"):fx_js.find("function tableMedallion")+1800])
+
         self.assertIn("level-up-overlay", html)
         self.assertIn("tile-preview", (ROOT / "casino.js").read_text())
         # Full styles.css remains a fallback, but is not render-blocking for modern clients.
