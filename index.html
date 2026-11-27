@@ -26,11 +26,12 @@
       else if (h === "/slots" || h === "/dragon" || h === "/pharaoh" || h === "/neon") view = "slots";
       else if (h === "/profile") view = "profile";
       else if (h === "/clubs") view = "clubs";
+      else if (h === "/season") view = "season";
       else if (h !== "/" && h !== "/home") view = "table";
       document.documentElement.classList.add("view-" + view);
       var theme = { "/neon": "neon", "/dragon": "dragon", "/pharaoh": "pharaoh" }[h];
       if (theme) document.documentElement.setAttribute("data-slot-theme", theme);
-      var viewCss = { home: "css/home.css", lobby: "css/lobby.css", slots: "css/slots.css", table: "css/tables.css", profile: "css/core.css", clubs: "css/clubs.css" }[view];
+      var viewCss = { home: "css/home.css", lobby: "css/lobby.css", slots: "css/slots.css", table: "css/tables.css", profile: "css/core.css", clubs: "css/clubs.css", season: "css/season.css" }[view];
       if (viewCss && viewCss !== "css/core.css") {
         document.write('<link rel="preload" as="style" href="'+viewCss+'">');
       }
@@ -51,13 +52,14 @@ html.returning #splash{display:none!important;visibility:hidden!important}
 @media(max-width:800px){.top-bar{position:fixed!important;top:0;left:0;right:0;z-index:40;height:var(--hud-h)}.body-pad,body.v8{padding-top:0!important;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px))}}
 .bottom-nav{display:none}
 @media(max-width:800px){.bottom-nav{display:grid;position:fixed;left:0;right:0;bottom:0;z-index:45;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));grid-template-columns:repeat(4,1fr);background:#12042a;border-top:1px solid var(--border)}}
-#home,#lobby,#game-stage,#profile-page,#clubs-page{display:none;position:relative;z-index:5}
+#home,#lobby,#game-stage,#profile-page,#clubs-page,#season-page{display:none;position:relative;z-index:5}
 html.view-home #home,body.view-home #home{display:block!important}
 html.view-lobby #lobby,body.view-lobby #lobby{display:block!important}
 html.view-table #game-stage,body.view-table #game-stage{display:block!important}
 html.view-profile #profile-page,body.view-profile #profile-page{display:block!important}
 html.view-clubs #clubs-page,body.view-clubs #clubs-page{display:block!important}
-html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-lobby .layout,html.view-table .layout,body.view-table .layout,html.view-profile .layout,body.view-profile .layout,html.view-clubs .layout,body.view-clubs .layout{display:none!important}
+html.view-season #season-page,body.view-season #season-page{display:block!important}
+html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-lobby .layout,html.view-table .layout,body.view-table .layout,html.view-profile .layout,body.view-profile .layout,html.view-clubs .layout,body.view-clubs .layout,html.view-season .layout,body.view-season .layout{display:none!important}
 .home{max-width:1100px;margin:0 auto;padding:.55rem 1rem 1rem}
 .home-title{margin:0;min-height:1.2em;font-family:var(--display);font-weight:900;font-size:1.4rem;background:var(--gold);-webkit-background-clip:text;background-clip:text;color:transparent}@media(max-width:800px){.home-title{font-size:1.4rem!important}}.home-feature-row{display:grid;grid-template-columns:repeat(2,1fr);gap:.85rem;margin:1.2rem 0;min-height:28rem}.tile-media{aspect-ratio:8/5;overflow:hidden;border-radius:12px;background:#1a0834}
 .home-marquee{min-height:7.5rem;padding:.55rem .7rem .6rem;border-radius:24px;border:1px solid var(--border)}
@@ -70,7 +72,7 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
 .gem-bg,#sparkle-canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden}.gem-bg{z-index:0}.gem-bg-core,.gem-bg-photo,.gem-bg svg{position:absolute;inset:0;width:100%;height:100%}.gem-bg-photo{background-image:url("/assets/ui/gem-interior-sm.webp");background-size:cover;background-position:center 40%;opacity:.72}#sparkle-canvas{z-index:90} .cabinet-wrap{position:relative;min-height:70vh;z-index:2}html.view-slots[data-slot-theme] .cabinet-wrap,body.view-slots[data-slot-theme] .cabinet-wrap{padding:10px 8px 16px;border-radius:24px}#slot-theme-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;z-index:0;pointer-events:none;border-radius:24px;display:none}html.view-slots #slot-theme-photo,body.view-slots #slot-theme-photo{display:block}
 .reels{display:grid;grid-template-columns:repeat(5,var(--sym-h));gap:var(--gap)}
 .reel{height:calc(var(--sym-h)* 3);overflow:hidden}
-.symbol{width:var(--sym-h);height:var(--sym-h)}.classic-only{display:none}.cabinet.classic .classic-only{display:block}.cabinet.classic .mw-only{display:none}@media(max-width:800px){:root{--mw-col:calc((100vw - 74px)/6);--mw-h:calc(var(--mw-col)* 2.85);--mw-top:calc(var(--mw-col)* .58)}#mw-top{min-height:var(--mw-top)}#mw-reels,.mw-reel{min-height:var(--mw-h)}.mw-frame{min-height:calc(var(--mw-h) + var(--mw-top) + 12px)}html.view-slots .collection-meter,body.view-slots .collection-meter,html.view-slots .console-row.engage,body.view-slots .console-row.engage,html.view-slots .wallet-panel,body.view-slots .wallet-panel,html.view-slots .info-col,body.view-slots .info-col,html.view-slots .info-panel,body.view-slots .info-panel,html.view-slots .wallet,body.view-slots .wallet{display:none!important}html.view-slots .layout,html.view-slots .layout,body.view-slots .layout{display:block!important;margin:.9rem auto 2rem!important;padding:0 .4rem!important;max-width:100%}html.view-slots .cabinet-wrap,body.view-slots .cabinet-wrap{min-height:70vh;display:flex;justify-content:center;min-width:0}html.view-slots[data-slot-theme] .cabinet-wrap,body.view-slots[data-slot-theme] .cabinet-wrap{padding:10px 8px 16px;border-radius:24px}html.view-slots .cabinet,body.view-slots .cabinet{position:relative;width:fit-content;max-width:100%;padding:8px;border-radius:20px;margin-bottom:.3rem}html.view-slots .marquee-crystals,body.view-slots .marquee-crystals{display:none}html.view-slots .marquee,body.view-slots .marquee{padding:4px 6px 4px;margin:0 0 4px}html.view-slots .bezel,body.view-slots .bezel{padding:4px}html.view-slots .console,body.view-slots .console{margin-top:4px;padding:5px}html.view-slots .btn-spin,body.view-slots .btn-spin{width:58px!important;height:58px!important;max-width:58px!important;max-height:58px!important;flex:0 0 auto!important;flex-basis:auto!important;order:0!important;margin:0 2px 0 0!important}html.view-slots .console-row.buttons,body.view-slots .console-row.buttons{flex-wrap:nowrap!important;justify-content:flex-start;align-items:center;gap:4px}html.view-slots .console-row.meters,body.view-slots .console-row.meters{flex-wrap:nowrap!important}html.view-slots .win-strip,body.view-slots .win-strip{min-height:0;padding:2px 6px}html.view-slots .prog-ticker small,body.view-slots .prog-ticker small{display:none}html.view-slots .cbtn,body.view-slots .cbtn{height:48px;min-height:48px;font-size:.55rem}html.view-slots .bezel-top,body.view-slots .bezel-top{min-height:36px;margin-bottom:2px}html.view-slots .ways-counter,body.view-slots .ways-counter{min-height:32px}.home-title{min-height:1.4em}.home-ticker,.jackpot-plaque{min-height:3.2rem}#home-prog,.prog-ticker strong{display:inline-block;min-width:8ch}#home-credit,[data-bind=coins]{display:inline-block;min-width:6ch}.home,.lobby,.profile-page,.clubs-page,.game-stage{padding-bottom:.8rem}.home-balance{display:none}.home-actions .js-shop,.home-actions .js-prizes{display:none}}
+.symbol{width:var(--sym-h);height:var(--sym-h)}.classic-only{display:none}.cabinet.classic .classic-only{display:block}.cabinet.classic .mw-only{display:none}@media(max-width:800px){:root{--mw-col:calc((100vw - 74px)/6);--mw-h:calc(var(--mw-col)* 2.85);--mw-top:calc(var(--mw-col)* .58)}#mw-top{min-height:var(--mw-top)}#mw-reels,.mw-reel{min-height:var(--mw-h)}.mw-frame{min-height:calc(var(--mw-h) + var(--mw-top) + 12px)}html.view-slots .collection-meter,body.view-slots .collection-meter,html.view-slots .console-row.engage,body.view-slots .console-row.engage,html.view-slots .wallet-panel,body.view-slots .wallet-panel,html.view-slots .info-col,body.view-slots .info-col,html.view-slots .info-panel,body.view-slots .info-panel,html.view-slots .wallet,body.view-slots .wallet{display:none!important}html.view-slots .layout,html.view-slots .layout,body.view-slots .layout{display:block!important;margin:.9rem auto 2rem!important;padding:0 .4rem!important;max-width:100%}html.view-slots .cabinet-wrap,body.view-slots .cabinet-wrap{min-height:70vh;display:flex;justify-content:center;min-width:0}html.view-slots[data-slot-theme] .cabinet-wrap,body.view-slots[data-slot-theme] .cabinet-wrap{padding:10px 8px 16px;border-radius:24px}html.view-slots .cabinet,body.view-slots .cabinet{position:relative;width:fit-content;max-width:100%;padding:8px;border-radius:20px;margin-bottom:.3rem}html.view-slots .marquee-crystals,body.view-slots .marquee-crystals{display:none}html.view-slots .marquee,body.view-slots .marquee{padding:4px 6px 4px;margin:0 0 4px}html.view-slots .bezel,body.view-slots .bezel{padding:4px}html.view-slots .console,body.view-slots .console{margin-top:4px;padding:5px}html.view-slots .btn-spin,body.view-slots .btn-spin{width:58px!important;height:58px!important;max-width:58px!important;max-height:58px!important;flex:0 0 auto!important;flex-basis:auto!important;order:0!important;margin:0 2px 0 0!important}html.view-slots .console-row.buttons,body.view-slots .console-row.buttons{flex-wrap:nowrap!important;justify-content:flex-start;align-items:center;gap:4px}html.view-slots .console-row.meters,body.view-slots .console-row.meters{flex-wrap:nowrap!important}html.view-slots .win-strip,body.view-slots .win-strip{min-height:0;padding:2px 6px}html.view-slots .prog-ticker small,body.view-slots .prog-ticker small{display:none}html.view-slots .cbtn,body.view-slots .cbtn{height:48px;min-height:48px;font-size:.55rem}html.view-slots .bezel-top,body.view-slots .bezel-top{min-height:36px;margin-bottom:2px}html.view-slots .ways-counter,body.view-slots .ways-counter{min-height:32px}.home-title{min-height:1.4em}.home-ticker,.jackpot-plaque{min-height:3.2rem}#home-prog,.prog-ticker strong{display:inline-block;min-width:8ch}#home-credit,[data-bind=coins]{display:inline-block;min-width:6ch}.home,.lobby,.profile-page,.clubs-page,.season-page,.game-stage{padding-bottom:.8rem}.home-balance{display:none}.home-actions .js-shop,.home-actions .js-prizes{display:none}}
 #lcp-slot-poster{display:none;position:fixed;top:var(--hud-h);left:0;width:100%;height:70vh;object-fit:cover;object-position:center top;z-index:0;pointer-events:none}html.view-slots #lcp-slot-poster,body.view-slots #lcp-slot-poster{display:block}.site-notice,.mode-banners{min-height:2.2rem}</style>
   <link rel="stylesheet" href="css/core.css" />
   <link rel="stylesheet" href="fx.css" media="print" onload="this.media='all'" />
@@ -90,6 +92,7 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
       else if (h === "/slots" || h === "/dragon" || h === "/pharaoh" || h === "/neon") view = "slots";
       else if (h === "/profile") view = "profile";
       else if (h === "/clubs") view = "clubs";
+      else if (h === "/season") view = "season";
       else if (h !== "/" && h !== "/home") view = "table";
       document.body.classList.add("view-" + view);
       var theme = { "/neon": "neon", "/dragon": "dragon", "/pharaoh": "pharaoh" }[h];
@@ -104,7 +107,7 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
         }
       }
       window.loadViewCss = function (v) {
-        var map = { home: "css/home.css", lobby: "css/lobby.css", slots: "css/slots.css", table: "css/tables.css", profile: "css/core.css", clubs: "css/clubs.css" };
+        var map = { home: "css/home.css", lobby: "css/lobby.css", slots: "css/slots.css", table: "css/tables.css", profile: "css/core.css", clubs: "css/clubs.css", season: "css/season.css" };
         var href = map[v];
         if (!href || document.querySelector('link[data-view-css="'+href+'"]')) return;
         var l = document.createElement("link");
@@ -403,6 +406,13 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
         <span>Team up for a weekly coin chest. Coins have no cash value.</span>
       </div>
     </a>
+    <a class="home-season-banner" href="#/season" id="home-season-banner">
+      <img src="/assets/symbols/shard.webp" width="40" height="40" alt="" decoding="async">
+      <div>
+        <strong>Season pass</strong>
+        <span>30 free tiers in 4 weeks. Rewards have no cash value.</span>
+      </div>
+    </a>
 <div class="hero-carousel" id="hero-carousel">
       <a class="hero is-on" href="#/slots" id="hero-slots">
         <img class="hero-bg" data-src="/assets/ui/hero-slots-sm.webp" width="800" height="450" decoding="async" alt="" />
@@ -497,6 +507,7 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
         <p class="hint">Fair games, coin bets only. Every outcome is decided on the server. Coins have no cash value.</p>
       </div>
       <div class="lobby-head-actions">
+        <a class="btn btn-outline" href="#/season" id="btn-lobby-season">Season</a>
         <a class="btn btn-outline" href="#/clubs" id="btn-lobby-clubs">Clubs</a>
         <a class="btn btn-outline" href="#/home" id="btn-lobby-back">← Home</a>
       </div>
@@ -573,6 +584,23 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
     </div>
     <div id="clubs-body">
       <div class="clubs-card"><p class="hint">Loading clubs…</p></div>
+    </div>
+  </section>
+
+  <!-- Season pass -->
+  <section class="season-page" id="season-page" hidden>
+    <div class="lobby-head">
+      <div>
+        <h2>Season pass</h2>
+        <p class="hint">A 4-week free track. Coins and cosmetics have no cash value and cannot be transferred.</p>
+      </div>
+      <div class="lobby-head-actions">
+        <a class="btn btn-outline" href="#/lobby">Games</a>
+        <a class="btn btn-outline" href="#/home">← Home</a>
+      </div>
+    </div>
+    <div id="season-body">
+      <div class="season-card"><p class="hint">Loading the season pass…</p></div>
     </div>
   </section>
 
@@ -932,5 +960,6 @@ html.view-home .layout,body.view-home .layout,html.view-lobby .layout,body.view-
   <script defer src="lobby.js"></script>
   <script defer src="casino.js"></script>
   <script defer src="clubs.js"></script>
+  <script defer src="season.js"></script>
 </body>
 </html>

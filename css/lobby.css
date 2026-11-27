@@ -27,7 +27,7 @@ body.view-slots #lobby { display: none !important; }
 
 .lobby-table h3 { margin: 0; font-family: Cinzel, serif; }
 
-#home, #lobby, #game-stage, #profile-page, #clubs-page { display: none; position: relative; z-index: 5; }
+#home, #lobby, #game-stage, #profile-page, #clubs-page, #season-page { display: none; position: relative; z-index: 5; }
 
 body.view-lobby #lobby { display: block !important; }
 
