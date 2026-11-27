@@ -1157,12 +1157,15 @@ body.view-clubs #clubs-page { display: block !important; position: relative; z-i
 
 body.view-season #season-page { display: block !important; position: relative; z-index: 5; }
 
+body.view-events #events-page { display: block !important; position: relative; z-index: 5; }
+
 body.view-home .layout,
 body.view-lobby .layout,
 body.view-table .layout,
 body.view-profile .layout,
 body.view-clubs .layout,
-body.view-season .layout { display: none !important; }
+body.view-season .layout,
+body.view-events .layout { display: none !important; }
 
 body.view-slots #home,
 body.view-slots #lobby,

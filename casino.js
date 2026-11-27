@@ -106,6 +106,7 @@
     else if (path === "/profile") view = "profile";
     else if (path === "/clubs") view = "clubs";
     else if (path === "/season") view = "season";
+    else if (path === "/events") view = "events";
     else if (path === "/home" || path === "/") view = "home";
     else view = "table";
 
@@ -116,6 +117,7 @@
     document.body.classList.toggle("view-profile", view === "profile");
     document.body.classList.toggle("view-clubs", view === "clubs");
     document.body.classList.toggle("view-season", view === "season");
+    document.body.classList.toggle("view-events", view === "events");
     const html = document.documentElement;
     html.classList.toggle("view-home", view === "home");
     html.classList.toggle("view-lobby", view === "lobby");
@@ -124,18 +126,20 @@
     html.classList.toggle("view-profile", view === "profile");
     html.classList.toggle("view-clubs", view === "clubs");
     html.classList.toggle("view-season", view === "season");
+    html.classList.toggle("view-events", view === "events");
     if (window.loadViewCss) window.loadViewCss(view);
     const gameId = (SLOT_PATHS[path] || (path || "").replace(/^\//, "")).replace(/[^a-z0-9-]/g, "");
     if (view === "slots") noteRecent({ "/slots": "slots", "/dragon": "dragon", "/pharaoh": "pharaoh", "/neon": "neon" }[path] || "slots");
     else if (view === "table" && gameId && gameId !== "home") noteRecent(gameId);
 
-    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page"), clubsPage = $("#clubs-page"), seasonPage = $("#season-page");
+    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page"), clubsPage = $("#clubs-page"), seasonPage = $("#season-page"), eventsPage = $("#events-page");
     if (home) home.hidden = view !== "home";
     if (lobby) lobby.hidden = view !== "lobby";
     if (stage) stage.hidden = view !== "table";
     if (profile) profile.hidden = view !== "profile";
     if (clubsPage) clubsPage.hidden = view !== "clubs";
     if (seasonPage) seasonPage.hidden = view !== "season";
+    if (eventsPage) eventsPage.hidden = view !== "events";
 
     $$(".view-nav button").forEach((b) => {
       const r = b.dataset.route || b.dataset.view;
@@ -151,6 +155,9 @@
     }
     if (view === "season" && window.CrystalSeason && window.CrystalSeason.load) {
       window.CrystalSeason.load().catch(() => { /* season page will toast on action */ });
+    }
+    if (view === "events" && window.CrystalEvents && window.CrystalEvents.load) {
+      window.CrystalEvents.load().catch(() => { /* events page will toast on action */ });
     }
     if (view === "lobby") renderLobby();
     if (view === "home") {
