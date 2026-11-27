@@ -16,6 +16,11 @@
 
   const TILES = [
     { id: "slots", name: "Crystal Slots", cat: "Slots", tag: "Megaways & 25-line classic · ~95% RTP", glyph: "💎", art: "/assets/tiles/slots.webp", artSm: "/assets/tiles/slots-sm.webp", ribbon: "hot", ribbonLabel: "HOT" },
+    { id: "dragon", name: "Dragon's Gold", cat: "Slots", tag: "Imperial dragons · same ~95% slot engine", glyph: "🐉", art: "/assets/tiles/dragon.webp", artSm: "/assets/tiles/dragon-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
+    { id: "pharaoh", name: "Pharaoh's Sun", cat: "Slots", tag: "Temple of Ra · same ~95% slot engine", glyph: "☀", art: "/assets/tiles/pharaoh.webp", artSm: "/assets/tiles/pharaoh-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
+    { id: "neon", name: "Neon Nights", cat: "Slots", tag: "Cyber city neon · same ~95% slot engine", glyph: "🌃", art: "/assets/tiles/neon.webp", artSm: "/assets/tiles/neon-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
+    { id: "baccarat", name: "Baccarat", cat: "Table Games", tag: "Punto Banco · Banker 5% commission", glyph: "🎴", art: "/assets/tiles/baccarat.webp", artSm: "/assets/tiles/baccarat-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
+    { id: "keno", name: "Keno", cat: "Instant/Mini", tag: "Pick 1–10 · 20 drawn · 92–95% RTP", glyph: "🔮", art: "/assets/tiles/keno.webp", artSm: "/assets/tiles/keno-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
     { id: "roulette", name: "European Roulette", cat: "Table Games", tag: "Single zero · 2.70% house edge", glyph: "🎡", art: "/assets/tiles/roulette.webp", artSm: "/assets/tiles/roulette-sm.webp" },
     { id: "blackjack", name: "Blackjack", cat: "Card Games", tag: "3:2 · stand soft 17 · 6-deck", glyph: "🂡", art: "/assets/tiles/blackjack.webp", artSm: "/assets/tiles/blackjack-sm.webp", ribbon: "hot", ribbonLabel: "HOT" },
     { id: "poker", name: "Poker", cat: "Card Games", tag: "Video Poker & Three Card Poker", glyph: "♠", art: "/assets/tiles/poker.webp", artSm: "/assets/tiles/poker-sm.webp" },
@@ -26,7 +31,7 @@
     { id: "dice", name: "Lucky Dice", cat: "Instant/Mini", tag: "2d6 duel · tie is a push", glyph: "🎲", art: "/assets/tiles/dice.webp", artSm: "/assets/tiles/dice-sm.webp", ribbon: "new", ribbonLabel: "NEW" },
   ];
   const CATS = ["Slots", "Table Games", "Card Games", "Instant/Mini"];
-  const FEATURED = ["roulette", "blackjack", "poker", "war"];
+  const FEATURED = ["dragon", "baccarat", "keno", "pharaoh"];
 
   const JOB_PAYS = [
     ["Royal Flush", "800×"], ["Straight Flush", "50×"], ["Four of a Kind", "25×"],
@@ -45,6 +50,10 @@
   let vpHolds = [false, false, false, false, false];
   let tcpAnte = 1000;
   let tcpPP = 0;
+  let baccaratBets = { player: 0, banker: 0, tie: 0, player_pair: 0, banker_pair: 0 };
+  let baccaratRoad = [];
+  let kenoPicks = [];
+  let kenoCount = 5;
 
   function money(n) { return CC() ? CC().money(n) : String(n); }
   function sfx(name, ...a) { const s = CC() && CC().sfx; if (s && s[name]) s[name](...a); }
@@ -74,17 +83,20 @@
     }
     rouletteBets = [];
     vpHolds = [false, false, false, false, false];
+    baccaratBets = { player: 0, banker: 0, tie: 0, player_pair: 0, banker_pair: 0 };
+    kenoPicks = [];
   }
 
   async function apply() {
     const path = parsePath();
     const prev = currentPath;
-    const tablePaths = new Set(["/roulette","/blackjack","/war","/highcard","/mines","/scratch","/dice","/videopoker","/threecard","/poker/video","/poker/three"]);
+    const tablePaths = new Set(["/roulette","/blackjack","/war","/highcard","/mines","/scratch","/dice","/videopoker","/threecard","/poker/video","/poker/three","/baccarat","/keno"]);
     if (tablePaths.has(prev) && prev !== path) await leaveTable();
     currentPath = path;
 
+    const SLOT_PATHS = { "/slots": "crystal", "/dragon": "dragon", "/pharaoh": "pharaoh", "/neon": "neon" };
     let view = "home";
-    if (path === "/slots") view = "slots";
+    if (SLOT_PATHS[path]) view = "slots";
     else if (path === "/lobby" || path === "/games") view = "lobby";
     else if (path === "/profile") view = "profile";
     else if (path === "/home" || path === "/") view = "home";
@@ -114,8 +126,13 @@
     if (view === "lobby") renderLobby();
     if (view === "home") renderHomeFeatures();
     if (view === "table") openRoute(path);
-    if (view === "slots" && CC() && CC().relayout) {
-      requestAnimationFrame(() => { try { CC().relayout(); } catch (e) { /* layout only */ } });
+    if (view === "slots") {
+      if (CC() && CC().applySlotTheme) CC().applySlotTheme(SLOT_PATHS[path] || "crystal");
+      if (CC() && CC().relayout) {
+        requestAnimationFrame(() => { try { CC().relayout(); } catch (e) { /* layout only */ } });
+      }
+    } else if (CC() && CC().applySlotTheme) {
+      CC().applySlotTheme("crystal");
     }
   }
 
@@ -130,6 +147,8 @@
     else if (path === "/mines") paintMines(null);
     else if (path === "/scratch") paintScratch(null);
     else if (path === "/dice") paintDice(null);
+    else if (path === "/baccarat") paintBaccarat(null);
+    else if (path === "/keno") paintKeno(null);
     else go("/lobby");
   }
 
@@ -1198,6 +1217,233 @@
           await sleep(160);
         }
         $("#side-msg").textContent = "Prize " + money(r.payout || 0) + (r.mult ? " · " + r.mult + "×" : "");
+      } catch (err) { toast(err.message || "Failed", true); }
+      finally { busy = false; }
+    });
+  }
+
+
+  function bacSpotLabel(spot) {
+    return ({ player: "Player", banker: "Banker", tie: "Tie", player_pair: "Player Pair", banker_pair: "Banker Pair" })[spot] || spot;
+  }
+  function bacPays(spot) {
+    return ({ player: "1:1", banker: "0.95:1", tie: "8:1", player_pair: "11:1", banker_pair: "11:1" })[spot] || "";
+  }
+  function paintBacRoad(road) {
+    const list = road || baccaratRoad || [];
+    if (!list.length) return `<div class="bac-road" aria-label="Bead road"><span class="bac-road-empty">The road fills with honest results after each hand.</span></div>`;
+    return `<div class="bac-road" aria-label="Bead road of the last ${list.length} hands">${list.map((h) => {
+      const w = h.winner || "tie";
+      const marks = (h.player_pair ? "PP " : "") + (h.banker_pair ? "BP " : "") + (h.natural ? "N" : "");
+      const title = `${w === "player" ? "Player" : w === "banker" ? "Banker" : "Tie"} ${h.player_point ?? ""}–${h.banker_point ?? ""}${marks ? " · " + marks.trim() : ""}`;
+      return `<span class="bead ${w}${h.natural ? " natural" : ""}${h.player_pair ? " pp" : ""}${h.banker_pair ? " bp" : ""}" title="${title}">${w === "player" ? "P" : w === "banker" ? "B" : "T"}</span>`;
+    }).join("")}</div>`;
+  }
+  function paintBaccarat(st) {
+    if (st && Array.isArray(st.road)) baccaratRoad = st.road;
+    else if (!baccaratRoad.length) {
+      const side = (CC() && CC().config && CC().config.side) || {};
+      if (side.baccarat && Array.isArray(side.baccarat.road)) baccaratRoad = side.baccarat.road;
+    }
+    const bets = (st && st.bets) || baccaratBets;
+    const winner = st && st.winner;
+    const root = stage("Baccarat", `
+      <div class="felt-table bac-table">
+        ${infoPanel("bac-info", "Punto Banco Baccarat",
+          `<p>Eight-deck shoe, reshuffled when fewer than 52 cards remain. Cards 10/J/Q/K count 0, Ace counts 1; totals are modulo 10.</p>
+           <p>Naturals (8 or 9) stand. Player draws on 0–5 and stands on 6–7. Banker uses the standard third-card chart.</p>
+           <p>Player pays 1:1. Banker pays 0.95:1 (5% commission on the win). Tie pays 8:1; Player and Banker bets then push. Optional first-two-card pairs pay 11:1, independent of the main result.</p>
+           <p>The bead road is a history of real hands — never staged. Coins have no cash value.</p>`)}
+        ${paintBacRoad(baccaratRoad)}
+        <div class="bac-seats">
+          <div class="bac-seat ${winner === "player" ? "won" : winner === "tie" ? "push" : ""}">
+            <div class="seat-label">Player ${st && st.player ? "· " + st.player_point : ""}</div>
+            <div class="hand">${(st && st.player ? st.player : []).map((c, i) => cardHTML(c, i)).join("")}</div>
+          </div>
+          <div class="bac-seat ${winner === "banker" ? "won" : winner === "tie" ? "push" : ""}">
+            <div class="seat-label">Banker ${st && st.banker ? "· " + st.banker_point : ""}</div>
+            <div class="hand">${(st && st.banker ? st.banker : []).map((c, i) => cardHTML(c, i)).join("")}</div>
+          </div>
+        </div>
+        ${st && st.why ? resultBanner(st.why, winner === "tie" ? "push" : ((st.payout || 0) > (st.bet || 0) ? "win" : (st.payout || 0) === (st.bet || 0) && (st.bet || 0) > 0 ? "push" : "lose")) : ""}
+        <div class="bac-spots">
+          ${["player","banker","tie","player_pair","banker_pair"].map((spot) => `
+            <button type="button" class="bac-spot ${spot} ${bets[spot] ? "on" : ""}" data-bac="${spot}">
+              <strong>${bacSpotLabel(spot)}</strong>
+              <small>${bacPays(spot)}</small>
+              <span class="bac-amt">${bets[spot] ? money(bets[spot]) : "—"}</span>
+            </button>`).join("")}
+        </div>
+        <div class="table-msg" id="side-msg">${
+          st && st.done ? (st.why || "")
+          : "Tap a spot to place the selected chip, then Deal. Player 1:1 · Banker 0.95:1 · Tie 8:1 · Pairs 11:1."
+        }</div>
+        ${chipRack(`<div class="actions-row">
+          <button type="button" class="btn btn-gold" id="bac-deal">Deal</button>
+          <button type="button" class="btn btn-outline" id="bac-clear">Clear bets</button>
+        </div>`)}
+      </div>`);
+    bindChips(root);
+    bindInfo(root);
+    root.querySelectorAll("[data-bac]").forEach((b) => b.addEventListener("click", () => {
+      const spot = b.dataset.bac;
+      baccaratBets[spot] = (baccaratBets[spot] || 0) + chip;
+      sfx("chip");
+      paintBaccarat(st && st.done ? null : st);
+    }));
+    const clear = $("#bac-clear");
+    if (clear) clear.addEventListener("click", () => {
+      baccaratBets = { player: 0, banker: 0, tie: 0, player_pair: 0, banker_pair: 0 };
+      paintBaccarat(null);
+    });
+    const deal = $("#bac-deal");
+    if (deal) deal.addEventListener("click", async () => {
+      if (busy) return;
+      const total = Object.values(baccaratBets).reduce((a, n) => a + n, 0);
+      if (total <= 0) { toast("Place at least one baccarat bet", true); return; }
+      busy = true;
+      try {
+        const res = await api("/api/side/baccarat", { bets: { ...baccaratBets } });
+        applyCoins(res);
+        const r = res.result || res;
+        if (Array.isArray(r.road)) baccaratRoad = r.road;
+        paintBaccarat(r);
+        const net = (r.payout || 0) - (r.bet || 0);
+        if (net > 0) sfx("win");
+        else if (net === 0) sfx("chip");
+        else sfx("lose");
+      } catch (err) { toast(err.message || "Failed", true); }
+      finally { busy = false; }
+    });
+  }
+
+  function kenoPayRows(count) {
+    const side = (CC() && CC().config && CC().config.side && CC().config.side.keno) || {};
+    const pays = (side.pays && side.pays[String(count)]) || {};
+    const rtp = side.rtp && side.rtp[String(count)];
+    const rows = Object.keys(pays).sort((a, b) => Number(b) - Number(a)).map((h) =>
+      `<tr><td>${h} hit${h === "1" ? "" : "s"}</td><td>${Number(pays[h])}×</td></tr>`
+    ).join("");
+    const rtpLine = rtp != null ? `<p class="keno-rtp">Published RTP for ${count} pick${count === 1 ? "" : "s"}: ${(Number(rtp) * 100).toFixed(2)}%</p>` : "";
+    return `<table class="keno-pays"><thead><tr><th>Hits</th><th>Pays</th></tr></thead><tbody>${rows || "<tr><td colspan='2'>Pick numbers to see pays</td></tr>"}</tbody></table>${rtpLine}`;
+  }
+  function paintKeno(st) {
+    if (st && Array.isArray(st.picks)) kenoPicks = st.picks.slice();
+    const drawn = new Set((st && st.drawn) || []);
+    const hits = new Set((st && st.hits) || []);
+    const count = kenoPicks.length || kenoCount;
+    const root = stage("Keno", `
+      <div class="felt-table keno-table">
+        ${infoPanel("keno-info", "Crystal Keno",
+          `<p>Choose 1 to 10 numbers from 1 to 80, or use Quick Pick. Twenty numbers are drawn at random on the server.</p>
+           <p>Pays are fixed, published multipliers of your stake. Exact return is between 92% and 95% for every pick size.</p>
+           <p>Coins have no cash value and cannot be cashed out.</p>`)}
+        <div class="keno-toolbar">
+          <label>Picks <select id="keno-count">${[1,2,3,4,5,6,7,8,9,10].map((n) =>
+            `<option value="${n}" ${n === (kenoPicks.length || kenoCount) ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+          <button type="button" class="btn btn-outline" id="keno-quick">Quick pick</button>
+          <button type="button" class="btn btn-outline" id="keno-clear">Clear</button>
+        </div>
+        <div class="keno-board" id="keno-board">${Array.from({ length: 80 }, (_, i) => {
+          const n = i + 1;
+          const picked = kenoPicks.includes(n);
+          const isDrawn = drawn.has(n);
+          const isHit = hits.has(n);
+          return `<button type="button" class="keno-ball${picked ? " picked" : ""}${isDrawn ? " drawn" : ""}${isHit ? " hit" : ""}" data-n="${n}">${n}</button>`;
+        }).join("")}</div>
+        <div class="keno-side">
+          ${kenoPayRows(kenoPicks.length || kenoCount)}
+        </div>
+        ${st && st.done ? resultBanner(
+          `Caught ${st.caught} of ${st.pick_count} · ${Number(st.multiplier)}× · ${st.payout ? "Paid " + money(st.payout) : "No win"}`,
+          st.payout > st.bet ? "win" : (st.payout === st.bet ? "push" : "lose")
+        ) : ""}
+        <div class="table-msg" id="side-msg">${
+          st && st.done ? (st.result || "")
+          : `Select ${kenoPicks.length || kenoCount} number${(kenoPicks.length || kenoCount) === 1 ? "" : "s"} (${kenoPicks.length} chosen), then Draw 20.`
+        }</div>
+        ${chipRack(`<div class="actions-row">
+          <button type="button" class="btn btn-gold" id="keno-draw">Draw</button>
+        </div>`)}
+      </div>`);
+    bindChips(root);
+    bindInfo(root);
+    const syncCount = () => {
+      const sel = $("#keno-count");
+      kenoCount = Number(sel && sel.value) || kenoCount;
+    };
+    const countSel = $("#keno-count");
+    if (countSel) countSel.addEventListener("change", () => {
+      syncCount();
+      if (kenoPicks.length > kenoCount) kenoPicks = kenoPicks.slice(0, kenoCount);
+      paintKeno(null);
+    });
+    root.querySelectorAll(".keno-ball").forEach((b) => b.addEventListener("click", () => {
+      if (st && st.done) { /* allow new card */ }
+      const n = Number(b.dataset.n);
+      const i = kenoPicks.indexOf(n);
+      if (i >= 0) kenoPicks.splice(i, 1);
+      else {
+        syncCount();
+        if (kenoPicks.length >= kenoCount) { toast("Clear a number, or raise the pick count", true); return; }
+        kenoPicks.push(n);
+        kenoPicks.sort((a, c) => a - c);
+      }
+      paintKeno(null);
+    }));
+    const quick = $("#keno-quick");
+    if (quick) quick.addEventListener("click", () => {
+      syncCount();
+      const pool = Array.from({ length: 80 }, (_, i) => i + 1);
+      kenoPicks = [];
+      for (let i = 0; i < kenoCount; i++) {
+        const j = Math.floor(Math.random() * pool.length);
+        kenoPicks.push(pool.splice(j, 1)[0]);
+      }
+      kenoPicks.sort((a, c) => a - c);
+      sfx("chip");
+      paintKeno(null);
+    });
+    const clr = $("#keno-clear");
+    if (clr) clr.addEventListener("click", () => { kenoPicks = []; paintKeno(null); });
+    const draw = $("#keno-draw");
+    if (draw) draw.addEventListener("click", async () => {
+      if (busy) return;
+      syncCount();
+      const useQuick = kenoPicks.length === 0;
+      if (!useQuick && kenoPicks.length !== kenoCount) {
+        toast(`Select exactly ${kenoCount} numbers, or use Quick pick`, true);
+        return;
+      }
+      busy = true;
+      try {
+        const body = { bet: chip, count: kenoCount };
+        if (!useQuick) body.picks = kenoPicks.slice();
+        const res = await api("/api/side/keno", body);
+        applyCoins(res);
+        const r = res.result || res;
+        kenoPicks = (r.picks || []).slice();
+        // Animate the draw: first show picks only, then reveal balls.
+        const board = $("#keno-board");
+        if (board && Array.isArray(r.drawn) && !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+          paintKeno({ ...r, drawn: [], hits: [], done: false, result: "Drawing…" });
+          const shown = [];
+          for (const n of r.drawn) {
+            shown.push(n);
+            const el = document.querySelector(`.keno-ball[data-n="${n}"]`);
+            if (el) {
+              el.classList.add("drawn");
+              if ((r.hits || []).includes(n)) el.classList.add("hit");
+            }
+            sfx("tick");
+            await sleep(70);
+          }
+        }
+        paintKeno(r);
+        const net = (r.payout || 0) - (r.bet || 0);
+        if (net > 0) sfx("win");
+        else if (net === 0) sfx("chip");
+        else sfx("lose");
       } catch (err) { toast(err.message || "Failed", true); }
       finally { busy = false; }
     });

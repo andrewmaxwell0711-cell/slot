@@ -277,8 +277,17 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
   }
   const urls = {};
   const RASTER = new Set(Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin", "greentea"]));
+  function currentTheme() {
+    const el = document.body;
+    return (el && el.getAttribute("data-slot-theme")) || "crystal";
+  }
   function url(id, size) {
     if (RASTER.has(id)) {
+      const theme = currentTheme();
+      if (theme && theme !== "crystal") {
+        const suffix = size === 128 ? "-128.webp" : ".webp";
+        return "/assets/themes/" + theme + "/" + id + suffix;
+      }
       if (size === 512 && id === "greentea") return "/assets/symbols/greentea-512.webp";
       if (size === 128) return "/assets/symbols/" + id + "-128.webp";
       return "/assets/symbols/" + id + ".webp";
@@ -296,5 +305,5 @@ ${sparkle(60, 22, 8)}${banner("BONUS", 90, 92)}</svg>`;
     });
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">${b}${sparkle(60, 8, 7)}</svg>`);
   }
-  window.CrystalGems = { svg, url, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin"]) };
+  window.CrystalGems = { svg, url, currentTheme, decorCluster, ids: Object.keys(SPECS).concat(["wild", "scatter", "shard", "coin"]) };
 })();

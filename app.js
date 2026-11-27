@@ -18,6 +18,11 @@
   const HISTORY_KEY = "crystal-reels-history-v2";
   const PREFS_KEY = "crystal-reels-prefs-v3";
   const Gems = window.CrystalGems;
+  function teaImg(big) {
+    const theme = document.body && document.body.getAttribute("data-slot-theme");
+    if (big && (!theme || theme === "crystal")) return TEA_IMG_BIG;
+    return Gems.url("greentea", big ? 512 : undefined);
+  }
   const HI_SYMBOLS = new Set(["ruby", "greentea", "wild", "sapphire", "emerald"]);
   const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const ENGAGE_KEY = "crystal-reels-engage-v5";
@@ -25,6 +30,9 @@
   const LEGAL_DEFAULT = "Coins are for entertainment only, have no monetary value and cannot be redeemed for cash or prizes.";
 
   let SYMBOLS = [];
+  let SLOT_THEMES = [];
+  let slotTheme = "crystal";
+  let BASE_SYMBOL_NAMES = {};
   let PAYLINES = [
     [1, 1, 1, 1, 1], [0, 0, 0, 0, 0], [2, 2, 2, 2, 2], [0, 1, 2, 1, 0], [2, 1, 0, 1, 2],
     [0, 0, 1, 2, 2], [2, 2, 1, 0, 0], [1, 0, 0, 0, 1], [1, 2, 2, 2, 1], [0, 1, 1, 1, 0],
@@ -258,6 +266,10 @@
     setupGoogleSignIn();
     renderAccount();
     if (Array.isArray(cfg.symbols)) SYMBOLS = cfg.symbols.map((s) => ({ ...s, pays: Object.fromEntries(Object.entries(s.pays || {}).map(([k, v]) => [Number(k), v])) }));
+    if (Array.isArray(cfg.slot_themes)) SLOT_THEMES = cfg.slot_themes;
+    if (cfg.symbols && !Object.keys(BASE_SYMBOL_NAMES).length) {
+      SYMBOLS.forEach((s) => { BASE_SYMBOL_NAMES[s.id] = s.name; });
+    }
     lineIdx = Math.min(lineIdx, LINE_OPTIONS.length - 1);
     bplIdx = Math.min(bplIdx, BPL.length - 1);
     mwBetIdx = Math.min(mwBetIdx, MW.bet_aud.length - 1);
@@ -1012,7 +1024,7 @@
       inner.querySelector(".celebrate-art")?.remove();
       const art = document.createElement("div");
       art.className = "celebrate-art";
-      art.innerHTML = kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${TEA_IMG_BIG}" alt="Green Tea 1kg packet" /></div>`;
+      art.innerHTML = kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="Green Tea 1kg packet" /></div>`;
       inner.prepend(art);
       const cls = ["celebrate"];
       if (kind === "bonus" || kind === "pick") cls.push("bonus");
@@ -1301,7 +1313,7 @@
       const fill = w.type === "jackpot" ? "#f3c441" : WEDGE_COLORS[i % WEDGE_COLORS.length];
       const thin = angs[i] < 2;
       const label = w.type === "jackpot"
-        ? (thin ? `<text y="${-R - 8}" class="wl jp" font-size="8">JP</text>` : `<image href="${TEA_IMG}" x="-17" y="${-R * 0.9}" width="34" height="34" /><text y="${-R * 0.55}" class="wl jp">JACKPOT</text>`)
+        ? (thin ? `<text y="${-R - 8}" class="wl jp" font-size="8">JP</text>` : `<image href="${teaImg()}" x="-17" y="${-R * 0.9}" width="34" height="34" /><text y="${-R * 0.55}" class="wl jp">JACKPOT</text>`)
         : `<text y="${-R * 0.7}" class="wl${w.value >= 10 || w.type === "free_spins" ? " hi" : ""}">${wedgeLabel(w)}</text>`;
       const stroke = thin ? 3 : 2;
       return `<path d="M0,0 L${pt(a0)} A${R},${R} 0 0 1 ${pt(a1)} Z" fill="${fill}" stroke="#f3c441" stroke-width="${stroke}"/><g transform="rotate(${ac})">${label}</g>`;
@@ -1315,7 +1327,7 @@
       <defs><radialGradient id="whub"><stop offset="0" stop-color="#fff3b0"/><stop offset="1" stop-color="#b8860b"/></radialGradient></defs>
       <circle r="${R + 16}" fill="#2a0a5c" stroke="#f3c441" stroke-width="5"/>${bulbs}
       <g id="wheel-rot">${slices}<circle r="${R}" fill="none" stroke="#fff3b0" stroke-width="3"/></g>
-      <circle r="26" fill="url(#whub)" stroke="#7a4b00" stroke-width="3"/><clipPath id="hubclip"><circle r="19"/></clipPath><image href="${TEA_IMG}" x="-19" y="-19" width="38" height="38" clip-path="url(#hubclip)" preserveAspectRatio="xMidYMid slice"/>
+      <circle r="26" fill="url(#whub)" stroke="#7a4b00" stroke-width="3"/><clipPath id="hubclip"><circle r="19"/></clipPath><image href="${teaImg()}" x="-19" y="-19" width="38" height="38" clip-path="url(#hubclip)" preserveAspectRatio="xMidYMid slice"/>
       <path class="wheel-pointer" d="M0,${-R + 18} L-15,${-R - 22} L15,${-R - 22} Z" fill="#fff3b0" stroke="#7a4b00" stroke-width="3"/>
     </svg>`;
   }
@@ -1699,6 +1711,32 @@
       }).join("");
     }
   }
+
+  function applySlotTheme(id) {
+    const t = (SLOT_THEMES || []).find((x) => x.id === id) || { id: id || "crystal", name: "Crystal Slots", jackpot: "Green Tea Jackpot" };
+    slotTheme = t.id || "crystal";
+    document.body.setAttribute("data-slot-theme", slotTheme);
+    if (cabinetEl) cabinetEl.setAttribute("data-slot-theme", slotTheme);
+    const wrap = document.querySelector(".cabinet-wrap");
+    if (wrap) {
+      if (t.background) wrap.style.setProperty("--slot-bg", "url(\"" + t.background + "\")");
+      else wrap.style.removeProperty("--slot-bg");
+      if (t.frame) wrap.style.setProperty("--slot-frame", "url(\"" + t.frame + "\")");
+      else wrap.style.removeProperty("--slot-frame");
+    }
+    const title = document.querySelector(".marquee-title");
+    if (title) title.textContent = t.name || "Crystal Casino";
+    const jp = document.querySelector("#jackpot-sign span");
+    if (jp) jp.textContent = String(t.jackpot || "Green Tea Jackpot").toUpperCase() + " · 5,000×";
+    document.querySelectorAll("#jackpot-sign img").forEach((img) => { img.src = Gems.url("greentea"); });
+    const names = (t.symbols && Object.keys(t.symbols).length) ? t.symbols : BASE_SYMBOL_NAMES;
+    SYMBOLS.forEach((s) => { if (names[s.id] || BASE_SYMBOL_NAMES[s.id]) s.name = names[s.id] || BASE_SYMBOL_NAMES[s.id]; });
+    document.querySelectorAll(".symbol img, .mw-cell img, .mw-top img, .hold-cell img").forEach((img) => {
+      const m = (img.getAttribute("src") || "").match(/\/(?:symbols|themes\/[^/]+)\/([a-z]+)(?:-\d+)?\.webp/);
+      if (m) img.src = Gems.url(m[1]);
+    });
+  }
+
   function setView(name) {
     const map = { slots: "/slots", lobby: "/lobby", home: "/home", games: "/lobby", profile: "/profile" };
     const path = map[name] || (String(name || "").startsWith("/") ? name : "/" + (name || "home"));
@@ -1776,7 +1814,7 @@
       }).join("");
     }
     $("#features").innerHTML = `
-      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Green Tea Jackpot.</b> Can drop on any paid spin in either mode, and can also land on the Tea Wheel. When it hits, it pays <b>${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet</b>.</div></div>
+      <div class="feat"><img class="tea" src="${teaImg()}" alt="" /><div><b>Green Tea Jackpot.</b> Can drop on any paid spin in either mode, and can also land on the Tea Wheel. When it hits, it pays <b>${Number(JACKPOT_MULT).toLocaleString("en-US")}× your total bet</b>.</div></div>
       ${isMw ? `<div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Crystal Wild</b> lands on reels 2–5 (including the top reel) and substitutes for every gem except the BONUS scatter.</div></div>
       <div class="feat"><img src="${Gems.url("scatter")}" alt="" /><div><b>BONUS scatter</b> on the main reels: ${Object.keys(msp).map((k) => `${k}${k === "6" ? "+" : ""} pay ${msp[k].pay}× + ${msp[k].free_spins} free spins`).join(" · ")}. In free spins the <b>win multiplier starts at ×1 and rises by +1 on every tumble — with no upper limit</b> — and it never resets during the bonus. 3+ BONUS retrigger extra spins (max ${FEATURES.max_free_spins}).</div></div>`
         : `<div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Crystal Wild</b> lands on reels 2–4, substitutes for every gem except the Prism Scatter, and <b>doubles</b> any line win it completes.</div></div>
@@ -1785,12 +1823,12 @@
       <div class="feat"><img src="${Gems.url("coin")}" alt="" /><div><b>Hold &amp; Spin.</b> Land <b>${HOLD.trigger || 6}+ Crystal Coins</b> on a paid spin to lock their values and play 3 respins. Each new coin resets the respin count. Fill every cell for a <b>${HOLD.grand_mult || 50}×</b> grand prize on top of the locked coins.</div></div>
       <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Crystal Collection.</b> Over spins you gather ruby, emerald and sapphire charms. Completing a set of ${collection.set_size || 10} pays <b>${collection.pay_mult || 2}×</b> your total bet.</div></div>
       <div class="feat"><img src="${Gems.url("wild")}" alt="" /><div><b>Surprise wilds.</b> On a paid spin, one or two symbols may flip into Crystal Wilds before the win is counted. The flip you see is the server outcome.</div></div>
-      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Crystal Crown progressive.</b> A small share of every slot bet feeds a live jackpot ticker. When it drops, the pot is paid in full and reseeds. Funded inside the ~95% RTP budget.</div></div>
+      <div class="feat"><img class="tea" src="${teaImg()}" alt="" /><div><b>Crystal Crown progressive.</b> A small share of every slot bet feeds a live jackpot ticker. When it drops, the pot is paid in full and reseeds. Funded inside the ~95% RTP budget.</div></div>
       <div class="feat"><img src="${Gems.url("shard")}" alt="" /><div><b>Social casino · TEST MODE.</b> Malfunction voids all pays and plays. Coins have no cash value and cannot be redeemed for money or prizes. VIP perks (bigger hourly bonus) unlock with level, never with a purchase.</div></div>`;
     const wedges = MINIS.wheel_wedges || [];
     $("#minis-info").innerHTML = `
       <div class="feat"><img src="${Gems.url("amethyst")}" alt="" /><div><b>Crystal Pick</b> — a <b>mystery bonus</b> that can start after any paid spin. Pick crystals from a grid of ${MINIS.pick_tiles}: each one reveals a coin prize (${(MINIS.pick_prizes || []).map((p) => p + "×").join(", ")} total bet) until you find a COLLECT crystal.</div></div>
-      <div class="feat"><img class="tea" src="${TEA_IMG}" alt="" /><div><b>Tea Wheel</b> — land <b>${(MINIS.wheel_min_scatters || {})[mode] || 2}+ BONUS together with a WILD</b> (without triggering free spins) to spin the wheel. Wedge sizes match their true weights; the jackpot is a thin sliver, and landing on it always pays the Green Tea Jackpot. There are no staged near misses.</div></div>
+      <div class="feat"><img class="tea" src="${teaImg()}" alt="" /><div><b>Tea Wheel</b> — land <b>${(MINIS.wheel_min_scatters || {})[mode] || 2}+ BONUS together with a WILD</b> (without triggering free spins) to spin the wheel. Wedge sizes match their true weights; the jackpot is a thin sliver, and landing on it always pays the Green Tea Jackpot. There are no staged near misses.</div></div>
       <div class="feat"><img src="${Gems.url("coin")}" alt="" /><div><b>Hold &amp; Spin</b> — 6+ Crystal Coins start a respin bonus with locked values and a grand prize if the board fills.</div></div>
       <div class="feat"><img src="${Gems.url("ruby")}" alt="" /><div><b>Red / Black Gamble</b> — after any win, double up on a card colour (50/50), up to ${FEATURES.gamble_max_rounds} times.</div></div>
       <p class="hint">Every mini-game result is decided on the server the moment it triggers — your picks reveal it.</p>`;
@@ -2353,7 +2391,8 @@
 
   window.CrystalCasino = {
     api, money, toast, ensureAudio, applySnapshot,
-    sfx, startBgMusic, stopBgMusic, setView, presentHoldSpin: playHoldSpin,
+    sfx, startBgMusic, stopBgMusic, setView, applySlotTheme, presentHoldSpin: playHoldSpin,
+    get config() { return { side: typeof SIDE !== "undefined" ? SIDE : {}, slot_themes: SLOT_THEMES }; },
     claimDaily, claimHourly,
     openShop: () => openModal("shop"),
     openPrizes: () => openModal("prizes"),
