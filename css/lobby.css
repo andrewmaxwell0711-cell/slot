@@ -27,7 +27,7 @@ body.view-slots #lobby { display: none !important; }
 
 .lobby-table h3 { margin: 0; font-family: Cinzel, serif; }
 
-#home, #lobby, #game-stage, #profile-page { display: none; position: relative; z-index: 5; }
+#home, #lobby, #game-stage, #profile-page, #clubs-page { display: none; position: relative; z-index: 5; }
 
 body.view-lobby #lobby { display: block !important; }
 
@@ -149,3 +149,6 @@ body.view-slots #game-stage { display: none !important; }
 .lobby-tile, .feature-tile { transition: none; }
 }
 
+
+.lobby-head-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; }
+.lobby-head-actions .btn { min-height: 48px; }

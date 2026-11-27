@@ -1153,14 +1153,18 @@ body.view-table #game-stage { display: block !important; }
 
 body.view-profile #profile-page { display: block !important; }
 
+body.view-clubs #clubs-page { display: block !important; position: relative; z-index: 5; }
+
 body.view-home .layout,
 body.view-lobby .layout,
 body.view-table .layout,
-body.view-profile .layout { display: none !important; }
+body.view-profile .layout,
+body.view-clubs .layout { display: none !important; }
 
 body.view-slots #home,
 body.view-slots #lobby,
-body.view-slots #game-stage { display: none !important; }
+body.view-slots #game-stage,
+body.view-slots #clubs-page { display: none !important; }
 
 .hand-meta { font-size: .75rem; color: #d7f5d8; margin-bottom: .3rem; font-weight: 700; letter-spacing: .04em; }
 
@@ -2270,3 +2274,6 @@ body.view-table .site-notice { display: none; }
   .hud-shop-btn { font-size: 0; padding: .4rem .55rem; }
   .hud-shop-btn::after { content: "Buy"; font-size: .75rem; font-weight: 800; color: #3a2200; }
 }
+
+.lobby-head-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: flex-end; }
+.lobby-head-actions .btn { min-height: 48px; }

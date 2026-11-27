@@ -104,6 +104,7 @@
     if (SLOT_PATHS[path]) view = "slots";
     else if (path === "/lobby" || path === "/games") view = "lobby";
     else if (path === "/profile") view = "profile";
+    else if (path === "/clubs") view = "clubs";
     else if (path === "/home" || path === "/") view = "home";
     else view = "table";
 
@@ -112,22 +113,25 @@
     document.body.classList.toggle("view-slots", view === "slots");
     document.body.classList.toggle("view-table", view === "table");
     document.body.classList.toggle("view-profile", view === "profile");
+    document.body.classList.toggle("view-clubs", view === "clubs");
     const html = document.documentElement;
     html.classList.toggle("view-home", view === "home");
     html.classList.toggle("view-lobby", view === "lobby");
     html.classList.toggle("view-slots", view === "slots");
     html.classList.toggle("view-table", view === "table");
     html.classList.toggle("view-profile", view === "profile");
+    html.classList.toggle("view-clubs", view === "clubs");
     if (window.loadViewCss) window.loadViewCss(view);
     const gameId = (SLOT_PATHS[path] || (path || "").replace(/^\//, "")).replace(/[^a-z0-9-]/g, "");
     if (view === "slots") noteRecent({ "/slots": "slots", "/dragon": "dragon", "/pharaoh": "pharaoh", "/neon": "neon" }[path] || "slots");
     else if (view === "table" && gameId && gameId !== "home") noteRecent(gameId);
 
-    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page");
+    const home = $("#home"), lobby = $("#lobby"), stage = $("#game-stage"), profile = $("#profile-page"), clubsPage = $("#clubs-page");
     if (home) home.hidden = view !== "home";
     if (lobby) lobby.hidden = view !== "lobby";
     if (stage) stage.hidden = view !== "table";
     if (profile) profile.hidden = view !== "profile";
+    if (clubsPage) clubsPage.hidden = view !== "clubs";
 
     $$(".view-nav button").forEach((b) => {
       const r = b.dataset.route || b.dataset.view;
@@ -138,6 +142,9 @@
       b.classList.toggle("active", (r === "home" && view === "home") || (r === "lobby" && (view === "lobby" || view === "table" || view === "slots")));
     });
 
+    if (view === "clubs" && window.CrystalClubs && window.CrystalClubs.load) {
+      window.CrystalClubs.load().catch(() => { /* clubs page will toast on action */ });
+    }
     if (view === "lobby") renderLobby();
     if (view === "home") {
       document.querySelectorAll("#hero-carousel img.hero-bg").forEach(function (img) {

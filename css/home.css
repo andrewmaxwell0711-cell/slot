@@ -1,5 +1,5 @@
 /* Split from styles.css — do not edit by hand; regenerate with tools/split_styles.py */
-#home, #lobby, #game-stage, #profile-page { display: none; position: relative; z-index: 5; }
+#home, #lobby, #game-stage, #profile-page, #clubs-page { display: none; position: relative; z-index: 5; }
 
 body.view-home #home { display: block !important; }
 
@@ -358,3 +358,21 @@ body.view-slots #game-stage { display: none !important; }
   background: #f3c441;
   box-shadow: 0 0 8px #f3c441;
 }
+
+/* Clubs entry banner on the home floor */
+.home-club-banner {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  margin: .4rem 0 1rem;
+  padding: .55rem .85rem;
+  min-height: 48px;
+  border-radius: 16px;
+  border: 1px solid rgba(232, 201, 122, .35);
+  background: linear-gradient(90deg, rgba(42,12,72,.85), rgba(18,4,42,.85));
+  color: inherit;
+  text-decoration: none;
+}
+.home-club-banner img { width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto; }
+.home-club-banner strong { display: block; font-family: Cinzel, serif; }
+.home-club-banner span { font-size: .8rem; color: #d7c8ef; }
