@@ -14,7 +14,7 @@ _rng = secrets.SystemRandom()
 # Standard coin stakes offered in the lobby (virtual coins, no cash value).
 BETS = (100, 200, 500, 1_000, 2_000, 5_000, 10_000, 25_000, 50_000)
 
-GAMES = ("blackjack", "roulette", "highcard", "mines", "scratch", "dice", "videopoker", "threecard", "war")
+GAMES = ("blackjack", "roulette", "highcard", "mines", "scratch", "dice", "videopoker", "threecard", "war", "baccarat", "keno")
 
 SUITS = ("hearts", "diamonds", "clubs", "spades")
 RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
@@ -59,6 +59,8 @@ def catalogue() -> dict[str, Any]:
         "bets": list(BETS),
         "games": [
             {"id": "blackjack", "name": "Blackjack", "tag": "3:2 · stand soft 17 · 6-deck", "category": "Card Games"},
+            {"id": "baccarat", "name": "Baccarat", "tag": "Punto Banco · Banker 5% commission", "category": "Table Games"},
+            {"id": "keno", "name": "Keno", "tag": "Pick 1–10 · 20 drawn · 92–95% RTP", "category": "Instant/Mini"},
             {"id": "roulette", "name": "European Roulette", "tag": "Single zero · 2.70% house edge", "category": "Table Games"},
             {"id": "videopoker", "name": "Video Poker", "tag": "Jacks or Better 9/6 · ~0.5% house edge", "category": "Card Games"},
             {"id": "threecard", "name": "Three Card Poker", "tag": "Ante/Play + Pair Plus · dealer Q-high", "category": "Card Games"},
@@ -104,6 +106,8 @@ def catalogue() -> dict[str, Any]:
             "surrender": "half the ante",
             "tie_on_war": "both bets push",
         },
+        "baccarat": __import__("baccarat").catalogue_block(),
+        "keno": __import__("keno").catalogue_block(),
     }
 
 
@@ -1443,5 +1447,5 @@ def public_state(state: dict[str, Any]) -> dict[str, Any]:
     if game == "threecard":
         return threecard_public(state)
     # Other games are one-shot or already public.
-    banned = {"shoe", "bombs", "deck"} if not state.get("done") else {"shoe", "deck"}
+    banned = {"shoe", "bombs", "deck", "_shoe"} if not state.get("done") else {"shoe", "deck", "_shoe"}
     return {k: v for k, v in state.items() if k not in banned}

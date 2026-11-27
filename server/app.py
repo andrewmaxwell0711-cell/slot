@@ -202,7 +202,7 @@ def _public_base_url() -> str:
 
 
 def _config_payload() -> dict:
-    return {
+    payload = {
         "stripe_enabled": STRIPE_ENABLED,
         "test_mode": True,
         "social_casino": True,
@@ -289,7 +289,18 @@ def _config_payload() -> dict:
         "surprise_wilds": True,
         "progressive": ledger.progressive_public(),
         "side": __import__("side").catalogue(),
+        "slot_themes": __import__("themes").catalogue(),
     }
+
+    try:
+        import baccarat as _bac
+        _conn = ledger.get_conn()
+        _bac.ensure_schema(_conn)
+        payload.setdefault("side", {}).setdefault("baccarat", {})["road"] = _bac.load_road(_conn)
+        _conn.commit()
+    except Exception:
+        pass
+    return payload
 
 
 @app.get("/")

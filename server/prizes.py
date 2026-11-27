@@ -730,6 +730,119 @@ def after_spin(
     out = attach(player_id, {}, newly)
     if level_up:
         out["level_up"] = level_up
+    try:
+        import events
+        from game import COIN_SCALE
+        events.on_play(
+            player_id,
+            "slots",
+            int(round(float(bet_aud) * COIN_SCALE)),
+            int(round(float(win_aud) * COIN_SCALE)),
+            meta={"kind": "slots", "jackpot": float(jackpot_paid_aud) > 0},
+        )
+    except Exception:
+        # Hook must never roll back a settled spin.
+        pass
+    return out
+
+
+def after_side(player_id: str, game: str, bet_coins: int, win_coins: int) -> dict:
+    """Record a settled side-game round for XP, streaks and missions.
+
+    Called after play_side's transaction commits. Table games count as
+    spins / win_spins / win_mult only — they do not satisfy the slot
+    minigame (pick/wheel) mission. Coins have no cash value.
+    """
+    import events
+    import ledger
+    from game import COIN_SCALE
+
+    bet_coins = int(bet_coins or 0)
+    win_coins = int(win_coins or 0)
+    bet_aud = bet_coins / float(COIN_SCALE) if COIN_SCALE else float(bet_coins)
+    win_aud = win_coins / float(COIN_SCALE) if COIN_SCALE else float(win_coins)
+    now = _now_iso()
+    when = perth_now()
+    day = perth_date(when)
+    week = perth_week(when)
+    ratio = (win_aud / bet_aud) if bet_aud else 0.0
+    big = ratio >= BIG_WIN_X
+    gained = _xp_for_spin(bet_aud, win_aud, False, big)
+
+    ensure_daily_missions(player_id, day)
+    newly: list = []
+    level_up = 0
+    with ledger.transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO spin_records (player_id, created_at, perth_date, perth_week, perth_weekend, bet_aud, win_aud)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (player_id, now, day, week, perth_weekend(when), float(bet_aud), float(win_aud)),
+        )
+        row = conn.execute(
+            "SELECT xp, level, current_streak, best_streak FROM players WHERE id = ?",
+            (player_id,),
+        ).fetchone()
+        xp = int(row["xp"] or 0)
+        level = int(row["level"] or 1)
+        streak = int(row["current_streak"] or 0)
+        best = int(row["best_streak"] or 0)
+        if win_coins > bet_coins:
+            streak += 1
+            best = max(best, streak)
+        elif win_coins < bet_coins:
+            streak = 0
+        level, xp, level_up = _advance_xp(level, xp, gained)
+        conn.execute(
+            "UPDATE players SET xp = ?, level = ?, current_streak = ?, best_streak = ? WHERE id = ?",
+            (xp, level, streak, best, player_id),
+        )
+        want: list = []
+        if ratio >= BIG_WIN_X:
+            want.append("big_win")
+        if ratio >= MEGA_WIN_X:
+            want.append("mega_win")
+        if ratio >= EPIC_WIN_X:
+            want.append("epic_win")
+        if level >= 10:
+            want.append("vip_gold")
+        if level >= 35:
+            want.append("vip_diamond")
+        if streak >= 5:
+            want.append("streak_5")
+        if streak >= 10:
+            want.append("streak_10")
+        want.extend(_level_trophies(level))
+        newly = _unlock_many(conn, player_id, want, now)
+
+        rows = conn.execute(
+            "SELECT slot, mission_id, progress, target, claimed FROM missions WHERE player_id = ? AND mission_date = ?",
+            (player_id, day),
+        ).fetchall()
+        for m in rows:
+            spec = _MISSION_BY_ID.get(m["mission_id"])
+            if not spec:
+                continue
+            inc = 0
+            typ = spec["type"]
+            if typ == "spins":
+                inc = 1
+            elif typ == "win_spins" and win_coins > bet_coins:
+                inc = 1
+            elif typ == "win_mult" and ratio >= float(spec.get("mult") or 0):
+                inc = 1
+            if inc and int(m["claimed"]) != 1:
+                new_p = min(int(m["target"]), int(m["progress"]) + inc)
+                conn.execute(
+                    "UPDATE missions SET progress = ? WHERE player_id = ? AND mission_date = ? AND slot = ?",
+                    (new_p, player_id, day, int(m["slot"])),
+                )
+
+    out = attach(player_id, {}, newly)
+    if level_up:
+        out["level_up"] = level_up
+    events.on_play(player_id, game, bet_coins, win_coins, meta={"kind": "side", "game": game})
     return out
 
 
