@@ -29,17 +29,13 @@ import prefs
 from prizes import PERTH, perth_date, perth_now, perth_week
 
 # Monday 00:00 Australia/Perth. Seasons are exactly 28 days.
-SEASON_EPOCH = datetime(2026, 11, 2, 0, 0, 0, tzinfo=PERTH)
+SEASON_EPOCH = datetime(2026, 11, 23, 0, 0, 0, tzinfo=PERTH)
 SEASON_DAYS = 28
 TIER_COUNT = 30
 
 # TODO(android): Do not flip this on for a web/Stripe purchase.
 PREMIUM_PURCHASE_ENABLED = False
-PREMIUM_NOTE = (
-    "Premium coming soon. A future Android build may unlock this track with "
-    "Google Play Billing. There is no real-money season-pass purchase on the web, "
-    "and Stripe stays in test mode for coin packs only."
-)
+PREMIUM_NOTE = "Premium coming soon. Not for sale on the web."
 
 SEASON_NAMES = (
     "Crystal Crown",

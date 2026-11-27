@@ -102,14 +102,12 @@
     }
     const xp = Number(state.xp) || 0;
     const next = Number(state.next_xp) || 0;
-    const prev = state.tier > 0 ? (state.free && state.free[state.tier - 1] ? state.free[state.tier - 1].xp_required : 0) : 0;
-    const span = Math.max(1, next - prev);
-    const pct = Math.max(0, Math.min(100, Math.round((xp - prev) / span * 100)));
+    const pct = next <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(xp / next * 100)));
     const endLabel = season.ends_at_label || season.ends_at || "";
     root.innerHTML = `
       <div class="season-card">
         <h3>${esc(season.title || "Season pass")}</h3>
-        <p class="season-end">Season ends <strong>${esc(endLabel)}</strong>. This is the real end date — there is no fake countdown, and there are no paid skips.</p>
+        <p class="season-end">Season ends <strong>${esc(endLabel)}</strong>.</p>
         <div class="season-xp">
           <div class="season-xp-meta"><span>Tier ${Number(state.tier) || 0} of 30</span><span>${num(xp)} / ${num(next)} XP</span></div>
           <div class="season-xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">

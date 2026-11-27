@@ -207,7 +207,7 @@ class SeasonRolloverTests(unittest.TestCase):
         fresh_db()
         player = pid()
         ledger.ensure_player(player)
-        # Mid-season 1 (epoch is 2 Nov 2026).
+        # Mid-season 1 (relative to SEASON_EPOCH).
         mid = season.SEASON_EPOCH + timedelta(days=10, hours=12)
         season.set_clock(mid)
         sid1 = season.current_season()["id"]
@@ -278,6 +278,12 @@ class SeasonPolicyTests(unittest.TestCase):
         # No loot-box language; amounts are deterministic.
         self.assertEqual(season._reward_for("free", 1), season._reward_for("free", 1))
         self.assertIn("coming soon", cat["premium_note"].lower())
+        self.assertNotIn("fake countdown", cat["premium_note"].lower())
+        js = (ROOT / "season.js").read_text()
+        self.assertNotIn("fake countdown", js)
+        self.assertNotIn("paid skips", js)
+        # 1,340 / 1,620 must fill ~83%, not the within-tier 0%.
+        self.assertIn("Math.round(xp / next * 100)", js)
 
     def test_spa_and_static_routes(self):
         import app as app_module
