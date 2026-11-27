@@ -346,6 +346,13 @@
   }
 
 
+  function isTableNatural(st) {
+    if (!st) return false;
+    if (st.natural) return true;
+    if (Array.isArray(st.hands) && st.hands.some((h) => h && (h.result === "blackjack" || (h.blackjack && Number(h.payout) > Number(h.bet || 0))))) return true;
+    return false;
+  }
+
   function maybeTableWinBeat(st, title) {
     if (!st) return;
     const payout = Number(st.payout || 0);
@@ -353,7 +360,14 @@
     const net = st.net != null ? Number(st.net) : (payout - spent);
     if (!(net > 0 && payout > 0)) return; // never celebrate a loss or a push
     if (window.CrystalCasino && typeof CrystalCasino.tableWinBeat === "function") {
-      CrystalCasino.tableWinBeat({ amountAud: payout, net, title: title || "YOU WIN" });
+      CrystalCasino.tableWinBeat({
+        amountAud: payout,
+        net,
+        bet: spent,
+        title: title || "YOU WIN",
+        game: st.game || "",
+        natural: isTableNatural(st),
+      });
     }
   }
 

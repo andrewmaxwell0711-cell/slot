@@ -1286,14 +1286,14 @@
 
   // ---- Celebrations ----
   let celebrateResolve = null;
-  function celebrate({ kind = "big", title, amountAud = null, sub = "", hold = 3400, tier = null, kicker = "", syncMeters = true }) {
+  function celebrate({ kind = "big", title, amountAud = null, sub = "", hold = 3400, tier = null, kicker = "", syncMeters = true, game = "" }) {
     return new Promise((resolve) => {
       const payout = amountAud == null ? null : payoutCoins(amountAud);
       const inner = celebrateEl.querySelector(".celebrate-inner");
       inner.querySelector(".celebrate-art")?.remove();
       const art = document.createElement("div");
       art.className = "celebrate-art";
-      art.innerHTML = kind === "chest" ? `<div class="celebrate-tea celebrate-chest" aria-hidden="true"><span class="chest-icon">🍵</span></div>` : kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="" /></div>`;
+      art.innerHTML = kind === "chest" ? `<div class="celebrate-tea celebrate-chest" aria-hidden="true"><span class="chest-icon">🍵</span></div>` : kind === "table" && window.CrystalFX && CrystalFX.tableMedallion ? CrystalFX.tableMedallion(game, title) : kind === "bonus" ? `<img class="prism" src="${Gems.url("scatter")}" alt="" />` : kind === "pick" ? `<img class="prism" src="${Gems.url("amethyst")}" alt="" />` : `<div class="celebrate-tea"><img src="${teaImg(true)}" alt="" /></div>`;
       inner.prepend(art);
       const cls = ["celebrate"];
       if (kind === "bonus" || kind === "pick") cls.push("bonus");
@@ -1302,7 +1302,7 @@
       celebrateEl.className = cls.join(" ");
       const kickEl = $("#celebrate-kicker");
       if (kickEl) {
-        const kick = kicker || (kind === "jackpot" ? "JACKPOT" : (kind === "bonus" || kind === "pick") ? "FEATURE" : "GREEN TEA");
+        const kick = kicker || (kind === "jackpot" ? "JACKPOT" : (kind === "bonus" || kind === "pick") ? "FEATURE" : kind === "table" ? "TABLE" : kind === "chest" ? "FREE COINS" : "GREEN TEA");
         kickEl.textContent = kick;
         kickEl.hidden = !kick;
       }
@@ -1438,18 +1438,49 @@
     });
   }
 
-  function tableWinBeat({ amountAud, net = 0, title = "YOU WIN", hold = 2200 } = {}) {
+  function tableWinToast({ title, amountAud, game }) {
+    let el = document.getElementById("table-win-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "table-win-toast";
+      el.className = "table-win-toast";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      document.body.appendChild(el);
+    }
+    const pay = payoutCoins(amountAud);
+    el.innerHTML = `<img class="twt-chip" src="/assets/chips/chip-1000.webp" alt="" /><div class="twt-copy"><strong class="twt-title">${title || "YOU WIN"}</strong><b class="twt-amt">${money(pay)}</b><small>Coins have no cash value</small></div>`;
+    el.hidden = false;
+    el.classList.add("is-on");
+    el.dataset.game = game || "";
+    clearTimeout(tableWinToast._t);
+    const ms = REDUCE || turbo ? 900 : 1600;
+    tableWinToast._t = setTimeout(() => {
+      el.classList.remove("is-on");
+      el.hidden = true;
+    }, ms);
+  }
+
+  function tableWinBeat({ amountAud, net = 0, title = "YOU WIN", hold = 2200, bet = 0, natural = false, game = "" } = {}) {
     const payout = payoutCoins(amountAud);
     if (!(payout > 0) || !(net > 0)) return Promise.resolve();
     const from = document.querySelector(".felt-table, .wheel-box, .game-stage, #stage-body");
     const to = document.querySelector(".hdr-chip, #hdr-credit");
     if (!REDUCE && window.CrystalFX && CrystalFX.payoutSlide && from && to) CrystalFX.payoutSlide(from, to, 4);
+    const pres = (window.CrystalFX && CrystalFX.tableWinPresentation)
+      ? CrystalFX.tableWinPresentation({ payout, net, bet, natural, game, title })
+      : { mode: "overlay", game, title, kicker: "TABLE" };
+    if (pres.mode !== "overlay") {
+      tableWinToast({ title: pres.title || title, amountAud: payout, game: pres.game || game });
+      return Promise.resolve();
+    }
     return celebrate({
-      kind: "big",
-      tier: "big",
-      title,
+      kind: "table",
+      tier: (pres.natural || (pres.multiple && pres.multiple >= 15)) ? "big" : null,
+      title: pres.title || title,
       amountAud: payout,
-      kicker: "TABLE",
+      kicker: pres.kicker || "TABLE",
+      game: pres.game || game,
       sub: "A social-casino win — coins have no cash value",
       hold: REDUCE || turbo ? Math.min(hold, 900) : hold,
       syncMeters: true,

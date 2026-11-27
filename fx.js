@@ -61,6 +61,99 @@
     return shown + "× your total bet";
   }
 
+  const TABLE_OVERLAY_X = 5;
+
+  function normalizeTableGame(game, title) {
+    const g = String(game || "").toLowerCase().replace(/[^a-z]/g, "");
+    const label = String(title || "").toLowerCase();
+    const map = {
+      blackjack: "blackjack", bj: "blackjack",
+      roulette: "roulette",
+      keno: "keno",
+      baccarat: "baccarat",
+      videopoker: "videopoker", poker: "videopoker",
+      threecard: "threecard",
+      war: "war", casinowar: "war",
+      highcard: "highcard",
+      dice: "dice", luckydice: "dice",
+      mines: "mines",
+      scratch: "scratch",
+    };
+    if (map[g]) return map[g];
+    if (label.indexOf("blackjack") >= 0) return "blackjack";
+    if (label.indexOf("roulette") >= 0) return "roulette";
+    if (label.indexOf("keno") >= 0) return "keno";
+    if (label.indexOf("baccarat") >= 0) return "baccarat";
+    if (label.indexOf("poker") >= 0) return "videopoker";
+    if (label.indexOf("war") >= 0) return "war";
+    if (label.indexOf("high") >= 0) return "highcard";
+    if (label.indexOf("dice") >= 0) return "dice";
+    if (label.indexOf("mine") >= 0) return "mines";
+    if (label.indexOf("scratch") >= 0) return "scratch";
+    return g || "table";
+  }
+
+  function tableWinPresentation({ payout = 0, net = 0, bet = 0, natural = false, game = "", title = "YOU WIN" } = {}) {
+    const pay = Number(payout) || 0;
+    const gained = Number(net) || 0;
+    if (!(pay > 0) || !(gained > 0)) {
+      return { mode: "none", game: "", title, kicker: "", multiple: 0, natural: false };
+    }
+    const spent = Number(bet) || 0;
+    const multiple = spent > 0 ? pay / spent : Infinity;
+    const g = normalizeTableGame(game, title);
+    const isNatural = !!natural;
+    const mode = (isNatural || multiple >= TABLE_OVERLAY_X) ? "overlay" : "toast";
+    const kickers = {
+      blackjack: isNatural ? "NATURAL" : "BLACKJACK",
+      roulette: "ROULETTE",
+      keno: "KENO",
+      baccarat: isNatural ? "NATURAL" : "BACCARAT",
+      videopoker: "VIDEO POKER",
+      threecard: "THREE CARD",
+      war: "CASINO WAR",
+      highcard: "HIGH CARD",
+      dice: "LUCKY DICE",
+      mines: "MINES",
+      scratch: "SCRATCH",
+    };
+    return {
+      mode,
+      game: g,
+      title: title || "YOU WIN",
+      kicker: kickers[g] || "TABLE",
+      multiple,
+      natural: isNatural,
+    };
+  }
+
+  function tableMedallion(game, title) {
+    const g = normalizeTableGame(game, title);
+    const chip = (n, cls) => `<img class="art-chip ${cls}" src="/assets/chips/chip-${n}.webp" alt="" />`;
+    if (g === "blackjack") {
+      return `<div class="celebrate-table art-blackjack" aria-hidden="true">${chip(5000, "art-chip-a")}${chip(1000, "art-chip-b")}<img class="art-card art-card-back" src="/assets/cards/back.webp" alt="" /><img class="art-card art-card-face" src="/assets/cards/royal-A.webp" alt="" /></div>`;
+    }
+    if (g === "roulette") {
+      return `<div class="celebrate-table art-roulette" aria-hidden="true"><div class="art-wheel"></div><span class="art-ball"></span></div>`;
+    }
+    if (g === "keno") {
+      return `<div class="celebrate-table art-keno" aria-hidden="true"><span class="art-keno-ball">17</span><span class="art-keno-ball">23</span><span class="art-keno-ball">42</span></div>`;
+    }
+    if (g === "dice") {
+      return `<div class="celebrate-table art-dice" aria-hidden="true"><span class="art-die" data-pips="5"></span><span class="art-die" data-pips="6"></span></div>`;
+    }
+    if (g === "mines") {
+      return `<div class="celebrate-table art-mines" aria-hidden="true"><img class="art-gem" src="/assets/symbols/emerald.webp" alt="" /></div>`;
+    }
+    if (g === "scratch") {
+      return `<div class="celebrate-table art-scratch" aria-hidden="true"><span class="art-ticket">WIN</span></div>`;
+    }
+    // baccarat, war, high card, video poker, three card, default: cards + chips
+    const face = g === "war" || g === "highcard" ? "/assets/cards/royal-K.webp" : "/assets/cards/royal-A.webp";
+    const face2 = g === "videopoker" || g === "threecard" ? "/assets/cards/royal-K.webp" : "/assets/cards/royal-Q.webp";
+    return `<div class="celebrate-table art-cards" aria-hidden="true">${chip(1000, "art-chip-a")}<img class="art-card art-card-back" src="/assets/cards/back.webp" alt="" /><img class="art-card art-card-face" src="${face}" alt="" /><img class="art-card art-card-face-2" src="${face2}" alt="" /></div>`;
+  }
+
   /* ---- particle pool (DOM) ---- */
   let layer;
   const pool = [];
@@ -290,7 +383,7 @@
   }
 
   const api = {
-    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber, formatCelebrateSub, payoutSlide,
+    on, shouldAnticipate, vibrate, HAPTIC, fountain, shine, lockCell, rollNumber, formatCelebrateSub, payoutSlide, tableWinPresentation, tableMedallion, normalizeTableGame, TABLE_OVERLAY_X,
     bindGemParallax, setGem, dealCard, flipCard, tossChip, highlightRoulette,
     squeezeCard, kenoBall, viewTransition, openChest, fxLayer,
   };
