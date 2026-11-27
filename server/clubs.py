@@ -419,6 +419,11 @@ def _record_play(player_id: str, bet_coins: int, win_coins: int) -> None:
     if win_coins < 0:
         win_coins = 0
     points = bet_coins + win_coins
+    try:
+        import live_events
+        points *= max(1, min(3, int(live_events.club_points_multiplier())))
+    except Exception:
+        pass
     if points == 0 and bet_coins == 0:
         # Still count a settled spin with a zero bet? Unlikely. Skip empty.
         if win_coins == 0:

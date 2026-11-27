@@ -391,6 +391,11 @@ def record_play(player_id: str, game: str, bet_coins: int, win_coins: int, when:
     season = current_season(when)
     sid = season["id"]
     gained = play_xp(bet_coins, win_coins)
+    try:
+        import live_events
+        gained *= max(1, min(3, int(live_events.xp_multiplier(when))))
+    except Exception:
+        pass
     with ledger.transaction() as conn:
         ensure_schema(conn)
         _ensure_progress(conn, player_id, sid)

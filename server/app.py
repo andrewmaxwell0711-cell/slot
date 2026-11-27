@@ -43,10 +43,11 @@ import legal  # noqa: E402
 import prefs  # noqa: E402
 import clubs  # noqa: E402
 import season  # noqa: E402
+import live_events  # noqa: E402
 import events  # noqa: E402
 
 PLAYER_COOKIE = "fr_player"
-ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js", "clubs.js", "season.js"}
+ALLOWED_STATIC = {"index.html", "styles.css", "fx.css", "app.js", "gems.js", "lobby.js", "casino.js", "errors.js", "settings.js", "fx.js", "clubs.js", "season.js", "events.js"}
 PORT = int(os.environ.get("PORT", "8765"))
 
 
@@ -370,7 +371,7 @@ def index():
 SPA_PAGES = {
     "home", "lobby", "games", "slots", "dragon", "pharaoh", "neon", "profile",
     "baccarat", "keno", "roulette", "blackjack", "poker", "war", "highcard",
-    "mines", "scratch", "dice", "videopoker", "threecard", "clubs", "season",
+    "mines", "scratch", "dice", "videopoker", "threecard", "clubs", "season", "events",
 }
 
 
@@ -460,6 +461,10 @@ def clubs_js():
 @app.get("/season.js")
 def season_js():
     return send_from_directory(ROOT, "season.js")
+
+@app.get("/events.js")
+def events_js():
+    return send_from_directory(ROOT, "events.js")
 
 
 
@@ -997,6 +1002,59 @@ def api_season_claim():
     })
     if out.get("snapshot"):
         payload["snapshot"] = _public_snap(out["snapshot"])
+        payload["coins"] = payload["snapshot"].get("coins")
+    if out.get("error"):
+        payload["error"] = out["error"]
+    return jsonify(payload)
+
+
+def _events_payload(extra: dict | None = None) -> dict:
+    data = live_events.events_state(g.player_id)
+    if extra:
+        data.update(extra)
+    if data.get("snapshot"):
+        data["snapshot"] = _public_snap(data["snapshot"])
+        data.setdefault("coins", data["snapshot"].get("coins"))
+    return data
+
+
+@app.get("/api/events")
+def api_events_get():
+    return jsonify(_events_payload())
+
+
+@app.post("/api/events/claim")
+def api_events_claim():
+    data = request.get_json(silent=True) or {}
+    try:
+        out = live_events.claim_prize(g.player_id, str(data.get("event_id") or ""))
+    except live_events.EventError as exc:
+        payload = _events_payload({
+            "error": str(exc),
+            "awarded": 0,
+            "already_claimed": "already" in str(exc).lower(),
+            "celebrate": False,
+        })
+        status = 429 if "already" in str(exc).lower() else 400
+        return jsonify(payload), status
+    payload = _events_payload({
+        "awarded": int(out.get("awarded") or 0),
+        "already_claimed": bool(out.get("already_claimed")),
+        "celebrate": bool(out.get("celebrate")),
+        "bonus": "event",
+    })
+    if out.get("snapshot"):
+        payload["snapshot"] = _public_snap(out["snapshot"])
+        payload["coins"] = payload["snapshot"].get("coins")
+    # claim_prize already embeds snapshot via events_state + we re-fetch below if needed
+    snap = None
+    try:
+        import ledger as _ledger
+        snap = _ledger.snapshot(g.player_id)
+    except Exception:
+        snap = out.get("snapshot")
+    if snap:
+        payload["snapshot"] = _public_snap(snap)
         payload["coins"] = payload["snapshot"].get("coins")
     if out.get("error"):
         payload["error"] = out["error"]

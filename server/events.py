@@ -3,7 +3,7 @@
 Slots and side games call on_play after a settled round. Today this is a
 documented extension point (handlers can be registered). It is kept
 side-effect free by default so a future live-events calendar can subscribe without changing game math.
-Clubs and the season pass already subscribe here.
+Clubs, the season pass, and the live events calendar already subscribe here.
 """
 
 from __future__ import annotations

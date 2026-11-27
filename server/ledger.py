@@ -131,6 +131,8 @@ def init_db(conn: Any | None = None) -> None:
     clubs.ensure_schema(c)
     import season
     season.ensure_schema(c)
+    import live_events
+    live_events.ensure_schema(c)
 
 
 @contextmanager
